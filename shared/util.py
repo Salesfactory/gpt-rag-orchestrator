@@ -8,6 +8,7 @@ import requests
 import tiktoken
 import time
 import urllib.parse
+import uuid
 from azure.cosmos import CosmosClient
 from azure.cosmos.partition_key import PartitionKey 
 from azure.keyvault.secrets import SecretClient
@@ -341,3 +342,98 @@ def get_blocked_list():
     except Exception as e:
         logging.info(f"[util__module] get_blocked_list: no blocked words list (keyvalue store with 'blocked_list' id does not exist).")
     return blocked_list
+
+
+##########################################################
+# SETTINGS
+##########################################################
+
+def get_setting(user_id):
+    setting = {}
+    credential = DefaultAzureCredential()
+    db_client = CosmosClient(AZURE_DB_URI, credential, consistency_level='Session')
+    db = db_client.get_database_client(database=AZURE_DB_NAME)
+    container = db.get_container_client('settings')
+    try:
+        query = "SELECT * FROM c WHERE c.user_id = @user_id"
+        parameters = [
+            {"name": "@user_id", "value": user_id}
+        ]
+        result = list(container.query_items(
+            query=query,
+            parameters=parameters,
+            enable_cross_partition_query=True
+        ))
+        if result:
+            setting = result[0]
+    except Exception as e:
+        logging.info(f"[util__module] get_setting: no settings found for user {user_id} (keyvalue store with '{user_id}' id does not exist).")
+    return setting
+
+
+def get_settings():
+    settings = []
+    credential = DefaultAzureCredential()
+    db_client = CosmosClient(AZURE_DB_URI, credential, consistency_level='Session')
+    db = db_client.get_database_client(database=AZURE_DB_NAME)
+    container = db.get_container_client('settings')
+    try:
+        settings = container.query_items(query='SELECT * FROM s', enable_cross_partition_query=True)
+        settings = list(settings)
+        
+    except Exception as e:
+        logging.info(f"[util__module] get_settings: no settings found (keyvalue store with 'settings' id does not exist).")
+    return settings
+
+
+def set_settings(user_id, temperature, frequency_penalty, presence_penalty):
+    new_setting = {}
+    credential = DefaultAzureCredential()
+    db_client = CosmosClient(AZURE_DB_URI, credential, consistency_level='Session')
+    db = db_client.get_database_client(database=AZURE_DB_NAME)
+    container = db.get_container_client('settings')
+
+    # validate temperature, frequency_penalty, presence_penalty
+
+    if user_id:
+        query = "SELECT * FROM c WHERE c.user_id = @user_id"
+        parameters = [
+            {"name": "@user_id", "value": user_id}
+        ]
+
+        logging.info(f"[util__module] set_settings: user_id {user_id}.")
+
+        results = list(container.query_items(
+            query=query,
+            parameters=parameters,
+            enable_cross_partition_query=True
+        ))
+
+        if results:
+            logging.info(f"[util__module] set_settings: user_id {user_id} found, results are {results}.")
+            setting = results[0]
+
+            setting["temperature"] = temperature
+            setting["frequencyPenalty"] = frequency_penalty
+            setting["presencePenalty"] = presence_penalty
+            try:
+                container.replace_item(item=setting['id'], body=setting)
+                logging.info(f"Successfully updated settings document for user {user_id}")
+            except Exception as e:
+                logging.error(f"Failed to update settings document for user {user_id}. Error: {str(e)}")
+        else:
+            logging.info(f"[util__module] set_settings: user_id {user_id} not found. creating new document.")
+            
+            try:
+                new_setting["id"] = str(uuid.uuid4())
+                new_setting["user_id"] = user_id
+                new_setting["temperature"] = temperature
+                new_setting["frequencyPenalty"] = frequency_penalty
+                new_setting["presencePenalty"] = presence_penalty
+                container.create_item(body=new_setting)
+                
+                logging.info(f"Successfully created new settings document for user {user_id}")
+            except Exception as e:
+                logging.error(f"Failed to create settings document for user {user_id}. Error: {str(e)}")
+    else:
+        logging.info(f"[util__module] set_settings: user_id not provided.")

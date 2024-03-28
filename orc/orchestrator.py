@@ -39,6 +39,21 @@ def get_credentials():
     # return DefaultAzureCredential(exclude_managed_identity_credential=is_local_env, exclude_environment_credential=is_local_env)
     return DefaultAzureCredential()
 
+def get_settings():
+    # use cosmos to get settings from the logged user
+    # default settings
+    # settings = {
+    #     'temperature': 0.0,
+    #     'frequency_penalty': 0.0,
+    #     'presence_penalty': 0.0,
+    # }
+    test_settings = {
+        'temperature': 0.5,
+        'frequency_penalty': 0.5,
+        'presence_penalty': 0.5,
+    }
+    return test_settings
+
 async def run(conversation_id, ask, client_principal):
     
     start_time = time.time()
@@ -54,6 +69,9 @@ async def run(conversation_id, ask, client_principal):
 
     # get conversation
     credential = get_credentials()
+
+    # settings
+    settings = get_settings()
 
     async with CosmosClient(AZURE_DB_URI, credential=credential) as db_client:
         db = db_client.get_database_client(database=AZURE_DB_NAME)
@@ -82,8 +100,7 @@ async def run(conversation_id, ask, client_principal):
 
         else: # USE_CODE
             logging.info(f"[orchestrator] executing RAG retrieval using code orchestration")
-
-            answer_dict = await code_orchestration.get_answer(history)
+            answer_dict = await code_orchestration.get_answer(history, settings)
 
         # 3) update and save conversation (containing history and conversation data)
         
