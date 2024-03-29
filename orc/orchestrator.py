@@ -4,7 +4,7 @@ import time
 import uuid
 from azure.cosmos.aio import CosmosClient
 from datetime import datetime
-from shared.util import format_answer
+from shared.util import format_answer, get_setting
 from azure.identity.aio import DefaultAzureCredential
 import orc.code_orchestration as code_orchestration
 import orc.promptflow_orchestration as promptflow_orchestration
@@ -39,20 +39,19 @@ def get_credentials():
     # return DefaultAzureCredential(exclude_managed_identity_credential=is_local_env, exclude_environment_credential=is_local_env)
     return DefaultAzureCredential()
 
-def get_settings():
+def get_settings(client_principal):
     # use cosmos to get settings from the logged user
-    # default settings
-    # settings = {
-    #     'temperature': 0.0,
-    #     'frequency_penalty': 0.0,
-    #     'presence_penalty': 0.0,
-    # }
-    test_settings = {
-        'temperature': 0.5,
-        'frequency_penalty': 0.5,
-        'presence_penalty': 0.5,
+    data = get_setting(client_principal)
+    temperature = 0.0 if 'temperature' not in data else data['temperature']
+    frequency_penalty = 0.0 if 'frequencyPenalty' not in data else data['frequencyPenalty']
+    presence_penalty = 0.0 if 'presencePenalty' not in data else data['presencePenalty']
+    settings = {
+        'temperature': temperature,
+        'frequency_penalty': frequency_penalty,
+        'presence_penalty': presence_penalty
     }
-    return test_settings
+    logging.info(f"[orchestrator] settings: {settings}")
+    return settings
 
 async def run(conversation_id, ask, client_principal):
     
@@ -71,7 +70,7 @@ async def run(conversation_id, ask, client_principal):
     credential = get_credentials()
 
     # settings
-    settings = get_settings()
+    settings = get_settings(client_principal)
 
     async with CosmosClient(AZURE_DB_URI, credential=credential) as db_client:
         db = db_client.get_database_client(database=AZURE_DB_NAME)

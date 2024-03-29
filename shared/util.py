@@ -348,7 +348,12 @@ def get_blocked_list():
 # SETTINGS
 ##########################################################
 
-def get_setting(user_id):
+def get_setting(client_principal):
+    if not client_principal['id']:
+        return {}
+    
+    logging.info("User ID found. Getting settings for user: " + client_principal['id'])
+    
     setting = {}
     credential = DefaultAzureCredential()
     db_client = CosmosClient(AZURE_DB_URI, credential, consistency_level='Session')
@@ -357,7 +362,7 @@ def get_setting(user_id):
     try:
         query = "SELECT * FROM c WHERE c.user_id = @user_id"
         parameters = [
-            {"name": "@user_id", "value": user_id}
+            {"name": "@user_id", "value": client_principal['id']}
         ]
         result = list(container.query_items(
             query=query,
@@ -367,7 +372,7 @@ def get_setting(user_id):
         if result:
             setting = result[0]
     except Exception as e:
-        logging.info(f"[util__module] get_setting: no settings found for user {user_id} (keyvalue store with '{user_id}' id does not exist).")
+        logging.info(f"[util__module] get_setting: no settings found for user {client_principal['id']} (keyvalue store with '{client_principal['id']}' id does not exist).")
     return setting
 
 
@@ -386,7 +391,7 @@ def get_settings():
     return settings
 
 
-def set_settings(user_id, temperature, frequency_penalty, presence_penalty):
+def set_settings(client_principal, temperature, frequency_penalty, presence_penalty):
     new_setting = {}
     credential = DefaultAzureCredential()
     db_client = CosmosClient(AZURE_DB_URI, credential, consistency_level='Session')
@@ -394,14 +399,33 @@ def set_settings(user_id, temperature, frequency_penalty, presence_penalty):
     container = db.get_container_client('settings')
 
     # validate temperature, frequency_penalty, presence_penalty
+    if temperature < 0 or temperature > 1:
+        logging.error(f"[util__module] set_settings: invalid temperature value {temperature}.")
+        return
 
-    if user_id:
+    if frequency_penalty < 0 or frequency_penalty > 1:
+        logging.error(f"[util__module] set_settings: invalid frequency_penalty value {frequency_penalty}.")
+        return
+    
+    if presence_penalty < 0 or presence_penalty > 1:
+        logging.error(f"[util__module] set_settings: invalid presence_penalty value {presence_penalty}.")
+        return
+    
+    # set default values
+    if not temperature:
+        temperature = 0.0
+    if not frequency_penalty:
+        frequency_penalty = 0.0
+    if not presence_penalty:
+        presence_penalty = 0.0
+
+    if client_principal['id']:
         query = "SELECT * FROM c WHERE c.user_id = @user_id"
         parameters = [
-            {"name": "@user_id", "value": user_id}
+            {"name": "@user_id", "value": client_principal['id']}
         ]
 
-        logging.info(f"[util__module] set_settings: user_id {user_id}.")
+        logging.info(f"[util__module] set_settings: user_id {client_principal['id']}.")
 
         results = list(container.query_items(
             query=query,
@@ -410,7 +434,7 @@ def set_settings(user_id, temperature, frequency_penalty, presence_penalty):
         ))
 
         if results:
-            logging.info(f"[util__module] set_settings: user_id {user_id} found, results are {results}.")
+            logging.info(f"[util__module] set_settings: user_id {client_principal['id']} found, results are {results}.")
             setting = results[0]
 
             setting["temperature"] = temperature
@@ -418,22 +442,22 @@ def set_settings(user_id, temperature, frequency_penalty, presence_penalty):
             setting["presencePenalty"] = presence_penalty
             try:
                 container.replace_item(item=setting['id'], body=setting)
-                logging.info(f"Successfully updated settings document for user {user_id}")
+                logging.info(f"Successfully updated settings document for user {client_principal['id']}")
             except Exception as e:
-                logging.error(f"Failed to update settings document for user {user_id}. Error: {str(e)}")
+                logging.error(f"Failed to update settings document for user {client_principal['id']}. Error: {str(e)}")
         else:
-            logging.info(f"[util__module] set_settings: user_id {user_id} not found. creating new document.")
+            logging.info(f"[util__module] set_settings: user_id {client_principal['id']} not found. creating new document.")
             
             try:
                 new_setting["id"] = str(uuid.uuid4())
-                new_setting["user_id"] = user_id
+                new_setting["user_id"] = client_principal['id']
                 new_setting["temperature"] = temperature
                 new_setting["frequencyPenalty"] = frequency_penalty
                 new_setting["presencePenalty"] = presence_penalty
                 container.create_item(body=new_setting)
                 
-                logging.info(f"Successfully created new settings document for user {user_id}")
+                logging.info(f"Successfully created new settings document for user {client_principal['id']}")
             except Exception as e:
-                logging.error(f"Failed to create settings document for user {user_id}. Error: {str(e)}")
+                logging.error(f"Failed to create settings document for user {client_principal['id']}. Error: {str(e)}")
     else:
         logging.info(f"[util__module] set_settings: user_id not provided.")
