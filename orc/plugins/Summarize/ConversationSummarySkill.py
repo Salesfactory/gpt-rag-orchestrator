@@ -15,6 +15,10 @@ class ConversationSummarySkill:
 
     # The max tokens to process in a single semantic function call.
     _max_tokens = 1024
+    _temperature = 0.1
+    _top_p = 0.5
+    _presence_penalty = 0.0
+    _frequency_penalty = 0.0
 
     _summarize_conversation_prompt_template = (
         "[SUMMARIZATION RULES]\n"
@@ -49,10 +53,10 @@ class ConversationSummarySkill:
         max_tokens: None,
     ):
         _max_tokens = int(max_tokens) if max_tokens != None else ConversationSummarySkill._max_tokens
-        _temperature = float(temperature) if temperature != None else 0.1
-        _top_p = float(top_p) if top_p != None else 0.5
-        _presence_penalty = float(presence_penalty) if presence_penalty != None else 0.0
-        _frequency_penalty = float(frequency_penalty) if frequency_penalty != None else 0.0
+        _temperature = float(temperature) if temperature != None else ConversationSummarySkill._temperature
+        _top_p = float(top_p) if top_p != None else ConversationSummarySkill._top_p
+        _presence_penalty = float(presence_penalty) if presence_penalty != None else ConversationSummarySkill._presence_penalty
+        _frequency_penalty = float(frequency_penalty) if frequency_penalty != None else ConversationSummarySkill._frequency_penalty
 
         logging.info(
             "[summary_plug] " +
