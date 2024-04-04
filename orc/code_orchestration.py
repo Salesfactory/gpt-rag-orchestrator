@@ -294,8 +294,6 @@ async def get_answer(history, settings = None):
 
     answer_dict['prompt_dict'] = prompt_dict
 
-    for key, value in prompt_dict.items():
-        logging.info(f"[code_orchest] prompt_dict: {key}: {value}")
     response_time =  round(time.time() - init_time,2)
     logging.info(f"[code_orchest] finished RAG Flow. {response_time} seconds.")
 
