@@ -120,7 +120,7 @@ async def get_answer(history, settings):
             # import RAG plugins
             # changed the import_plugin_from_prompt_directory function to allow for dynamic settings
             # item_name_override
-            conversationPlugin = ss.import_plugin_from_prompt_directory(
+            conversationPlugin, plugins_prompts = ss.import_plugin_from_prompt_directory(
                 kernel=kernel, 
                 parent_directory=PLUGINS_FOLDER, 
                 plugin_directory_name="Conversation", 
@@ -174,7 +174,6 @@ async def get_answer(history, settings):
             elif set(intents).intersection({"follow_up", "question_answering"}):         
     
                 search_query = triage_dict['search_query'] if triage_dict['search_query'] != '' else ask
-
                 # run retrieval function
                 function_result = await kernel.invoke(retrievalPlugin["VectorIndexRetrieval"], sk.KernelArguments(input=search_query))
                 sources = function_result.value
@@ -233,7 +232,7 @@ async def get_answer(history, settings):
             try:
                 logging.info(f"[code_orchest] checking if it is grounded. answer: {answer[:50]}")
                 start_time = time.time()            
-                arguments["answer"] = answer                      
+                arguments["answer"] = answer                     
                 function_result = await call_semantic_function(kernel, conversationPlugin["IsGrounded"], arguments)
                 grounded =  str(function_result)
                 prompt_tokens += get_usage_tokens(function_result, 'prompt')
@@ -284,6 +283,10 @@ async def get_answer(history, settings):
 
     # additional metadata for debugging
     if CONVERSATION_METADATA:
+        answer_dict["prompts"] = plugins_prompts
+        answer_dict["settings"] = settings
+        answer_dict["conversation_max_history"] = CONVERSATION_MAX_HISTORY
+        answer_dict["previous_answer"] = messages[-2]['content'] if len(messages) > 1 else ""
         answer_dict["intents"] = intents
         answer_dict["detected_language"] = detected_language     
         answer_dict["answer_generated_by"] = answer_generated_by

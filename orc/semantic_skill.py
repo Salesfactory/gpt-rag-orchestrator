@@ -25,6 +25,7 @@ def import_plugin_from_prompt_directory(
     )
 
     functions = []
+    plugin_prompts_strings = []
 
     # Handle YAML files at the root
     yaml_files = glob.glob(os.path.join(plugin_directory, "*.yaml"))
@@ -57,6 +58,7 @@ def import_plugin_from_prompt_directory(
 
                 with open(prompt_path, "r") as prompt_file:
                     prompt = prompt_file.read()
+                    plugin_prompts_strings.append(prompt)
                     prompt_template_config.template = prompt
 
                 prompt_template = TEMPLATE_FORMAT_MAP[
@@ -74,4 +76,4 @@ def import_plugin_from_prompt_directory(
                     )
                 )
 
-    return KernelPlugin(name=plugin_directory_name, functions=functions)
+    return KernelPlugin(name=plugin_directory_name, functions=functions), plugin_prompts_strings
