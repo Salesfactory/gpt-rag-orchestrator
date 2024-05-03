@@ -104,7 +104,7 @@ async def run(conversation_id, ask, client_principal):
                     'messages_data': [{ 'type': 'system', 'content': 'You are an AI assistant that helps people find information.',}], 'interaction': {}
                 })
         # load messages data and instanciate them
-        history = conversation.get('history', [])
+        history = conversation_data['history']
         history.append({"role": "user", "content": ask})
 
         messages_data = conversation_data['messages_data']
