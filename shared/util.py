@@ -370,15 +370,19 @@ def get_conversation(conversation_id, user_id):
         container = db.get_container_client('conversations')
         conversation = container.read_item(item=conversation_id, partition_key=conversation_id)
         if conversation['conversation_data']['interaction']['user_id'] != user_id:
-            return []
-        formatted_conversation = [{
-            'role': message['role'],
-            'content': message['content']
-        } for message in conversation['conversation_data']['history'][1:]]
+            return {}
+        formatted_conversation = {
+            'id': conversation_id,
+            'start_date': conversation['conversation_data']['start_date'],
+            'messages': [{
+                'role': message['role'],
+                'content': message['content']
+            } for message in conversation['conversation_data']['history'][1:]]
+        }
         return formatted_conversation
     except Exception:
         logging.error(f"Error retrieving the conversation '{conversation_id}'")
-        return []
+        return {}
 
     
 def delete_conversation(conversation_id, user_id):
