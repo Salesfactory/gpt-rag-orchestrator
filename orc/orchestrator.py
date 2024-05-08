@@ -132,6 +132,17 @@ async def run(conversation_id, ask, client_principal):
             messages_data.append(answer_dict['human_message'].dict())
         if 'ai_message' in answer_dict:
             messages_data.append(answer_dict['ai_message'].dict())
+
+        #add sources to tthe answer 
+        answer_dict['answer'] = replace_numbers_with_paths(answer_dict['answer'], answer_dict['sources'])
+
+
+        # 4) store user consumed tokens
+
+        store_user_consumed_tokens(client_principal['id'], cb)
+
+        # 5) store prompt information in CosmosDB
+
         # history
         history.append({"role": "assistant", "content": answer_dict['answer']})
         conversation_data['history'] = history
@@ -157,6 +168,7 @@ async def run(conversation_id, ask, client_principal):
 
         #store_prompt_information(client_principal['id'], answer_dict)
         
+
         # 6) return answer
         result = {"conversation_id": conversation_id,
                 "answer": answer_dict['answer'],
