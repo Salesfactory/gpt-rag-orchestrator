@@ -84,10 +84,9 @@ def get_conversation_chain(model, messages, context):
             input, output = {}, {}
 
     prompt_template = """You are FreddAid, a friendly marketing assistant dedicated to uncovering insights and developing effective strategies. 
-    Make sure you cite the source number as [x]. Do not add the word Source before the number.
     Answer the following question based on the current context and conversation:
-
     Context: ```{{context}}```
+    Make sure you cite the source number as [x]. Do not add the word Source before the number.
     Conversation History: ```{history}```
     Question: ```{input}```
     """
