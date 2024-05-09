@@ -50,19 +50,6 @@ PLUGINS_FOLDER = f"{ORCHESTRATOR_FOLDER}/plugins"
 BOT_DESCRIPTION_FILE = f"{ORCHESTRATOR_FOLDER}/bot_description.prompt"
 
 
-
-# replaced by format_messages in the orchestrator
-# >:(
-# def augment_prompt(query: str, docs: list):
-#     # get the text from the results
-#     source_knowledge = retrieval_transform(docs)
-#     # feed into an augmented prompt
-#     augmented_prompt = f"""Using the contexts below, answer the query.
-#   Contexts:
-#   {source_knowledge}
-#   Query: {query}"""
-#     return augmented_prompt
-
 def replace_numbers_with_paths(text, paths):
     citations = re.findall(r"\[([0-9]+(?:,[0-9]+)*)\]", text)
     for citation in citations:
