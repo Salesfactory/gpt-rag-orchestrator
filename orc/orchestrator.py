@@ -71,16 +71,6 @@ def instanciate_messages(messages_data):
         logging.error(f"[orchestrator] error instanciating messages: {e}")
         return []
 
-def replace_numbers_with_paths(text, paths):
-    citations = re.findall(r"\[([0-9]+(?:,[0-9]+)*)\]", text)
-    for citation in citations:
-        citation = citation.split(',')
-        for c in citation:
-            c = int(c)
-            text = text.replace(f"[{c}]", "["+paths[c-1]+"]")
-    logging.info(f"[orchestrator] response with citations {text}")
-    return text
-
 async def run(conversation_id, ask, client_principal):
     
     start_time = time.time()
@@ -142,6 +132,17 @@ async def run(conversation_id, ask, client_principal):
             messages_data.append(answer_dict['human_message'].dict())
         if 'ai_message' in answer_dict:
             messages_data.append(answer_dict['ai_message'].dict())
+
+        #add sources to tthe answer 
+        answer_dict['answer'] = replace_numbers_with_paths(answer_dict['answer'], answer_dict['sources'])
+
+
+        # 4) store user consumed tokens
+
+        store_user_consumed_tokens(client_principal['id'], cb)
+
+        # 5) store prompt information in CosmosDB
+
         # history
         history.append({"role": "assistant", "content": answer_dict['answer']})
         conversation_data['history'] = history
@@ -166,7 +167,8 @@ async def run(conversation_id, ask, client_principal):
         # 5) store prompt information in CosmosDB
 
         #store_prompt_information(client_principal['id'], answer_dict)
-        answer_dict['answer'] = replace_numbers_with_paths(answer_dict['answer'], answer_dict['sources'])
+        
+
         # 6) return answer
         result = {"conversation_id": conversation_id,
                 "answer": answer_dict['answer'],

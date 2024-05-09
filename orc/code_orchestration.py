@@ -49,6 +49,29 @@ PLUGINS_FOLDER = f"{ORCHESTRATOR_FOLDER}/plugins"
 BOT_DESCRIPTION_FILE = f"{ORCHESTRATOR_FOLDER}/bot_description.prompt"
 
 
+
+# replaced by format_messages in the orchestrator
+# >:(
+# def augment_prompt(query: str, docs: list):
+#     # get the text from the results
+#     source_knowledge = retrieval_transform(docs)
+#     # feed into an augmented prompt
+#     augmented_prompt = f"""Using the contexts below, answer the query.
+#   Contexts:
+#   {source_knowledge}
+#   Query: {query}"""
+#     return augmented_prompt
+
+def replace_numbers_with_paths(text, paths):
+    citations = re.findall(r"\[([0-9]+(?:,[0-9]+)*)\]", text)
+    for citation in citations:
+        citation = citation.split(',')
+        for c in citation:
+            c = int(c)
+            text = text.replace(f"[{c}]", "["+paths[c-1]+"]")
+    logging.info(f"[orchestrator] response with citations {text}")
+    return text
+
 def get_document_retriever(model):
     template = """You are an AI language model assistant. You have the capability to perform advanced vector-based queries.
 Your task is to construct one search query using only nouns, to retrieve relevant documents from a vector database.
@@ -140,9 +163,11 @@ async def get_answer(question, messages, settings):
         ai_message = AIMessage(content=res["response"])
         messages.append(ai_message)
 
-        answer_dict["answer"] = res["response"]
-        answer_dict["ai_message"] = ai_message
-        answer_dict["human_message"] = humanMessage
+
+        answer_dict["answer"] = replace_numbers_with_paths(res.content, sources)
+        answer_dict["ai_message"] = res
+        answer_dict["human_message"] = humanMessage[0]
+
         answer_dict["total_tokens"] = total_tokens
         answer_dict["sources"] = sources
 
