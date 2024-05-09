@@ -1,6 +1,7 @@
 # imports
 import logging
 import os
+import re
 from langchain_openai import AzureChatOpenAI
 from langchain_core.messages import HumanMessage, AIMessage
 from langchain.prompts import ChatPromptTemplate
@@ -69,7 +70,7 @@ def replace_numbers_with_paths(text, paths):
         for c in citation:
             c = int(c)
             text = text.replace(f"[{c}]", "["+paths[c-1]+"]")
-    logging.info(f"[orchestrator] response with citations {text}")
+    # logging.info(f"[orchestrator] response with citations {text}")
     return text
 
 def get_document_retriever(model):
@@ -157,16 +158,16 @@ async def get_answer(question, messages, settings):
         # logging.info(f"response: {res}")
 
         # human question
-        humanMessage = HumanMessage(content=question)
-        messages.append(humanMessage)
+        human_hessage = HumanMessage(content=question)
+        messages.append(human_hessage)
         # ai response
         ai_message = AIMessage(content=res["response"])
         messages.append(ai_message)
 
 
-        answer_dict["answer"] = replace_numbers_with_paths(res.content, sources)
-        answer_dict["ai_message"] = res
-        answer_dict["human_message"] = humanMessage[0]
+        answer_dict["answer"] = replace_numbers_with_paths(res["response"], sources)
+        answer_dict["ai_message"] = ai_message
+        answer_dict["human_message"] = human_hessage
 
         answer_dict["total_tokens"] = total_tokens
         answer_dict["sources"] = sources
