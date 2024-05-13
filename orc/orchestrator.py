@@ -109,7 +109,6 @@ def current_time():
   return f"Today's date: {date.today()}"
 
 async def run(conversation_id, ask, client_principal):
-    logging.error(f"[orchestrator] {BING_SEARCH_API_KEY} starting conversation flow. {BING_SEARCH_URL}")
     
     start_time = time.time()
     
