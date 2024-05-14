@@ -108,6 +108,39 @@ def sort_string(string):
 def current_time():
   return f"Today's date: {date.today()}"
 
+def answer(question):
+    return "I am sorry, I don't have an answer for that question."
+
+
+from langchain_community.retrievers import AzureAISearchRetriever
+from langchain.tools.retriever import create_retriever_tool
+from langchain.retrievers.multi_query import MultiQueryRetriever
+from langchain.prompts import ChatPromptTemplate
+from shared.tools import LineListOutputParser, retrieval_transform
+
+def get_document_retriever(model):
+    template = """You are an AI language model assistant. You have the capability to perform advanced vector-based queries.
+    Your task is to construct one search query using only nouns, to retrieve relevant documents from a vector database.
+    Identify key concepts from the question. Combine these concepts into a relevant noun phrase.
+    Do not use the 'Search query' at the beginning of the query.
+    Original question: {question}"""
+
+    sq_prompt = ChatPromptTemplate.from_template(template)
+
+    llm_chain = LLMChain(
+        llm=model, prompt=sq_prompt, output_parser=LineListOutputParser()
+    )
+
+    retriever = MultiQueryRetriever(
+        retriever=AzureAISearchRetriever(content_key="chunk", top_k=3),
+        llm_chain=llm_chain,
+    )
+    return retriever
+
+def retrieve_documents(model, question):
+    retriever = get_document_retriever(model)
+    return retriever.run(question)
+
 async def run(conversation_id, ask, client_principal):
     
     start_time = time.time()
@@ -140,17 +173,21 @@ async def run(conversation_id, ask, client_principal):
     )
     
     # Initialize memory
-    memory = ConversationBufferWindowMemory(k=CONVERSATION_MAX_HISTORY,memory_key="chat_history")
+    
+    # memory = ConversationBufferWindowMemory(k=CONVERSATION_MAX_HISTORY,memory_key="chat_history")
+    # logging.error(f"BUFFER{memory.buffer_as_messages}")
+    # logging.error(f"MESSAGES{messages}")
+    
 
-    input, output = {}, {}
-    for message in messages:
-        if message.type == "human":
-            input["input"] = message.content
-        if message.type == "ai":
-            output["output"] = message.content
-        if "input" in input and "output" in output:
-            memory.save_context(input, output)
-            input, output = {}, {}
+    # input, output = {}, {}
+    # for message in messages:
+    #     if message.type == "human":
+    #         input["input"] = message.content
+    #     if message.type == "ai":
+    #         output["output"] = message.content
+    #     if "input" in input and "output" in output:
+    #         memory.save_context(input, output)
+    #         input, output = {}, {}
     
     # Define built-in tools
     
@@ -209,11 +246,11 @@ async def run(conversation_id, ask, client_principal):
         #   description="A tool to search the web. Use it when you need to find current information that is not available in the library tools.",
         #   func=bing_search.run
         # ),
-        Tool(
-           name="Current_Time",
-           description="Returns current time.",
-           func=current_time
-        ),
+        # Tool(
+        #    name="Current_Time",
+        #    description="Returns current time.",
+        #    func=current_time
+        # ),
         # Tool(
         #     name="Sort_String",
         #     func=lambda string: sort_string(string),
@@ -248,12 +285,12 @@ async def run(conversation_id, ask, client_principal):
         Begin!
         Question: {input}
         Thought:{agent_scratchpad}''',
-        validate_template=False
+        validate_template=False,
     )
     
     # Create agent
     agent = create_react_agent(model, tools, prompt_react)
-    agent_executor = AgentExecutor(agent=agent, tools=tools, name="FreddAid", verbose=True, memory=memory, handle_parsing_errors=True)
+    agent_executor = AgentExecutor(agent=agent, tools=tools, name="FreddAid", verbose=True, handle_parsing_errors=True)
 
     # 1) get answer from agent
     with get_openai_callback() as cb:
@@ -261,14 +298,14 @@ async def run(conversation_id, ask, client_principal):
     
     # 2) update and save conversation (containing history and conversation data)
     
-    message_list = memory.buffer_as_messages
+    #message_list = memory.buffer_as_messages
     
     #messages data
     
     #user message
-    messages_data.append(message_list[-2].dict())
+    #messages_data.append(message_list[-2].dict())
     #ai message
-    messages_data.append(message_list[-1].dict())
+    #messages_data.append(message_list[-1].dict())
 
     # history
     history = conversation_data['history']

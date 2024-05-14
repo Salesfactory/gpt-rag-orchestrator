@@ -62,10 +62,10 @@ def replace_numbers_with_paths(text, paths):
 
 def get_document_retriever(model):
     template = """You are an AI language model assistant. You have the capability to perform advanced vector-based queries.
-Your task is to construct one search query using only nouns, to retrieve relevant documents from a vector database.
-Identify key concepts from the question. Combine these concepts into a relevant noun phrase.
-Do not use the 'Search query' at the beginning of the query.
-Original question: {question}"""
+    Your task is to construct one search query using only nouns, to retrieve relevant documents from a vector database.
+    Identify key concepts from the question. Combine these concepts into a relevant noun phrase.
+    Do not use the 'Search query' at the beginning of the query.
+    Original question: {question}"""
 
     sq_prompt = ChatPromptTemplate.from_template(template)
 
@@ -81,24 +81,11 @@ Original question: {question}"""
     return retriever
 
 
-def get_conversation_chain(model, messages, context):
-    memory = ConversationBufferWindowMemory(k=CONVERSATION_MAX_HISTORY)
-
-    input, output = {}, {}
-    for message in messages:
-        if message.type == "human":
-            input["input"] = message.content
-        if message.type == "ai":
-            output["output"] = message.content
-        if "input" in input and "output" in output:
-            memory.save_context(input, output)
-            input, output = {}, {}
-
-    prompt_template = """You are FreddAid, a friendly marketing assistant dedicated to uncovering insights and developing effective strategies. 
-    Answer the following question based on the current context and conversation:
+def get_conversation_chain(model, context):
+    
+    prompt_template = """Answer the following question based on the context. if you don't know the answer, you can say "I don't know".
     Context: ```{{context}}```
     Make sure you cite the source number as [x]. Do not add the word Source before the number.
-    Conversation History: ```{history}```
     Question: ```{input}```
     """
 
@@ -107,7 +94,7 @@ def get_conversation_chain(model, messages, context):
 
     prompt = PromptTemplate.from_template(prompt_template)
 
-    conversation_chain = ConversationChain(llm=model, memory=memory, prompt=prompt)
+    conversation_chain = ConversationChain(llm=model, prompt=prompt)
 
     # logging.info(
     #     f"MEMORY history: {conversation_chain.memory.load_memory_variables(inputs=[])['history']}"
@@ -116,19 +103,19 @@ def get_conversation_chain(model, messages, context):
     return conversation_chain
 
 
-def get_answer(model, question, messages):
+def get_answer(model, question, source_knowledge):
     answer = ""
     try:
-        # get document retriever and create retrieval chain
-        retriever = get_document_retriever(model)
-        retrieval_chain = retriever | retrieval_transform
+        # # get document retriever and create retrieval chain
+        # retriever = get_document_retriever(model)
+        # retrieval_chain = retriever | retrieval_transform
 
-        # get source knowledge from retrieval chain documents
-        source_knowledge, sources = retrieval_chain.invoke(question)
+        # # get source knowledge from retrieval chain documents
+        # source_knowledge = retrieval_chain.invoke(question)
 
         # get conversation chain then format messages and context
         conversation_bufw = get_conversation_chain(
-            model, messages, context=source_knowledge
+            model, context=source_knowledge
         )
 
         # get response from conversation chain
@@ -136,8 +123,10 @@ def get_answer(model, question, messages):
         res = conversation_bufw.invoke(input=question)
 
         # logging.info(f"response: {res}")
+        
+        answer = res["response"]
 
-        answer = replace_numbers_with_paths(res["response"], sources)
+        #answer = replace_numbers_with_paths(res["response"], sources)
 
     except Exception as e:
         logging.error(f"[code_orchest] exception when executing RAG flow. {e}")
