@@ -11,6 +11,7 @@ from shared.cosmos_db import get_conversation_data, update_conversation_data
 
 from langchain_community.callbacks import get_openai_callback
 from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
+from langchain_core.tools import ToolException
 
 from langchain_openai import AzureChatOpenAI
 
@@ -106,7 +107,17 @@ def sort_string(string):
   return " ".join(sorted(string))
 
 def current_time():
-  return f"Today's date: {date.today()}"
+    try:
+        return f"Today's date: {date.today()}"
+    except Exception as e:
+        raise ToolException(f"Error getting current time: {e}")
+
+def _handle_error(error: ToolException) -> str:
+    return (
+        "There was an error with the tool: "
+        + error.args[0]
+        + "Please try another tool."
+    )
 
 async def run(conversation_id, ask, client_principal):
     
@@ -163,41 +174,47 @@ async def run(conversation_id, ask, client_principal):
             name="Calculator",
             func=llm_math.run,
             description="Useful for when you need to answer questions about math.",
+            handle_tool_error=_handle_error,
         ),
         Tool(
             name="Home_Depot_library",
             func=lambda _: code_orchestration.get_answer(model, ask, messages),
             description="Useful for when you need to answer questions about Home Depot.",
             verbose=True,
-            return_direct=True
+            return_direct=True,
+            handle_tool_error=_handle_error,
         ),
         Tool(
             name="Lowe's_Home_Improvement_library",
             func=lambda _: code_orchestration.get_answer(model, ask, messages),
             description="Useful for when you need to answer questions about Lowe's Home Improvement.",
             verbose=True,
-            return_direct=True
+            return_direct=True,
+            handle_tool_error=_handle_error,
         ),
         Tool(
             name="ConsumerPulse_library",
             func=lambda _: code_orchestration.get_answer(model, ask, messages),
             description="Useful for when you need to answer questions about consumer behavior, consumer pulse, segments and segmentation.",
             verbose=True,
-            return_direct=True
+            return_direct=True,
+            handle_tool_error=_handle_error,
         ),
         Tool(
             name="Economy_library",
             func=lambda _: code_orchestration.get_answer(model, ask, messages),
             description="Useful for understanding how the economy affects consumer behavior and how is the economy.",
             verbose=True,
-            return_direct=True
+            return_direct=True,
+            handle_tool_error=_handle_error,
         ),
         Tool(
             name="MarketingFrameworks_library",
             func=lambda _: code_orchestration.get_answer(model, ask, messages),
             description="Useful for when you need to use marketing frameworks.",
             verbose=True,
-            return_direct=True
+            return_direct=True,
+            handle_tool_error=_handle_error,
         ),
         # Tool(
         #   name="Bing_Search",
@@ -207,7 +224,9 @@ async def run(conversation_id, ask, client_principal):
         Tool(
            name="Current_Time",
            description="Returns current time.",
-           func=lambda _: current_time()
+           func=lambda _: current_time(),
+           handle_tool_error=_handle_error,
+           
         ),
         # Tool(
         #     name="Sort_String",

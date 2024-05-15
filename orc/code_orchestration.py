@@ -12,6 +12,8 @@ from shared.tools import LineListOutputParser, retrieval_transform
 from langchain_community.retrievers import AzureAISearchRetriever
 from langchain.chains.conversation.memory import ConversationBufferWindowMemory
 
+from langchain_core.tools import ToolException
+
 # logging level
 
 logging.getLogger("azure").setLevel(logging.WARNING)
@@ -139,7 +141,7 @@ def get_answer(model, question, messages):
 
     except Exception as e:
         logging.error(f"[code_orchest] exception when executing RAG flow. {e}")
-        answer = f"RAG flow: exception: {e}"
+        raise ToolException(f"RAG flow: exception: {e}")
         
     logging.info("[code_orchest] response: " + answer[:500])
     return answer
