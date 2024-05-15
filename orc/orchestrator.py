@@ -121,22 +121,19 @@ from azure.cosmos.aio import CosmosClient
 
 from datetime import datetime
 
-DEFAULT_CONVERSATION_DATA = {
-    "start_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    "history": [],
-    "messages_data": [],
-    "interaction": {},
-}
+async def run(conversation_id, ask, client_principal, credential):
+    result = {"conversation_id": "", "answer": "", "data_points": "", "thoughts": []}
 
+    # settings
+    settings = get_settings(client_principal)
 
-async def run(conversation_id, ask, client_principal,credential):
-    result = {
-        "conversation_id": '',
-        "answer": '',
-        "data_points": "",
-        "thoughts": []
-    }
-    
+    # create conversation_id if not provided
+    if conversation_id is None or conversation_id == "":
+        conversation_id = str(uuid.uuid4())
+        logging.info(
+            f"[orchestrator] {conversation_id} conversation_id is Empty, creating new conversation_id."
+        )
+
     async with CosmosClient(AZURE_DB_URI, credential=credential) as db_client:
         db = db_client.get_database_client(database=AZURE_DB_NAME)
         container = db.get_container_client("conversations")
@@ -150,31 +147,28 @@ async def run(conversation_id, ask, client_principal,credential):
                 f"[orchestrator] customer sent an inexistent conversation_id, saving new conversation_id"
             )
             conversation = await container.create_item(body={"id": conversation_id})
-            
+
+        logging.info(f"[orchestrator] CONVERSATION {type(conversation), conversation}.")
+
         # get conversation data from CosmosDB
 
         conversation_data = conversation.get(
-            "conversation_data", DEFAULT_CONVERSATION_DATA
+            "conversation_data",
+            {
+                "start_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "history": [],
+                "messages_data": [],
+                "interaction": {},
+                "interactions": [],
+            },
         )
 
         start_time = time.time()
 
-        # settings
-        settings = get_settings(client_principal)
-
         # Get conversation stored in CosmosDB
-
-        # create conversation_id if not provided
-        if conversation_id is None or conversation_id == "":
-            conversation_id = str(uuid.uuid4())
-            logging.info(
-                f"[orchestrator] {conversation_id} conversation_id is Empty, creating new conversation_id."
-            )
 
         logging.info(f"[orchestrator] {conversation_id} starting conversation flow.")
 
-        
-        
         logging.error(
             f"[orchestrator] {conversation_id} conversation_data: {conversation_data}"
         )
@@ -268,7 +262,9 @@ async def run(conversation_id, ask, client_principal,credential):
             #   func=bing_search.run
             # ),
             Tool(
-                name="Current_Time", description="Returns current time.", func=current_time
+                name="Current_Time",
+                description="Returns current time.",
+                func=current_time,
             ),
             # Tool(
             #     name="Sort_String",
@@ -359,9 +355,12 @@ async def run(conversation_id, ask, client_principal,credential):
             "response_time": response_time,
         }
         conversation_data["interaction"] = interaction
+        conversation["conversation_data"] = conversation_data
 
         # store updated conversation data
-        conversation = await container.replace_item(item=conversation, body=conversation)
+        conversation = await container.replace_item(
+            item=conversation, body=conversation
+        )
 
         # 3) store user consumed tokens
         store_user_consumed_tokens(client_principal["id"], cb)

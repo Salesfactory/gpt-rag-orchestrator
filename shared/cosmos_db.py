@@ -71,7 +71,7 @@ def store_prompt_information(user_id, prompt_information):
 
 def get_conversation_data(conversation_id):
     credential = DefaultAzureCredential()
-    db_client = CosmosClient(AZURE_DB_URI, credential=credential)
+    db_client = CosmosClient(AZURE_DB_URI, credential=credential, consistency_level="Session")
     db = db_client.get_database_client(database=AZURE_DB_NAME)
     container = db.get_container_client("conversations")
 
