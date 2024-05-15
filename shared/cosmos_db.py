@@ -1,5 +1,5 @@
 import os
-from azure.cosmos import CosmosClient
+from azure.cosmos.aio import CosmosClient
 from azure.identity import DefaultAzureCredential
 import uuid
 import logging
@@ -12,18 +12,8 @@ AZURE_DB_URI = f"https://{AZURE_DB_ID}.documents.azure.com:443/"
 
 DEFAULT_CONVERSATION_DATA = {
     "start_date": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    "history": [
-        {
-            "role": "assistant",
-            "content": "You are FreddAid, a friendly marketing assistant dedicated to uncovering insights and developing effective strategies.",
-        }
-    ],
-    "messages_data": [
-        {
-            "type": "system",
-            "content": "You are FreddAid, a friendly marketing assistant dedicated to uncovering insights and developing effective strategies.",
-        }
-    ],
+    "history": [],
+    "messages_data": [],
     "interaction": {},
 }
 
@@ -102,6 +92,7 @@ def get_conversation_data(conversation_id):
 
 
 def update_conversation_data(conversation_id, conversation_data):
+    logging.error(f"Updating conversation data: {conversation_data}, conversation_id: {conversation_id}")
     try:
         credential = DefaultAzureCredential()
         db_client = CosmosClient(AZURE_DB_URI, credential=credential)

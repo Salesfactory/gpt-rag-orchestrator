@@ -7,6 +7,8 @@ from . import orchestrator
 LOGLEVEL = os.environ.get('LOGLEVEL', 'DEBUG').upper()
 logging.basicConfig(level=LOGLEVEL)
 
+from azure.identity import DefaultAzureCredential
+
 async def main(req: func.HttpRequest) -> func.HttpResponse:
     logging.info('Python HTTP trigger function processed a request.')
 
@@ -22,9 +24,9 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
         'id': client_principal_id,
         'name': client_principal_name
     }
-
+    credential = DefaultAzureCredential()
     if question:
-        result = await orchestrator.run(conversation_id, question, client_principal)
+        result = await orchestrator.run(conversation_id, question, client_principal, credential)
 
         return func.HttpResponse(json.dumps(result), mimetype="application/json", status_code=200)
     else:
