@@ -148,12 +148,12 @@ async def run(conversation_id, ask, client_principal):
         frequency_penalty=settings["frequency_penalty"],
         presence_penalty=settings["presence_penalty"],
     )
-
     # Initialize model
     model = AzureChatOpenAI(
-            temperature=settings["temperature"],
-            openai_api_version=os.environ["AZURE_OPENAI_API_VERSION"],
-            azure_deployment=os.environ["AZURE_OPENAI_CHAT_DEPLOYMENT_NAME"],
+        temperature=settings["temperature"],
+        openai_api_version=os.environ["AZURE_OPENAI_API_VERSION"],
+        azure_deployment=os.environ["AZURE_OPENAI_CHAT_DEPLOYMENT_NAME"],
+        model_kwargs=model_kwargs,
     )
 
     # Initialize memory
@@ -175,7 +175,6 @@ async def run(conversation_id, ask, client_principal):
 
     llm_math = LLMMathChain(llm=model)
     # bing_search = BingSearchAPIWrapper(k=3)
-
     documents = []
     logging.error(f"List of sources BEFORE: {documents}")
 
