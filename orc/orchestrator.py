@@ -2,6 +2,7 @@ import re
 import logging
 import os
 import time
+from typing import Dict, List
 import uuid
 from shared.util import get_setting
 from shared.cosmos_db import store_user_consumed_tokens, store_prompt_information
@@ -123,6 +124,9 @@ def current_time():
     """Returns the current date."""
     return f"Today's date: {date.today()}"
 
+from langchain_core.callbacks import CallbackManager, BaseCallbackHandler, StdOutCallbackHandler
+from typing import Any, Dict, List, Union
+from langchain_core.agents import AgentAction
 
 async def run(conversation_id, ask, client_principal):
 
@@ -207,29 +211,6 @@ async def run(conversation_id, ask, client_principal):
         "Useful for when you need to answer questions about consumer behavior, consumer pulse, segments and segmentation.",
     )
     tools = [retriever, math_tool, current_time]
-    # tools = [
-    #     Tool(
-    #         name="Calculator",
-    #         func=llm_math.run,
-    #         description="Useful for when you need to answer questions about math.",
-    #     ),
-    #     # Tool(
-    #     #   name="Bing_Search",
-    #     #   description="A tool to search the web. Use it when you need to find current information that is not available in the library tools.",
-    #     #   func=bing_search.run
-    #     # ),
-    #     Tool(
-    #         name="Current_Time",
-    #         description="Returns current time.",
-    #         func=lambda _: current_time(),
-    #     ),
-    #     # Tool(
-    #     #     name="Sort_String",
-    #     #     func=lambda string: sort_string(string),
-    #     #     description="Useful for when you need to sort a string",
-    #     #     verbose=True,
-    #     # ),
-    # ]
 
     # Define agent prompt template
     system = """Your name is FredAid.
@@ -255,22 +236,64 @@ async def run(conversation_id, ask, client_principal):
             ("human", human),
         ]
     )
+    
+    #create callbackhandler 
+    class MyCustomHandler(BaseCallbackHandler):
+        def on_llm_start(
+            self, serialized: Dict[str, Any], prompts: List[str], **kwargs: Any
+        ) -> Any:
+            logging.info(f"[orchestrator] {conversation_id} on_llm_start {serialized['name']}")
 
+        def on_llm_new_token(self, token: str, **kwargs: Any) -> Any:
+            logging.info(f"[orchestrator] {conversation_id} on_llm_new_token {token}")
+
+        def on_llm_error(
+            self, error: Union[Exception, KeyboardInterrupt], **kwargs: Any
+        ) -> Any:
+            """Run when LLM errors."""
+            logging.error(f"[orchestrator] {conversation_id} on_llm_error {error}")
+
+        def on_chain_start(
+            self, serialized: Dict[str, Any], inputs: Dict[str, Any], **kwargs: Any
+        ) -> Any:
+            logging.error(f"[orchestrator] {conversation_id} on_chain_start {serialized['name']}")
+
+        def on_tool_start(
+            self, serialized: Dict[str, Any], input_str: str, **kwargs: Any
+        ) -> Any:
+            logging.error(f"[orchestrator] {conversation_id} on_tool_start {serialized['name']}")
+
+        def on_agent_action(self, action: AgentAction, **kwargs: Any) -> Any:
+            logging.error(f"[orchestrator] {conversation_id} on_agent_action {action}")
+            
     # Create agent
     agent = create_openai_functions_agent(model, tools, prompt)
     agent_executor = AgentExecutor(
-        agent=agent, tools=tools, verbose=True, memory=memory
+        agent=agent, tools=tools, verbose=True, memory=memory, max_iterations=2, callbacks=[MyCustomHandler()],return_intermediate_steps=True
     )
     chat_history = memory.buffer_as_messages
 
     # 1) get answer from agent
-    with get_openai_callback() as cb:
-        response = agent_executor.invoke(
-            {
-                "input": ask,
-                "chat_history": chat_history,
-            }
-        )
+    try: 
+        with get_openai_callback() as cb:
+            response = agent_executor.invoke(
+                {
+                    "input": ask,
+                    "chat_history": chat_history,
+                }
+            )
+    except Exception as e:
+        logging.error(f"[orchestrator] {conversation_id} error: {e}")
+        response = {
+        "conversation_id": conversation_id,
+        "answer": f"There was an error processing your request. Error: {e}",
+        "data_points": "",
+        "thoughts": ask,
+        }
+        return response
+    
+    
+    logging.error(f"[THOUGHT] {conversation_id} agent response: {response}")
     logging.info(
         f"[orchestrator] {conversation_id} agent response: {response['output'][:50]}"
     )
