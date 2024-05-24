@@ -319,15 +319,13 @@ async def run(conversation_id, ask, client_principal):
     # history
     history = conversation_data["history"]
     history.append({"role": "user", "content": ask})
+    thought = [step[0].log for step in response["intermediate_steps"]]
     history.append(
         {
             "role": "assistant",
             "content": response["output"],
             "data_points": documents,
-            "thoughts": [
-                step[0].log if "log" in step[0] else ""
-                for step in response["intermediate_steps"]
-            ],
+            "thoughts": thought,
         }
     )
 
@@ -364,7 +362,7 @@ async def run(conversation_id, ask, client_principal):
         "conversation_id": conversation_id,
         "answer": response["output"],
         "data_points": interaction["sources"] if "sources" in interaction else "",
-        "thoughts": response["input"],
+        "thoughts": thought,
     }
 
     logging.info(
