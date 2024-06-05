@@ -24,13 +24,15 @@ from langchain.chains import LLMChain
 # from langchain.prompts import PromptTemplate
 from langchain_core.prompts.chat import ChatPromptTemplate, MessagesPlaceholder
 
-from langchain.agents import create_openai_functions_agent
+from langchain.agents import create_openai_functions_agent, create_openai_tools_agent
 from langchain.agents.output_parsers.openai_tools import OpenAIToolsAgentOutputParser
+from langchain.agents.output_parsers.react_single_input import ReActSingleInputOutputParser
 from langchain.agents.format_scratchpad.openai_tools import (
     format_to_openai_tool_messages,
 )
 from langchain.agents import tool
-from langchain.agents import AgentExecutor
+#from langchain.agents import AgentExecutor
+from shared.agent import AgentExecutor
 from langchain.memory import ConversationBufferWindowMemory
 from langchain_community.utilities import BingSearchAPIWrapper
 
@@ -146,7 +148,7 @@ async def run(conversation_id, ask, client_principal):
     # load messages data and instanciate them
 
     messages_data = conversation_data["messages_data"]
-    messages = instanciate_messages(messages_data)
+    messages = messages_data
 
     # initialize other settings
     model_kwargs = dict(
@@ -162,7 +164,7 @@ async def run(conversation_id, ask, client_principal):
     )
 
     math_model = AzureChatOpenAI(
-        temperature=0.7,
+        temperature=0.0,
         openai_api_version=os.environ["AZURE_OPENAI_API_VERSION"],
         azure_deployment=os.environ["AZURE_OPENAI_CHAT_DEPLOYMENT_NAME"],
     )
@@ -177,11 +179,11 @@ async def run(conversation_id, ask, client_principal):
     )
 
     input, output = {}, {}
-    for message in messages:
-        if message.type == "human":
-            input["input"] = message.content
-        if message.type == "ai":
-            output["output"] = message.content
+    for count, message in enumerate(messages):
+        if count % 2 == 0:
+            input["input"] = message
+        else:
+            output["output"] = message
         if "input" in input and "output" in output:
             memory.save_context(input, output)
             input, output = {}, {}
@@ -205,13 +207,6 @@ async def run(conversation_id, ask, client_principal):
     # bing_search = BingSearchAPIWrapper(k=3)
     documents = []
 
-    # arguments for code orchestration
-    args = {
-        "model": model,
-        "question": ask,
-        "messages": messages,
-        "documents": documents,
-    }
     retriever = AzureAISearchRetriever(
         content_key="chunk", top_k=3, api_version="2024-03-01-preview"
     )
@@ -257,13 +252,13 @@ async def run(conversation_id, ask, client_principal):
     ]
 
     # Define agent prompt template
-    system = """Your name is FredAid.
-    You are a Marketing Expert designed to assist with a wide range of tasks, from answering simple questions to providing in-depth explanations and discussions on a wide range of topics.
+    system = """Your name is FreddAid.
+    You are a data-driven Marketing Assitant designed to help with a wide range of tasks, from answering simple questions to providing in-depth plans.
     YOU MUST FOLLOW THESE INSTRUCTIONS:
-    1. Include a citation next to every fact with the file path within brackets. For example: [http://home/file.txt]. Do not add the word Source or Citation.
-    2. Do not call any of the retriever tools more than once with the same query.
-
-    Your primary goal is to be helpful, and accurate. If you need to use any tool to enhance your response, do so effectively."""
+    1. Add a citation next to every fact with the file path within brackets. For example: [//home/docs/file.txt]. You can only skip this if your answer has no citations.
+    2. Always include the subject matter in the search query when calling a retriever tool to ensure relevance.
+    3. If the tool response is not useful, try a different query.
+    """
 
     human = """
 
@@ -282,7 +277,7 @@ async def run(conversation_id, ask, client_principal):
     )
 
     # Create agent
-    llm_with_tools = model.bind_tools(tools)
+    llm_with_tools = model.bind_tools(tools)    
 
     agent = (
         {
@@ -290,6 +285,7 @@ async def run(conversation_id, ask, client_principal):
             "agent_scratchpad": lambda x: format_to_openai_tool_messages(
                 x["intermediate_steps"]
             ),
+            "chat_history": lambda x: x["chat_history"],
         }
         | prompt
         | llm_with_tools
@@ -299,10 +295,10 @@ async def run(conversation_id, ask, client_principal):
         agent=agent,
         tools=tools,
         verbose=True,
-        memory=memory,
         return_intermediate_steps=True,
         max_iterations=5,
         trim_intermediate_steps=3,
+        max_execution_time=120,
     )
     chat_history = memory.buffer_as_messages
 
