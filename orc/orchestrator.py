@@ -25,6 +25,7 @@ from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.memory import MemorySaver
 
 from langchain.agents import tool
+from langchain.memory import ConversationSummaryMemory, ChatMessageHistory
 
 from langchain_community.utilities import BingSearchAPIWrapper
 
@@ -82,6 +83,7 @@ def get_settings(client_principal):
     logging.info(f"[orchestrator] settings: {settings}")
     return settings
 
+
 async def run(conversation_id, ask, client_principal):
 
     start_time = time.time()
@@ -106,25 +108,33 @@ async def run(conversation_id, ask, client_principal):
     # load memory data and deserialize
 
     memory_data_string = conversation_data["memory_data"]
-    
+
     memory = MemorySaver()
     if memory_data_string != "":
         logging.info(f"[orchestrator] {conversation_id} loading memory data.")
         decoded_data = base64.b64decode(memory_data_string)
         json_data = memory.serde.loads(decoded_data)
-        
+
         cut_memory = json_data[1]
-        memory_messages = cut_memory['channel_values']['messages']
-        if(len(memory_messages) >= 20):
-            cut_messages = memory_messages[10:]
+        memory_messages = cut_memory["channel_values"]["messages"]
+        if len(memory_messages) >= 20:
+            history = ChatMessageHistory()
+            for element in memory_messages:
+                if isinstance(element, HumanMessage):
+                    history.add_user_message(element.content)
+                else:
+                    history.add_ai_message(element.content)
+            summary_memory = ConversationSummaryMemory.from_messages(
+                llm=model, chat_memory=history
+            )
+            cut_messages = [
+                HumanMessage("Generate a conversation summary"),
+                AIMessage(summary_memory.buffer),
+            ] + memory_messages[10:]
             memory_messages = cut_messages
-            cut_memory['channel_values']['messages'] = memory_messages
-        
-        memory.put(
-            config= json_data[0],
-            checkpoint= cut_memory,
-            metadata= json_data[2]
-        )
+            cut_memory["channel_values"]["messages"] = memory_messages
+
+        memory.put(config=json_data[0], checkpoint=cut_memory, metadata=json_data[2])
     # initialize other settings
     model_kwargs = dict(
         frequency_penalty=settings["frequency_penalty"],
@@ -143,7 +153,7 @@ async def run(conversation_id, ask, client_principal):
         openai_api_version=os.environ["AZURE_OPENAI_API_VERSION"],
         azure_deployment=os.environ["AZURE_OPENAI_CHAT_DEPLOYMENT_NAME"],
     )
-    
+
     # Define built-in tools
 
     llm_math = LLMMathChain(llm=math_model)
@@ -225,9 +235,15 @@ async def run(conversation_id, ask, client_principal):
                 {"messages": [HumanMessage(content=ask)]},
                 config,
             )
-            response["messages"][-1].content = response["messages"][-1].content.replace('source:', '')
-            response["messages"][-1].content = response["messages"][-1].content.replace('Source:', '')
-            response["messages"][-1].content = response["messages"][-1].content.replace('https://strag0vm2b2htvuuclm.blob.core.windows.net/documents/','')
+            response["messages"][-1].content = response["messages"][-1].content.replace(
+                "source:", ""
+            )
+            response["messages"][-1].content = response["messages"][-1].content.replace(
+                "Source:", ""
+            )
+            response["messages"][-1].content = response["messages"][-1].content.replace(
+                "https://strag0vm2b2htvuuclm.blob.core.windows.net/documents/", ""
+            )
         logging.info(
             f"[orchestrator] {conversation_id} agent response: {response['messages'][-1].content[:50]}"
         )
@@ -248,19 +264,17 @@ async def run(conversation_id, ask, client_principal):
     history = conversation_data["history"]
     history.append({"role": "user", "content": ask})
     thought = []
-    if(isinstance(response['messages'][-3], AIMessage)):
+    if isinstance(response["messages"][-3], AIMessage):
         logging.info("[orchestrator] Tool call found generating thought process")
-        if(hasattr(response['messages'][-3], 'additional_kwargs')):
-            additional_kwargs = response['messages'][-3].additional_kwargs
-            for key in additional_kwargs.get('tool_calls', []):
-                function = key.get('function')
+        if hasattr(response["messages"][-3], "additional_kwargs"):
+            additional_kwargs = response["messages"][-3].additional_kwargs
+            for key in additional_kwargs.get("tool_calls", []):
+                function = key.get("function")
                 if function:
-                    name = function.get('name')
-                    arguments = function.get('arguments')
+                    name = function.get("name")
+                    arguments = function.get("arguments")
                     if name and arguments:
-                        thought.append(
-                            f"Tool name: {name} > Query sent: {arguments}"
-                        )
+                        thought.append(f"Tool name: {name} > Query sent: {arguments}")
     history.append(
         {
             "role": "assistant",
@@ -268,16 +282,16 @@ async def run(conversation_id, ask, client_principal):
             "thoughts": thought,
         }
     )
-    
-    #memory serialization
+
+    # memory serialization
     _tuple = memory.get_tuple(config)
 
     serialized_data = memory.serde.dumps(_tuple)
 
     byte_string = base64.b64encode(serialized_data)
     b64_tosave = byte_string.decode("utf-8")
-    
-    #set values on cosmos object
+
+    # set values on cosmos object
 
     conversation_data["history"] = history
     conversation_data["memory_data"] = b64_tosave
@@ -301,7 +315,7 @@ async def run(conversation_id, ask, client_principal):
     response = {
         "conversation_id": conversation_id,
         "answer": response["messages"][-1].content,
-        "thoughts": thought
+        "thoughts": thought,
     }
 
     logging.info(
