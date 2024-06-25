@@ -446,25 +446,19 @@ def create_react_agent(
         
         documents = state["documents"]
 
-        if (documents is None):
-            print("No documents found, no citations needed")
-            return {"messages": [response]}
+        # if (documents is None):
+        #     print("No documents found, no citations needed")
+        #     return {"messages": [response]}
         
-        print("Documents found, generating citations")
+        # print("Documents found, generating citations")
 
         prompt = PromptTemplate(
-            template="""<|begin_of_text|><|start_header_id|>system<|end_header_id|> You are a citator that generates citations
-            for a given answer from a list of various documents. \n
-            You will scan the answer and link relevant sections to the corresponding documents using bracketed URLs ([source URL]) \n
-            If the document contains parragrahs related to the generated answer add an url to
-            the relevant document at the end of the specified parragrah inside brackets. \n
-            Do not include any other content inside the brackets. Only the URL to the source document. \n
-            Provide as a result only the modified answer with the citations and no premable or explaination.
-            If you are not able to make an accurate citation, provide the URLs from the documents at the end in the following format: [Source: URL1], [Source: URL2] \n
-            <|eot_id|><|start_header_id|>user<|end_header_id|>
+            template="""You are a citator tasked with generating citations for a given answer from a set of documents. \n
+            Scan the answer and add a citation next to every fact with the file path within brackets. For example: [http://home/docs/file.txt]. \n
+            Ensure the answer remains unchanged, adding only the source URLs to key facts. \n
+            If accurate citation is not possible, provide the URLs from the documents in the format: [Source: URL1], [Source: URL2]. \n
             Here is the retrieved documents: \n\n {documents} \n\n
-            Here is generated answer: {response} \n <|eot_id|><|start_header_id|>assistant<|end_header_id|>
-            """,
+            Here is generated answer: {response} \n""",
             input_variables=["response", "documents"],
         )
 
@@ -473,9 +467,19 @@ def create_react_agent(
             "documents": documents, 
             "response": response 
         })
+        # hack :)
+        messages.pop(-1)
 
         # We return a list, because this will get added to the existing list
-        return {"messages": [generation]}
+        # return {"messages": [generation], "documents": ""}
+        return {
+            "messages": [
+                AIMessage(
+                    content=generation
+                )
+            ],
+            "documents": ""
+        }
     
     def call_save_documents(
         state: AgentState,
