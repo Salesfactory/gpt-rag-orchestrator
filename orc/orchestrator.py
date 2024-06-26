@@ -228,12 +228,12 @@ async def run(conversation_id, ask, client_principal):
         """Use it to solve math problems and perform calculations, such as basic arithmetic and solving equations. It is ideal for quick and accurate mathematical solutions."""
         return llm_math.invoke(query)
 
-    # bing_search = BingSearchAPIWrapper(k=3)
+    bing_search = BingSearchAPIWrapper(k=3)
 
-    # @tool
-    # def bing_tool(query: str) -> str:
-    #     """Use for up-to-date information on current events. Best as a last resort when other resources don't have the needed data."""
-    #     return bing_search.run(query)
+    @tool
+    def bing_tool(query: str) -> str:
+        """Use for up-to-date information on current events. Best as a last resort when other resources don't have the needed data."""
+        return bing_search.run(query)
 
     retriever = AzureAISearchRetriever(
         content_key="chunk", top_k=3, api_version="2024-03-01-preview"
@@ -276,7 +276,7 @@ async def run(conversation_id, ask, client_principal):
         economy_tool,
         marketing_frameworks_tool,
         math_tool,
-        # bing_tool,
+        bing_tool,
     ]
 
     # Define agent prompt
