@@ -440,9 +440,9 @@ def create_react_agent(
 
         prompt = PromptTemplate(
             template="""You are a citator tasked with generating citations for a given answer from a set of documents. \n
-            Scan the answer and add a citation next to every fact with the file path within brackets. \n
-            Ensure the answer remains unchanged, adding only the source URLs to key facts. \n
-            If accurate citation is not possible, provide the URLs from the documents at the end of the answer in the format: [Source: URL1], [Source: URL2].\n
+            Scan the answer and add a citation next to every fact with the complete file path within brackets. \n
+            Ensure the answer remains unchanged, adding only the file path to key facts. \n
+            If accurate citation is not possible, provide the complete file path from the documents at the end of the answer in the format: [Source: file path 1], [Source: file path 2].\n
             Here is the retrieved documents: \n\n {documents} \n\n
             Here is generated answer: {context} \n""",
             input_variables=["context", "documents"],
