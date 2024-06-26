@@ -433,49 +433,37 @@ def create_react_agent(
 
         messages = state["messages"]
         
-        response = model_runnable.invoke(messages, config)
-        if state["is_last_step"] and response.tool_calls:
-            return {
-                "messages": [
-                    AIMessage(
-                        id=response.id,
-                        content="Sorry, need more steps to process this request.",
-                    )
-                ]
-            }
+        context = messages.pop(-1).content
+        print({ "context": context })
         
         documents = state["documents"]
 
-        # if (documents is None):
-        #     print("No documents found, no citations needed")
-        #     return {"messages": [response]}
-        
-        # print("Documents found, generating citations")
-
         prompt = PromptTemplate(
             template="""You are a citator tasked with generating citations for a given answer from a set of documents. \n
-            Scan the answer and add a citation next to every fact with the file path within brackets. For example: [http://home/docs/file.txt]. \n
+            Scan the answer and add a citation next to every fact with the file path within brackets. \n
             Ensure the answer remains unchanged, adding only the source URLs to key facts. \n
-            If accurate citation is not possible, provide the URLs from the documents in the format: [Source: URL1], [Source: URL2]. \n
+            If accurate citation is not possible, provide the URLs from the documents at the end of the answer in the format: [Source: URL1], [Source: URL2].\n
             Here is the retrieved documents: \n\n {documents} \n\n
-            Here is generated answer: {response} \n""",
-            input_variables=["response", "documents"],
+            Here is generated answer: {context} \n""",
+            input_variables=["context", "documents"],
         )
 
         citation_chain = prompt | model | StrOutputParser()
         generation = citation_chain.invoke({ 
             "documents": documents, 
-            "response": response 
+            "context": context 
         })
-        # hack :)
-        messages.pop(-1)
+
+        print({ "citation": generation })
+
+        answer = generation if generation else context
 
         # We return a list, because this will get added to the existing list
         # return {"messages": [generation], "documents": ""}
         return {
             "messages": [
                 AIMessage(
-                    content=generation
+                    content=answer
                 )
             ],
             "documents": ""
