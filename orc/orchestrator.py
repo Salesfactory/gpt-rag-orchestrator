@@ -239,7 +239,7 @@ async def run(conversation_id, ask, client_principal):
             return bing_search.run(query)
 
         retriever = AzureAISearchRetriever(
-            content_key="chunk", top_k=3, api_version="2024-03-01-preview"
+            content_key="chunk", top_k=3, api_version="2024-05-01-preview"
         )
         # Create agent tools
         home_depot_tool = create_retriever_tool(
