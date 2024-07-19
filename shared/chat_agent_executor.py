@@ -452,9 +452,15 @@ def create_react_agent(
         prompt = PromptTemplate(
             template="""You are a citator tasked with adding citations to an answer based on a set of provided documents. Your goal is to accurately cite the sources of information in the answer without changing its content. Follow these instructions carefully:
             First, review the following set of documents that will be used as sources for citation:
+
             {documents}
+            \nTHE DOCUMENTS END HERE
+
             Now, here is the answer that needs to be cited:
             {context}
+            \nTHE CONTEXT ENDS HERE
+
+            THE CITATOR INSTRUCTIONS START HERE:
             Your task is to scan through this answer and add citations to every fact or piece of information that can be traced back to the provided documents. Follow these guidelines:
             1. Add citations immediately after the relevant fact or statement in the format: [Source: /path/to/file.txt]
             2. DO NOT change any of the original text in the answer, and DO NOT duplicate the answer. Only add citations.
