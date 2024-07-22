@@ -455,10 +455,7 @@ def create_react_agent(
             {documents}
             Now, here is the answer that needs to be cited:
             {context}
-<<<<<<< Updated upstream
-=======
             **THE CITATOR INSTRUCTIONS START HERE**
->>>>>>> Stashed changes
             Your task is to scan through this answer and add citations to every fact or piece of information that can be traced back to the provided documents. Follow these guidelines:
             1. Add citations immediately after the relevant fact or statement in the format: [/path/to/file.txt]
             2. If a fact cannot be cited from any of the provided documents, DO NOT add a citation to it.
