@@ -541,7 +541,7 @@ def create_react_agent(
     # Define the two nodes we will cycle between
     workflow.add_node("agent", RunnableLambda(call_model, acall_model))
     workflow.add_node("tools", ToolNode(tools))
-    workflow.add_node("citator", call_citator)
+    # workflow.add_node("citator", call_citator)
     workflow.add_node("save_documents", call_save_documents)
 
     # Set the entrypoint as `agent`
@@ -565,7 +565,7 @@ def create_react_agent(
             # If `tools`, then we call the tool node.
             "continue": "tools",
             # Otherwise we finish.
-            "end": "citator",
+            "end": END,
         },
     )
 
@@ -586,7 +586,7 @@ def create_react_agent(
 
     workflow.add_edge("save_documents", "agent")
 
-    workflow.set_finish_point("citator")
+    #workflow.set_finish_point("citator")
 
     # Finally, we compile it!
     # This compiles it into a LangChain Runnable,
