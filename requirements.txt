@@ -17,3 +17,4 @@ langchain-openai==0.1.7
 numexpr==2.10.0
 langgraph==0.0.64
 pandas==2.2.2
+langchain_experimental==0.0.63
