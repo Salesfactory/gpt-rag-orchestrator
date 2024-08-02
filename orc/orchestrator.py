@@ -35,12 +35,8 @@ from shared.tools import AzureAISearchRetriever
 from langchain.tools.retriever import create_retriever_tool
 import tiktoken
 
-import pandas as pd
-# from langchain_experimental.agents import create_pandas_dataframe_agent
 from langchain_experimental.agents.agent_toolkits import create_csv_agent
 from langchain.agents.agent_types import AgentType
-
-import traceback
 
 # logging level
 logging.getLogger("azure").setLevel(logging.WARNING)
