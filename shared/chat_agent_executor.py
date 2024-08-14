@@ -513,7 +513,7 @@ def create_react_agent(
         should_append_citations = len(citation_filepaths) > 0
 
         if should_append_citations:
-            response.content = response.content + "\n\nSources: [" + " ], [".join(citation_filepaths) + "]"
+            response.content = response.content + "\n\n[" + " ], [".join(citation_filepaths) + "]"
 
         if state["is_last_step"] and response.tool_calls:
             return {
