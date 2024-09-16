@@ -9,7 +9,10 @@ from langchain_core.retrievers import BaseRetriever
 from langchain_core.documents import Document
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.pydantic_v1 import BaseModel, Field
-from langchain_openai import ChatOpenAI
+from langchain_core.language_models import LanguageModelLike
+from typing import Optional, TypedDict, List
+from langgraph.checkpoint import BaseCheckpointSaver
+from langgraph.graph.graph import CompiledGraph
 from langchain_community.tools.tavily_search import TavilySearchResults
 from typing import List
 from typing_extensions import TypedDict
@@ -162,10 +165,8 @@ class GradeDocuments(BaseModel):
     )
 
 
-def retrieval_grader_chain():
-    # LLM with function call
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-    structured_llm_grader = llm.with_structured_output(GradeDocuments)
+def retrieval_grader_chain(model):
+    structured_llm_grader = model.with_structured_output(GradeDocuments)
 
     # Prompt
     system = """You are a grader responsible for evaluating the relevance of a retrieved document to a user question.
@@ -189,11 +190,9 @@ def retrieval_grader_chain():
     return retrieval_grader
 
 
-def retrieval_question_rewriter_chain():
-    # User Query Re-writer 1: Optimize retrieval result
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-
-    ## prompt
+# User Query Re-writer 1: Optimize retrieval result
+def retrieval_question_rewriter_chain(model):
+    # prompt
     system = """
         You are a query rewriter that improves input questions for information retrieval in a vector database.\n
         Don't mention the specific year unless it is mentioned in the original query.\n
@@ -213,18 +212,13 @@ def retrieval_question_rewriter_chain():
         ]
     )
 
-    retrieval_question_rewriter = retrieval_rewrite_prompt | llm | StrOutputParser()
+    retrieval_question_rewriter = retrieval_rewrite_prompt | model | StrOutputParser()
 
     return retrieval_question_rewriter
 
 
-def retrieval_question_rewriter_web_chain():
-    # User Query Re-writer 2 (for web search): Make sure that we are getting the most optimal web search results
-    ## LLM
-    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-
-    ## prompt
-
+# User Query Re-writer 2 (for web search): Make sure that we are getting the most optimal web search results
+def retrieval_question_rewriter_web_chain(model):
     system = """ You are a question re-writer that converts an input question to a better version that is optimized
     for web search. Look at the input and try to reason about the underlying semantic intent/meaning. Don't mention the specific year unless it is mentioned in the original query.
     """
@@ -239,19 +233,25 @@ def retrieval_question_rewriter_web_chain():
         ]
     )
 
-    question_rewriter = re_write_prompt | llm | StrOutputParser()
+    question_rewriter = re_write_prompt | model | StrOutputParser()
 
     return question_rewriter
 
 
-def create_agent(model):
-    retrieval_question_rewriter = retrieval_question_rewriter_chain()
-    question_rewriter = retrieval_question_rewriter_web_chain()
-    retrieval_grader = retrieval_grader_chain()
+def create_agent(
+    model: LanguageModelLike, 
+    mini_model: LanguageModelLike, 
+    checkpointer: Optional[BaseCheckpointSaver] = None,
+    verbose: bool = False
+) -> CompiledGraph:
+    retrieval_question_rewriter = retrieval_question_rewriter_chain(mini_model)
+    question_rewriter = retrieval_question_rewriter_web_chain(mini_model)
+    retrieval_grader = retrieval_grader_chain(mini_model)
     web_search_tool = TavilySearchResults(max_results=2)
     rag_chain = DOCSEARCH_PROMPT | model | StrOutputParser()
-    index_name = "sf-crag-index"
+    index_name = os.environ["INDEX_NAME_SF"]
     indexes = [index_name]
+
     retriever = CustomRetriever(
         indexes=indexes,
         topK=3,
@@ -269,7 +269,8 @@ def create_agent(model):
         Returns:
             state (dict): Updates question key with a re-phrased query
         """
-        print("---TRANSFORM QUERY FOR RETRIEVAL OPTIMIZATION---")
+        if verbose:
+            print("---TRANSFORM QUERY FOR RETRIEVAL OPTIMIZATION---")
         question = state["question"]
 
         # Re-write question
@@ -286,7 +287,8 @@ def create_agent(model):
         Returns:
             state (dict): New key added to state, documents, that contains retrieved documents
         """
-        print("---RETRIEVE---")
+        if verbose:
+            print("---RETRIEVE---")
         question = state["question"]
 
         # Retrieval
@@ -304,13 +306,14 @@ def create_agent(model):
         Returns:
             state (dict): New key added to state, generation, that contains LLM generation
         """
-        print("---GENERATE---")
+        if verbose:
+            print("---GENERATE---")
         question = state["question"]
         documents = state["documents"]
 
         # RAG generation
         generation = rag_chain.invoke({"context": documents, "question": question})
-        return {"documents": documents, "question": question, "generation": generation}
+        return {"question": question, "generation": generation}
 
     def grade_documents(state):
         """
@@ -322,8 +325,8 @@ def create_agent(model):
         Returns:
             state (dict): Updates documents key with only filtered relevant documents
         """
-
-        print("---CHECK DOCUMENT RELEVANCE TO QUESTION---")
+        if verbose:
+            print("---CHECK DOCUMENT RELEVANCE TO QUESTION---")
         question = state["question"]
         documents = state["documents"]
 
@@ -331,20 +334,24 @@ def create_agent(model):
         filtered_docs = []
         web_search = "No"
         if not documents:
-            print("---NO RELEVANT DOCUMENTS RETRIEVED DURING THE RETRIEVAL PROCESS---")
+            if verbose:
+                print("---NO RELEVANT DOCUMENTS RETRIEVED DURING THE RETRIEVAL PROCESS---")
             web_search = "Yes"
         else:
-            print("---EVALUATING RETRIEVED DOCUMENTS---")
+            if verbose:
+                print("---EVALUATING RETRIEVED DOCUMENTS---")
             for d in documents:
                 score = retrieval_grader.invoke(
                     {"question": question, "document": d.page_content}
                 )
                 grade = score.binary_score
                 if grade == "yes":
-                    print("---GRADE: DOCUMENT RELEVANT---")
+                    if verbose:
+                        print("---GRADE: DOCUMENT RELEVANT---")
                     filtered_docs.append(d)
                 else:
-                    print("---GRADE: DOCUMENT NOT RELEVANT---")
+                    if verbose:
+                        print("---GRADE: DOCUMENT NOT RELEVANT---")
                     web_search = "Yes"
         return {
             "documents": filtered_docs,
@@ -362,8 +369,8 @@ def create_agent(model):
         Returns:
             state (dict): Updates documents key with appended web results
         """
-
-        print("---WEB SEARCH---")
+        if verbose:
+            print("---WEB SEARCH---")
         question = state["question"]
         documents = state["documents"]
 
@@ -388,8 +395,8 @@ def create_agent(model):
         Returns:
             state (dict): Updates question key with a re-phrased question
         """
-
-        print("---TRANSFORM QUERY FOR WEBSEARCH---")
+        if verbose:
+            print("---TRANSFORM QUERY FOR WEBSEARCH---")
         question = state["question"]
         documents = state["documents"]
 
@@ -409,20 +416,22 @@ def create_agent(model):
         Returns:
             str: Binary decision for next node to call
         """
-
-        print("---ASSESS DOCUMENTS---")
+        if verbose:
+            print("---ASSESS DOCUMENTS---")
         web_search = state["web_search"]
 
         if web_search == "Yes":
             # All documents have been filtered check_relevance
             # We will re-generate a new query
-            print(
-                "---DECISION: SOME/ALL DOCUMENTS ARE NOT RELEVANT TO QUESTION, OR NO DOCUMENT RETRIEVED---"
-            )
+            if verbose:
+                print(
+                    "---DECISION: SOME/ALL DOCUMENTS ARE NOT RELEVANT TO QUESTION, OR NO DOCUMENT RETRIEVED---"
+                )
             return "transform_query"
         else:
             # We have relevant documents, so generate answer
-            print("---DECISION: GENERATE---")
+            if verbose:
+                print("---DECISION: GENERATE---")
             return "generate"
 
     workflow = StateGraph(GraphState)
@@ -455,6 +464,8 @@ def create_agent(model):
     workflow.add_edge("generate", END)
 
     # Compile
-    app = workflow.compile()
+    app = workflow.compile(
+        checkpointer=checkpointer
+    )
 
     return app
