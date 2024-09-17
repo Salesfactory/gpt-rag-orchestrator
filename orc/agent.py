@@ -2,11 +2,11 @@ import os
 import json
 import requests
 import os
-from typing import List
+from typing import List, Annotated, Literal
 from collections import OrderedDict
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.retrievers import BaseRetriever
-from langchain_core.documents import Document
+from langchain.schema import Document
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_core.language_models import LanguageModelLike
@@ -14,7 +14,8 @@ from typing import Optional, TypedDict, List
 from langgraph.checkpoint import BaseCheckpointSaver
 from langgraph.graph.graph import CompiledGraph
 from langchain_community.tools.tavily_search import TavilySearchResults
-from typing import List
+from langgraph.graph.message import add_messages, AnyMessage
+from langchain_core.messages import HumanMessage, AIMessage, RemoveMessage, SystemMessage
 from typing_extensions import TypedDict
 from langgraph.graph import END, StateGraph, START
 from shared.prompts import DOCSEARCH_PROMPT
@@ -154,6 +155,8 @@ class GraphState(TypedDict):
     question: str
     generation: str
     web_search: str
+    summary: str
+    messages: Annotated[list[AnyMessage], add_messages]
     documents: List[str]
 
 
@@ -239,10 +242,10 @@ def retrieval_question_rewriter_web_chain(model):
 
 
 def create_agent(
-    model: LanguageModelLike, 
-    mini_model: LanguageModelLike, 
+    model: LanguageModelLike,
+    mini_model: LanguageModelLike,
     checkpointer: Optional[BaseCheckpointSaver] = None,
-    verbose: bool = False
+    verbose: bool = False,
 ) -> CompiledGraph:
     retrieval_question_rewriter = retrieval_question_rewriter_chain(mini_model)
     question_rewriter = retrieval_question_rewriter_web_chain(mini_model)
@@ -275,7 +278,10 @@ def create_agent(
 
         # Re-write question
         better_user_query = retrieval_question_rewriter.invoke({"question": question})
-        return {"question": better_user_query}
+        
+        # add to messages schema
+        messages = [HumanMessage(content = better_user_query)]
+        return {"question": better_user_query, "messages": messages}
 
     def retrieve(state):
         """
@@ -294,7 +300,7 @@ def create_agent(
         # Retrieval
         documents = retriever.invoke(question)
 
-        return {"documents": documents, "question": question}
+        return {"documents": documents}
 
     def generate(state):
         """
@@ -310,10 +316,21 @@ def create_agent(
             print("---GENERATE---")
         question = state["question"]
         documents = state["documents"]
+        summary = state.get('summary', '')
+        messages = state['messages']
+
+        if summary:
+            system_message = f"Summary of the conversation earlier: \n\n{summary}"
+            question = [SystemMessage(content = system_message)] + messages
+        else:
+            question = messages
 
         # RAG generation
         generation = rag_chain.invoke({"context": documents, "question": question})
-        return {"question": question, "generation": generation}
+
+        # Add this generation to messages schema
+        messages = [AIMessage(content = generation)]
+        return {"documents": documents, "generation": generation, "messages": messages}
 
     def grade_documents(state):
         """
@@ -335,7 +352,9 @@ def create_agent(
         web_search = "No"
         if not documents:
             if verbose:
-                print("---NO RELEVANT DOCUMENTS RETRIEVED DURING THE RETRIEVAL PROCESS---")
+                print(
+                    "---NO RELEVANT DOCUMENTS RETRIEVED DURING THE RETRIEVAL PROCESS---"
+                )
             web_search = "Yes"
         else:
             if verbose:
@@ -353,11 +372,7 @@ def create_agent(
                     if verbose:
                         print("---GRADE: DOCUMENT NOT RELEVANT---")
                     web_search = "Yes"
-        return {
-            "documents": filtered_docs,
-            "question": question,
-            "web_search": web_search,
-        }
+        return {"documents": filtered_docs, "web_search": web_search}
 
     def web_search(state):
         """
@@ -383,7 +398,7 @@ def create_agent(
             )
             documents.append(web_result)
 
-        return {"documents": documents, "question": question}
+        return {"documents": documents}
 
     def transform_query(state):
         """
@@ -398,11 +413,10 @@ def create_agent(
         if verbose:
             print("---TRANSFORM QUERY FOR WEBSEARCH---")
         question = state["question"]
-        documents = state["documents"]
 
         # Re-write question
         better_question = question_rewriter.invoke({"question": question})
-        return {"documents": documents, "question": better_question}
+        return {"question": better_question}
 
     ### Edges
 
@@ -434,6 +448,31 @@ def create_agent(
                 print("---DECISION: GENERATE---")
             return "generate"
 
+    def conversation_summary(state):
+        """Summary the entire conversation to date"""
+        summary = state.get("summary", "")
+        messages = state["messages"]
+
+        if summary:
+            summary_prompt = f"Here is the conversation summary so far: {summary}\n\n Please take into account the below information to the summary:"
+        else:
+            summary_prompt = "Create a summary of the entire conversation so far:"
+
+        new_messages = [HumanMessage(content=summary_prompt)] + messages
+        conversation_summary = mini_model.invoke(new_messages)
+
+        # delete all but the 3 most recent messages
+        retained_messages = [RemoveMessage(id=m.id) for m in messages[:-6]]
+        return {"summary": conversation_summary.content, "messages": retained_messages}
+
+    def summary_decide(state):
+        """Decide whether it's necessary to summarize the conversation
+        If the conversation has been more than 4 (2 humans 2 AI responses) then we should summarize it
+        """
+        if len(state["messages"]) > 4:
+            return "conversation_summary"
+        return "__end__"
+
     workflow = StateGraph(GraphState)
 
     # Define the nodes
@@ -446,6 +485,9 @@ def create_agent(
     workflow.add_node("generate", generate)  # generatae
     workflow.add_node("transform_query", transform_query)  # transform_query_web
     workflow.add_node("web_search_node", web_search)  # web search
+    workflow.add_node(
+        "conversation_summary", conversation_summary
+    )  # summary conversation to date
 
     # Build graph
     workflow.add_edge(START, "retrieval_transform_query")
@@ -461,11 +503,14 @@ def create_agent(
     )
     workflow.add_edge("transform_query", "web_search_node")
     workflow.add_edge("web_search_node", "generate")
-    workflow.add_edge("generate", END)
+    workflow.add_conditional_edges(
+        "generate",
+        summary_decide,
+        {"conversation_summary": "conversation_summary", "__end__": "__end__"},
+    )
+    workflow.add_edge("conversation_summary", END)
 
     # Compile
-    app = workflow.compile(
-        checkpointer=checkpointer
-    )
+    app = workflow.compile(checkpointer=checkpointer)
 
     return app
