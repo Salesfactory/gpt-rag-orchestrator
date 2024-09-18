@@ -82,7 +82,8 @@ CUSTOM_CHATBOT_PROMPT = ChatPromptTemplate.from_messages(
 DOCSEARCH_PROMPT_TEXT = """
 
 ## On your ability to answer question based on fetched documents (sources):
-- Given extracted parts (CONTEXT) from one or multiple documents, and a question, Answer the question thoroughly with citations/references. 
+- If the query refers to previous conversations/questions, then access the previous converstation and answer the query accordingly
+- Given extracted parts (CONTEXT) from one or multiple documents, and a question, Answer the question thoroughly with citations/references.
 - If there are conflicting information or multiple definitions or explanations, detail them all in your answer.
 - In your answer, **You MUST use** all relevant extracted parts that are relevant to the question.
 - **YOU MUST** place inline citations directly after the sentence they support using this Markdown format: `[[number]](url)`.
@@ -90,6 +91,7 @@ DOCSEARCH_PROMPT_TEXT = """
 - Reference document's URL can include query parameters. Include these references in the document URL using this Markdown format: [[number]](url?query_parameters)
 - **You MUST ONLY answer the question from information contained in the extracted parts (CONTEXT) below**, DO NOT use your prior knowledge.
 - Never provide an answer without references.
+- Prioritize results with scores in the metadata, preferring higher scores. Use information from documents without scores if needed or to complement those with scores.
 - You will be seriously penalized with negative 10000 dollars if you don't provide citations/references in your final answer.
 - You will be rewarded 10000 dollars if you provide citations/references on paragraph and sentences.
 
@@ -148,8 +150,7 @@ This performance review underscores GreenTech Energy's robust position in the re
 
 DOCSEARCH_PROMPT = ChatPromptTemplate.from_messages(
     [
-        ("system", DOCSEARCH_PROMPT_TEXT + "\n\nCONTEXT:\n{context}\n\n"),
-        MessagesPlaceholder(variable_name="history", optional=True),
+        ("system", DOCSEARCH_PROMPT_TEXT + "\n\nCONTEXT:\n{context}\n\n + \n\nprevious_conversation:\n{previous_conversation}\n\n"),
         ("human", "{question}"),
     ]
 )

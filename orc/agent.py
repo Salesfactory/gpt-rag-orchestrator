@@ -15,7 +15,12 @@ from langgraph.checkpoint import BaseCheckpointSaver
 from langgraph.graph.graph import CompiledGraph
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langgraph.graph.message import add_messages, AnyMessage
-from langchain_core.messages import HumanMessage, AIMessage, RemoveMessage, SystemMessage
+from langchain_core.messages import (
+    HumanMessage,
+    AIMessage,
+    RemoveMessage,
+    SystemMessage,
+)
 from typing_extensions import TypedDict
 from langgraph.graph import END, StateGraph, START
 from shared.prompts import DOCSEARCH_PROMPT
@@ -32,9 +37,9 @@ def get_search_results(
 
     headers = {
         "Content-Type": "application/json",
-        "api-key": os.environ.get("AZURE_SEARCH_KEY_SF"),
+        "api-key": os.environ["AZURE_SEARCH_KEY_SF"],
     }
-    params = {"api-version": os.environ.get("AZURE_SEARCH_API_VERSION")}
+    params = {"api-version": os.environ["AZURE_SEARCH_API_VERSION"]}
 
     agg_search_results = dict()
 
@@ -175,14 +180,15 @@ def retrieval_grader_chain(model):
     system = """You are a grader responsible for evaluating the relevance of a retrieved document to a user question.
         Thoroughly examine the entire document, focusing on both keywords and overall semantic meaning related to the question.
         Consider the context, implicit meanings, and nuances that might connect the document to the question.
-        Provide a binary score of 'yes' for relevant or partially relevant, and 'no' for irrelevant, based on a comprehensive analysis."""
+        Provide a binary score of 'yes' for relevant or partially relevant, and 'no' for irrelevant, based on a comprehensive analysis.
+        If the question ask about information from  prior conversations or last questions, return 'yes'. """
 
     grade_prompt = ChatPromptTemplate.from_messages(
         [
             ("system", system),
             (
                 "human",
-                "Retrieved document: \n\n {document} \n\n User question: {question}",
+                "Retrieved document: \n\n {document} \n\n Previous Conversation {previous_conversation} \n\n User question: {question}",
             ),
         ]
     )
@@ -278,9 +284,9 @@ def create_agent(
 
         # Re-write question
         better_user_query = retrieval_question_rewriter.invoke({"question": question})
-        
+
         # add to messages schema
-        messages = [HumanMessage(content = better_user_query)]
+        messages = [HumanMessage(content=better_user_query)]
         return {"question": better_user_query, "messages": messages}
 
     def retrieve(state):
@@ -302,7 +308,7 @@ def create_agent(
 
         return {"documents": documents}
 
-    def generate(state):
+    def generate(state) -> Literal["conversation_summary", "__end__"]:
         """
         Generate answer
 
@@ -316,21 +322,29 @@ def create_agent(
             print("---GENERATE---")
         question = state["question"]
         documents = state["documents"]
-        summary = state.get('summary', '')
-        messages = state['messages']
+        summary = state.get("summary", "")
+        messages = state["messages"]
 
         if summary:
             system_message = f"Summary of the conversation earlier: \n\n{summary}"
-            question = [SystemMessage(content = system_message)] + messages
+            previous_conversation = [SystemMessage(content=system_message)] + messages[
+                :-1
+            ]
         else:
-            question = messages
+            previous_conversation = messages
 
         # RAG generation
-        generation = rag_chain.invoke({"context": documents, "question": question})
+        generation = rag_chain.invoke(
+            {
+                "context": documents,
+                "previous_conversation": previous_conversation,
+                "question": messages[-1],
+            }
+        )
 
         # Add this generation to messages schema
-        messages = [AIMessage(content = generation)]
-        return {"documents": documents, "generation": generation, "messages": messages}
+        messages = [AIMessage(content=generation)]
+        return {"generation": generation, "messages": messages}
 
     def grade_documents(state):
         """
@@ -346,31 +360,30 @@ def create_agent(
             print("---CHECK DOCUMENT RELEVANCE TO QUESTION---")
         question = state["question"]
         documents = state["documents"]
+        previous_conversation = state["messages"] + [state.get("summary", "")]
 
         # Score each doc
         filtered_docs = []
         web_search = "No"
         if not documents:
-            if verbose:
-                print(
-                    "---NO RELEVANT DOCUMENTS RETRIEVED DURING THE RETRIEVAL PROCESS---"
-                )
+            print("---NO RELEVANT DOCUMENTS RETRIEVED DURING THE RETRIEVAL PROCESS---")
             web_search = "Yes"
         else:
-            if verbose:
-                print("---EVALUATING RETRIEVED DOCUMENTS---")
+            print("---EVALUATING RETRIEVED DOCUMENTS---")
             for d in documents:
                 score = retrieval_grader.invoke(
-                    {"question": question, "document": d.page_content}
+                    {
+                        "question": question,
+                        "previous_conversation": previous_conversation,
+                        "document": d.page_content,
+                    }
                 )
                 grade = score.binary_score
                 if grade == "yes":
-                    if verbose:
-                        print("---GRADE: DOCUMENT RELEVANT---")
+                    print("---GRADE: DOCUMENT RELEVANT---")
                     filtered_docs.append(d)
                 else:
-                    if verbose:
-                        print("---GRADE: DOCUMENT NOT RELEVANT---")
+                    print("---GRADE: DOCUMENT NOT RELEVANT---")
                     web_search = "Yes"
         return {"documents": filtered_docs, "web_search": web_search}
 
@@ -454,11 +467,16 @@ def create_agent(
         messages = state["messages"]
 
         if summary:
-            summary_prompt = f"Here is the conversation summary so far: {summary}\n\n Please take into account the below information to the summary:"
+            summary_prompt = f"Here is the conversation summary so far: {summary}\n\n Please take into account the above information to the summary and summarize all:"
         else:
             summary_prompt = "Create a summary of the entire conversation so far:"
 
-        new_messages = [HumanMessage(content=summary_prompt)] + messages
+        new_messages = messages + [HumanMessage(content = summary_prompt)]
+
+        # remove "RemoveMessage" from the list
+        new_messages = [m for m in new_messages if not isinstance(m, RemoveMessage)]
+        print("new_messages", new_messages)
+
         conversation_summary = mini_model.invoke(new_messages)
 
         # delete all but the 3 most recent messages
@@ -467,9 +485,9 @@ def create_agent(
 
     def summary_decide(state):
         """Decide whether it's necessary to summarize the conversation
-        If the conversation has been more than 4 (2 humans 2 AI responses) then we should summarize it
+        If the conversation has been more than 6 (3 humans 3 AI responses) then we should summarize it
         """
-        if len(state["messages"]) > 4:
+        if len(state["messages"]) > 6:
             return "conversation_summary"
         return "__end__"
 
