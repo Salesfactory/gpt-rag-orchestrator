@@ -37,7 +37,7 @@ def get_search_results(
 
     headers = {
         "Content-Type": "application/json",
-        "api-key": os.environ["AZURE_SEARCH_KEY_SF"],
+        "api-key": os.environ["AZURE_AI_SEARCH_API_KEY"],
     }
     params = {"api-version": os.environ["AZURE_SEARCH_API_VERSION"]}
 
@@ -67,8 +67,11 @@ def get_search_results(
             "top": k,
         }
 
+        AZURE_SEARCH_SERVICE = os.environ.get("AZURE_SEARCH_SERVICE")
+        AZURE_SEARCH_ENDPOINT_SF = f"https://{AZURE_SEARCH_SERVICE}.search.windows.net"
+
         resp = requests.post(
-            os.environ.get("AZURE_SEARCH_ENDPOINT_SF")
+            AZURE_SEARCH_ENDPOINT_SF
             + "/indexes/"
             + index
             + "/docs/search",
@@ -258,7 +261,7 @@ def create_agent(
     retrieval_grader = retrieval_grader_chain(mini_model)
     web_search_tool = TavilySearchResults(max_results=2)
     rag_chain = DOCSEARCH_PROMPT | model | StrOutputParser()
-    index_name = os.environ["INDEX_NAME_SF"]
+    index_name = os.environ["AZURE_AI_SEARCH_INDEX_NAME"]
     indexes = [index_name]
 
     retriever = CustomRetriever(
