@@ -3,7 +3,7 @@ import logging
 import base64
 import uuid
 import time
-from langchain_openai import ChatOpenAI
+from langchain_openai import AzureChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
 from orc.agent import create_agent
 from shared.cosmos_db import (
@@ -31,8 +31,16 @@ async def run(conversation_id, ask, url, client_principal):
                 f"[orchestrator] {conversation_id} conversation_id is Empty, creating new conversation_id."
             )
 
-        model = ChatOpenAI(model_name="gpt-4o", temperature=0.3)
-        mini_model = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+        model = AzureChatOpenAI(
+            temperature=0.3, 
+            openai_api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2024-05-01-preview"),
+            azure_deployment="Agent"
+        )
+        mini_model = AzureChatOpenAI(
+            temperature=0, 
+            openai_api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2024-05-01-preview"),
+            azure_deployment="gpt-4o-mini"
+        )
 
         # get conversation data from CosmosDB
         conversation_data = get_conversation_data(conversation_id)
