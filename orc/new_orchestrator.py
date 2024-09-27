@@ -22,6 +22,7 @@ LOGLEVEL = os.environ.get("LOGLEVEL", "DEBUG").upper()
 logging.basicConfig(level=LOGLEVEL)
 AZURE_STORAGE_ACCOUNT_URL = os.environ.get("AZURE_STORAGE_ACCOUNT_URL")
 
+
 async def run(conversation_id, ask, url, client_principal):
     try:
         start_time = time.time()
@@ -34,14 +35,18 @@ async def run(conversation_id, ask, url, client_principal):
             )
 
         model = AzureChatOpenAI(
-            temperature=0.3, 
-            openai_api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2024-05-01-preview"),
-            azure_deployment="Agent"
+            temperature=0.3,
+            openai_api_version=os.environ.get(
+                "AZURE_OPENAI_API_VERSION", "2024-05-01-preview"
+            ),
+            azure_deployment="Agent",
         )
         mini_model = AzureChatOpenAI(
-            temperature=0, 
-            openai_api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2024-05-01-preview"),
-            azure_deployment="gpt-4o-mini"
+            temperature=0,
+            openai_api_version=os.environ.get(
+                "AZURE_OPENAI_API_VERSION", "2024-05-01-preview"
+            ),
+            azure_deployment="gpt-4o-mini",
         )
 
         # get conversation data from CosmosDB
@@ -63,10 +68,7 @@ async def run(conversation_id, ask, url, client_principal):
 
         # create agent
         agent_executor = create_agent(
-            model, 
-            mini_model, 
-            checkpointer=memory,
-            verbose=True
+            model, mini_model, checkpointer=memory, verbose=True
         )
 
         # config
@@ -82,7 +84,9 @@ async def run(conversation_id, ask, url, client_principal):
                 if AZURE_STORAGE_ACCOUNT_URL in response["generation"]:
                     regex = rf"(Source:\s?\/?)?(source:)?(https:\/\/)?({AZURE_STORAGE_ACCOUNT_URL})?(\/?documents\/?)?"
                     response["generation"] = re.sub(regex, "", response["generation"])
-                logging.info(f"[orchestrator] {conversation_id} agent response: {response['generation'][:50]}")
+                logging.info(
+                    f"[orchestrator] {conversation_id} agent response: {response['generation'][:50]}"
+                )
         except Exception as e:
             logging.error(f"[orchestrator] error: {e.__class__.__name__}")
             logging.error(f"[orchestrator] {conversation_id} error: {str(e)}")
@@ -102,6 +106,8 @@ async def run(conversation_id, ask, url, client_principal):
 
         if len(thoughts) == 0:
             thoughts.append(f"Tool name: agent_memory > Query sent: {ask}")
+
+        # print("RESPONSE: ", response)
 
         history.append(
             {

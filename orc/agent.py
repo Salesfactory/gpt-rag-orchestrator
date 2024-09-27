@@ -13,7 +13,7 @@ from langchain_core.language_models import LanguageModelLike
 from typing import Optional, TypedDict, List
 from langgraph.checkpoint import BaseCheckpointSaver
 from langgraph.graph.graph import CompiledGraph
-from langchain_community.tools.tavily_search import TavilySearchResults
+from langchain_community.retrievers import TavilySearchAPIRetriever
 from langgraph.graph.message import add_messages, AnyMessage
 from langchain_core.messages import (
     HumanMessage,
@@ -29,8 +29,8 @@ from shared.prompts import DOCSEARCH_PROMPT
 def get_search_results(
     query: str,
     indexes: list,
-    k: int = 3,
-    reranker_threshold: int = 2,  # range between 0 and 4 (high to low)
+    k: int = 5,
+    reranker_threshold: float = 1.2,  # range between 0 and 4 (high to low)
 ) -> List[dict]:
     """Performs multi-index hybrid search and returns ordered dictionary with the combined results"""
 
@@ -55,7 +55,7 @@ def get_search_results(
                     "k": k,
                     "threshold": {
                         "kind": "vectorSimilarity",
-                        "value": 0.6,  # 0.333 - 1.00 (Cosine), 0 to 1 for Euclidean and DotProduct.
+                        "value": 0.5,  # 0.333 - 1.00 (Cosine), 0 to 1 for Euclidean and DotProduct.
                     },
                 }
             ],
@@ -70,10 +70,7 @@ def get_search_results(
         AZURE_SEARCH_ENDPOINT_SF = f"https://{AZURE_SEARCH_SERVICE}.search.windows.net"
 
         resp = requests.post(
-            AZURE_SEARCH_ENDPOINT_SF
-            + "/indexes/"
-            + index
-            + "/docs/search",
+            AZURE_SEARCH_ENDPOINT_SF + "/indexes/" + index + "/docs/search",
             data=json.dumps(search_payload),
             headers=headers,
             params=params,
@@ -94,11 +91,7 @@ def get_search_results(
                     "title": result["title"],
                     "name": result["name"],
                     "chunk": result["chunk"],
-                    "location": (
-                        result["location"]
-                        if result["location"]
-                        else ""
-                    ),
+                    "location": (result["location"] if result["location"] else ""),
                     "caption": result["@search.captions"][0]["text"],
                     "score": result["@search.rerankerScore"],
                     "index": index,
@@ -165,6 +158,12 @@ class GraphState(TypedDict):
     documents: List[str]
 
 
+class EntryGraphState(TypedDict):
+    question: str
+    messages: Annotated[list[AnyMessage], add_messages]
+    web_search: str
+
+
 class GradeDocuments(BaseModel):
     """Binary score for relevance check on retrieved documents."""
 
@@ -188,7 +187,7 @@ def retrieval_grader_chain(model):
             ("system", system),
             (
                 "human",
-                "Retrieved document: \n\n {document} \n\n Previous Conversation {previous_conversation} \n\n User question: {question}",
+                "Retrieved document:\n\n{document}\n\nPrevious Conversation:\n\n{previous_conversation}\n\nUser question: {question}",
             ),
         ]
     )
@@ -205,10 +204,10 @@ def retrieval_question_rewriter_chain(model):
     system = """
         You are a query rewriter that improves input questions for information retrieval in a vector database.\n
         Don't mention the specific year unless it is mentioned in the original query.\n
-        Identify the core intent and optimize the query by:
-        1. Correcting spelling and grammar errors.
-        2. Use synonyms to broaden search results if necessary.
-        3. Ensure the rewritten query is concise and directly addresses the intended information.
+        Identify the core intent and optimize the query by:\n
+        1. Correcting spelling and grammar errors.\n
+        2. Broaden search results using appropriate synonyms where necessary, but do not alter the meaning of the query.\n
+        3. Refer to the subject of the previous question and answer if the current question is relevant to that topic. Below is the conversation history for reference:\n\n{previous_conversation}
     """
 
     retrieval_rewrite_prompt = ChatPromptTemplate.from_messages(
@@ -216,7 +215,7 @@ def retrieval_question_rewriter_chain(model):
             ("system", system),
             (
                 "human",
-                "Here is the initial question: \n\n {question} \n Formulate an improved question ",
+                "Here is the initial question: \n\n {question}\n\nFormulate an improved question ",
             ),
         ]
     )
@@ -226,27 +225,6 @@ def retrieval_question_rewriter_chain(model):
     return retrieval_question_rewriter
 
 
-# User Query Re-writer 2 (for web search): Make sure that we are getting the most optimal web search results
-def retrieval_question_rewriter_web_chain(model):
-    system = """ You are a question re-writer that converts an input question to a better version that is optimized
-    for web search. Look at the input and try to reason about the underlying semantic intent/meaning. Don't mention the specific year unless it is mentioned in the original query.
-    """
-
-    re_write_prompt = ChatPromptTemplate.from_messages(
-        [
-            ("system", system),
-            (
-                "human",
-                "Here is the intitial question: \n\n {question} \n Formulate an improved question ",
-            ),
-        ]
-    )
-
-    question_rewriter = re_write_prompt | model | StrOutputParser()
-
-    return question_rewriter
-
-
 def create_agent(
     model: LanguageModelLike,
     mini_model: LanguageModelLike,
@@ -254,17 +232,16 @@ def create_agent(
     verbose: bool = False,
 ) -> CompiledGraph:
     retrieval_question_rewriter = retrieval_question_rewriter_chain(mini_model)
-    question_rewriter = retrieval_question_rewriter_web_chain(mini_model)
     retrieval_grader = retrieval_grader_chain(mini_model)
-    web_search_tool = TavilySearchResults(max_results=2)
+    web_search_tool = TavilySearchAPIRetriever(k=2)
     rag_chain = DOCSEARCH_PROMPT | model | StrOutputParser()
     index_name = os.environ["AZURE_AI_SEARCH_INDEX_NAME"]
     indexes = [index_name]
 
     retriever = CustomRetriever(
         indexes=indexes,
-        topK=3,
-        reranker_threshold=2,
+        topK=5,
+        reranker_threshold=1.2,
     )
 
     def retrieval_transform_query(state):
@@ -280,9 +257,12 @@ def create_agent(
         if verbose:
             print("---TRANSFORM QUERY FOR RETRIEVAL OPTIMIZATION---")
         question = state["question"]
+        messages = state["messages"]
 
         # Re-write question
-        better_user_query = retrieval_question_rewriter.invoke({"question": question})
+        better_user_query = retrieval_question_rewriter.invoke(
+            {"question": question, "previous_conversation": messages}
+        )
 
         # add to messages schema
         messages = [HumanMessage(content=better_user_query)]
@@ -337,7 +317,7 @@ def create_agent(
             {
                 "context": documents,
                 "previous_conversation": previous_conversation,
-                "question": messages[-1],
+                "question": question,
             }
         )
 
@@ -365,10 +345,13 @@ def create_agent(
         filtered_docs = []
         web_search = "No"
         if not documents:
-            print("---NO RELEVANT DOCUMENTS RETRIEVED DURING THE RETRIEVAL PROCESS---")
+            if verbose:
+                print("---NO RELEVANT DOCUMENTS RETRIEVED FROM THE DATABASE---")
+            relevant_doc_count = 0
             web_search = "Yes"
         else:
-            print("---EVALUATING RETRIEVED DOCUMENTS---")
+            if verbose:
+                print("---EVALUATING RETRIEVED DOCUMENTS---")
             for d in documents:
                 score = retrieval_grader.invoke(
                     {
@@ -384,6 +367,18 @@ def create_agent(
                 else:
                     print("---GRADE: DOCUMENT NOT RELEVANT---")
                     web_search = "Yes"
+
+        # count the number of retrieved documents
+        relevant_doc_count = len(filtered_docs)
+
+        if verbose:
+            print(f"---NUMBER OF DATABASE RETRIEVED DOCUMENTS---: {relevant_doc_count}")
+
+        if relevant_doc_count >= 3:
+            web_search = "No"
+        else:
+            web_search = "Yes"
+
         return {"documents": filtered_docs, "web_search": web_search}
 
     def web_search(state):
@@ -402,33 +397,10 @@ def create_agent(
         documents = state["documents"]
 
         # Web search
-        docs = web_search_tool.invoke({"query": question})
-        for doc in docs:
-            # pass metadata as a dict with source as key, fornat here is consistent with retrieved document format
-            web_result = Document(
-                metadata={"source": doc["url"]}, page_content=doc["content"]
-            )
-            documents.append(web_result)
+        docs = web_search_tool.invoke(question)
+        documents.extend(docs)
 
         return {"documents": documents}
-
-    def transform_query(state):
-        """
-        Transform the query to produce a better question.
-
-        Args:
-            state (dict): The current graph state
-
-        Returns:
-            state (dict): Updates question key with a re-phrased question
-        """
-        if verbose:
-            print("---TRANSFORM QUERY FOR WEBSEARCH---")
-        question = state["question"]
-
-        # Re-write question
-        better_question = question_rewriter.invoke({"question": question})
-        return {"question": better_question}
 
     ### Edges
 
@@ -447,13 +419,10 @@ def create_agent(
         web_search = state["web_search"]
 
         if web_search == "Yes":
-            # All documents have been filtered check_relevance
-            # We will re-generate a new query
+            # insufficient relevant documents -> conducting websearch
             if verbose:
-                print(
-                    "---DECISION: SOME/ALL DOCUMENTS ARE NOT RELEVANT TO QUESTION, OR NO DOCUMENT RETRIEVED---"
-                )
-            return "transform_query"
+                print("---DECISION: PROCEED TO CONDUCT WEB SEARCH---")
+            return "web_search_node"
         else:
             # We have relevant documents, so generate answer
             if verbose:
@@ -461,68 +430,103 @@ def create_agent(
             return "generate"
 
     def conversation_summary(state):
-        """Summary the entire conversation to date"""
+        """Summary the entire conversation to date
+
+        Args:
+            state (dict): current graph state of summary and messages
+
+        Returns:
+            state (dict): summary of the current conversation and shorter messages
+
+        """
         summary = state.get("summary", "")
         messages = state["messages"]
+
+        if verbose:
+            print("DECISION: SUMMARIZE CONVERSATION")
 
         if summary:
             summary_prompt = f"Here is the conversation summary so far: {summary}\n\n Please take into account the above information to the summary and summarize all:"
         else:
             summary_prompt = "Create a summary of the entire conversation so far:"
 
-        new_messages = messages + [HumanMessage(content = summary_prompt)]
+        new_messages = messages + [HumanMessage(content=summary_prompt)]
 
         # remove "RemoveMessage" from the list
         new_messages = [m for m in new_messages if not isinstance(m, RemoveMessage)]
 
         conversation_summary = mini_model.invoke(new_messages)
 
-        # delete all but the 3 most recent messages
-        retained_messages = [RemoveMessage(id=m.id) for m in messages[:-6]]
-        return {"summary": conversation_summary.content, "messages": retained_messages}
+        # delete all but the 3 most recent conversations
+        retained_messages = [
+            RemoveMessage(id=m.id) for m in messages[:-6]
+        ]  # (3 AI, 3 )
+        return {
+            "generation": conversation_summary.content,
+            "messages": retained_messages,
+        }
 
     def summary_decide(state):
         """Decide whether it's necessary to summarize the conversation
-        If the conversation has been more than 6 (3 humans 3 AI responses) then we should summarize it
-        """
-        if len(state["messages"]) > 6:
-            return "conversation_summary"
-        return "__end__"
+            If the conversation has been more than 4 (2 humans 2 AI responses) then we should summarize it
+        Args:
+            state: current state of messages
 
+        Returns:
+            state: either summarize the conversation or end it
+        """
+        # Count the number of human messages
+        if verbose:
+            print("---ASSESS CURRENT CONVERSATION LENGTH---")
+
+        num_human_messages = sum(
+            1 for message in state["messages"] if isinstance(message, HumanMessage)
+        )
+        if num_human_messages > 3:
+            if verbose:
+                print("MORE THAN 3 CONVERSATIONS FOUND")
+            return "conversation_summary"
+
+        else:
+            if verbose:
+                print("---LESS THAN 3 CONVERSATIONS FOUND, NO SUMMARIZATION NEEDED---")
+            return "__end__"
+
+    # parent graph
     workflow = StateGraph(GraphState)
 
     # Define the nodes
     workflow.add_node(
-        "retrieval_transform_query", retrieval_transform_query
+        "transform_query", retrieval_transform_query
     )  # rewrite user query
-
     workflow.add_node("retrieve", retrieve)  # retrieve
     workflow.add_node("grade_documents", grade_documents)  # grade documents
     workflow.add_node("generate", generate)  # generatae
-    workflow.add_node("transform_query", transform_query)  # transform_query_web
     workflow.add_node("web_search_node", web_search)  # web search
     workflow.add_node(
         "conversation_summary", conversation_summary
     )  # summary conversation to date
 
     # Build graph
-    workflow.add_edge(START, "retrieval_transform_query")
-    workflow.add_edge("retrieval_transform_query", "retrieve")
+    workflow.add_edge(START, "transform_query")
+    workflow.add_edge("transform_query", "retrieve")
     workflow.add_edge("retrieve", "grade_documents")
     workflow.add_conditional_edges(
         "grade_documents",
         decide_to_generate,
         {
-            "transform_query": "transform_query",
+            "web_search_node": "web_search_node",
             "generate": "generate",
         },
     )
-    workflow.add_edge("transform_query", "web_search_node")
     workflow.add_edge("web_search_node", "generate")
     workflow.add_conditional_edges(
         "generate",
         summary_decide,
-        {"conversation_summary": "conversation_summary", "__end__": "__end__"},
+        {
+            "conversation_summary": "conversation_summary",
+            "__end__": "__end__",
+        },
     )
     workflow.add_edge("conversation_summary", END)
 
