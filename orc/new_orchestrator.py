@@ -24,7 +24,7 @@ AZURE_STORAGE_ACCOUNT_URL = os.environ.get("AZURE_STORAGE_ACCOUNT_URL")
 
 
 async def run(conversation_id, ask, url, client_principal):
-    try:
+    # try:
         start_time = time.time()
 
         # create conversation_id if not provided
@@ -34,19 +34,35 @@ async def run(conversation_id, ask, url, client_principal):
                 f"[orchestrator] {conversation_id} conversation_id is Empty, creating new conversation_id."
             )
 
+        main_model = AzureChatOpenAI(
+            temperature=0,
+            openai_api_version=os.environ.get(
+                "AZURE_OPENAI_API_VERSION", "2024-05-01-preview"
+            ), 
+            azure_deployment="gpt-4o-orchestrator", 
+            model_kwargs={"seed": 1}
+        )
         model = AzureChatOpenAI(
             temperature=0.3,
             openai_api_version=os.environ.get(
                 "AZURE_OPENAI_API_VERSION", "2024-05-01-preview"
             ),
-            azure_deployment="Agent",
+            azure_deployment="answer_generation",
         )
         mini_model = AzureChatOpenAI(
             temperature=0,
             openai_api_version=os.environ.get(
                 "AZURE_OPENAI_API_VERSION", "2024-05-01-preview"
             ),
-            azure_deployment="gpt-4o-mini",
+            azure_deployment="Agent",
+        )
+        general_model = AzureChatOpenAI(
+            temperature=0.3,
+            openai_api_version=os.environ.get(
+                "AZURE_OPENAI_API_VERSION", "2024-05-01-preview"
+            ),
+            azure_deployment="gpt-4o-mini-generalmodel",
+            model_kwargs={"seed": 1}
         )
 
         # get conversation data from CosmosDB
@@ -68,36 +84,37 @@ async def run(conversation_id, ask, url, client_principal):
 
         # create agent
         agent_executor = create_agent(
-            model, mini_model, checkpointer=memory, verbose=True
+            main_model, model, mini_model, general_model, checkpointer=memory, verbose=True
         )
 
         # config
         config = {"configurable": {"thread_id": conversation_id}}
 
         # agent response
-        try:
-            with get_openai_callback() as cb:
-                response = agent_executor.invoke(
-                    {"question": ask},
-                    config,
-                )
-                if AZURE_STORAGE_ACCOUNT_URL in response["generation"]:
-                    regex = rf"(Source:\s?\/?)?(source:)?(https:\/\/)?({AZURE_STORAGE_ACCOUNT_URL})?(\/?documents\/?)?"
-                    response["generation"] = re.sub(regex, "", response["generation"])
-                logging.info(
-                    f"[orchestrator] {conversation_id} agent response: {response['generation'][:50]}"
-                )
-        except Exception as e:
-            logging.error(f"[orchestrator] error: {e.__class__.__name__}")
-            logging.error(f"[orchestrator] {conversation_id} error: {str(e)}")
-            store_agent_error(client_principal["id"], str(e), ask)
-            response = {
-                "conversation_id": conversation_id,
-                "answer": f"Service is currently unavailable, please retry later",
-                "data_points": "",
-                "thoughts": ask,
-            }
-            return response
+        # try:
+        with get_openai_callback() as cb:
+            response = agent_executor.invoke(
+                {"question": ask},
+                config,
+            )
+            print("RESPONSE: ", response["combined_messages"][-1].content)
+            # if AZURE_STORAGE_ACCOUNT_URL in response["generation"]:
+            #     regex = rf"(Source:\s?\/?)?(source:)?(https:\/\/)?({AZURE_STORAGE_ACCOUNT_URL})?(\/?documents\/?)?"
+            #     response["generation"] = re.sub(regex, "", response["generation"])
+            # logging.info(
+            #     f"[orchestrator] {conversation_id} agent response: {response['generation'][:50]}"
+            # )
+        # except Exception as e:
+        #     logging.error(f"[orchestrator] error: {e.__class__.__name__}")
+        #     logging.error(f"[orchestrator] {conversation_id} error: {str(e)}")
+        #     store_agent_error(client_principal["id"], str(e), ask)
+        #     response = {
+        #         "conversation_id": conversation_id,
+        #         "answer": f"Service is currently unavailable, please retry later",
+        #         "data_points": "",
+        #         "thoughts": ask,
+        #     }
+        #     return response
 
         # history
         history = conversation_data["history"]
@@ -112,7 +129,7 @@ async def run(conversation_id, ask, url, client_principal):
         history.append(
             {
                 "role": "assistant",
-                "content": response["generation"],
+                "content": response["combined_messages"][-1].content,
                 "thoughts": thoughts,
             }
         )
@@ -145,7 +162,7 @@ async def run(conversation_id, ask, url, client_principal):
         # 4) return answer
         response = {
             "conversation_id": conversation_id,
-            "answer": response["generation"],
+            "answer": response["combined_messages"][-1].content,
             "thoughts": thoughts,
         }
 
@@ -154,14 +171,14 @@ async def run(conversation_id, ask, url, client_principal):
         )
 
         return response
-    except Exception as e:
-        logging.error(f"[orchestrator] {conversation_id} error: {str(e)}")
-        store_agent_error(client_principal["id"], str(e), ask)
-        response = {
-            "conversation_id": conversation_id,
-            "answer": f"There was an error processing your request. Error: {str(e)}",
-            "data_points": "",
-            "question": ask,
-            "thoughts": [],
-        }
-        return response
+    # except Exception as e:
+    #     logging.error(f"[orchestrator] {conversation_id} error: {str(e)}")
+    #     store_agent_error(client_principal["id"], str(e), ask)
+    #     response = {
+    #         "conversation_id": conversation_id,
+    #         "answer": f"There was an error processing your request. Error: {str(e)}",
+    #         "data_points": "",
+    #         "question": ask,
+    #         "thoughts": [],
+    #     }
+    #     return response

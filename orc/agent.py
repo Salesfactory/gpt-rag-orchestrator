@@ -160,8 +160,13 @@ class GraphState(TypedDict):
 
 class EntryGraphState(TypedDict):
     question: str
-    messages: Annotated[list[AnyMessage], add_messages]
+    retrieval_messages: Annotated[list[AnyMessage], add_messages]
     web_search: str
+    summary_decision: str
+    summary: str = ""
+    route: str
+    general_model_messages: Annotated[list[AnyMessage], add_messages]
+    combined_messages: Annotated[list[AnyMessage], add_messages]
 
 
 class GradeDocuments(BaseModel):
@@ -170,6 +175,49 @@ class GradeDocuments(BaseModel):
     binary_score: str = Field(
         description="Document are relevant to the question, 'yes' or 'no' "
     )
+
+
+class Orchestrator(BaseModel):
+    """Determine whether the question is relevant to conversation history, marketing, retails, economics topics."""
+
+    route_assignment: Literal["RAG", "general_model"] = Field(
+        description="If the question is relevant to conversation history, marketing, retails, or economics, then return 'RAG', else return 'general_model' "
+    )
+
+
+class GeneralModState(TypedDict):
+    """
+    Represent the state our the General LLM subgraph
+
+    Attributes:
+    question: question provided by user:
+    general_model_messages: messages from the general model
+    combined_messages: keep track of the conversation
+    """
+
+    question: str
+    general_model_messages: Annotated[list[AnyMessage], add_messages]
+    combined_messages: Annotated[list[AnyMessage], add_messages]
+
+
+class RetrievalState(TypedDict):
+    """
+    Represent the state of our graph
+
+    Attributes:
+    question: question
+    generation: llm generation
+    web_search: whether to add search
+    documents: list of retrieved documents (websearch and database retrieval)
+    summary: summary of the entire conversation"""
+
+    question: str
+    generation: str
+    web_search: str
+    summary: str
+    retrieval_messages: Annotated[list[AnyMessage], add_messages]
+    combined_messages: Annotated[list[AnyMessage], add_messages]
+    documents: List[str]
 
 
 def retrieval_grader_chain(model):
@@ -226,14 +274,28 @@ def retrieval_question_rewriter_chain(model):
 
 
 def create_agent(
+    main_model: LanguageModelLike,
     model: LanguageModelLike,
     mini_model: LanguageModelLike,
+    general_model: LanguageModelLike,
     checkpointer: Optional[BaseCheckpointSaver] = None,
     verbose: bool = False,
 ) -> CompiledGraph:
     retrieval_question_rewriter = retrieval_question_rewriter_chain(mini_model)
     retrieval_grader = retrieval_grader_chain(mini_model)
     web_search_tool = TavilySearchAPIRetriever(k=2)
+
+    general_chain = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                "You are a helpful assistant that provides answer to general questions",
+            ),
+            ("human", "Here is user question:\n{question}"),
+        ]
+    )
+    general_chain_model = general_chain | general_model
+
     rag_chain = DOCSEARCH_PROMPT | model | StrOutputParser()
     index_name = os.environ["AZURE_AI_SEARCH_INDEX_NAME"]
     indexes = [index_name]
@@ -243,6 +305,19 @@ def create_agent(
         topK=5,
         reranker_threshold=1.2,
     )
+
+    # define function node
+    def general_llm_node(state: GeneralModState):
+        """
+        General LLM node
+        """
+        question = state["question"]
+        # model response
+        response = general_chain_model.invoke({"question": question})
+        return {
+            "general_model_messages": [question, response],
+            "combined_messages": [question, response],
+        }
 
     def retrieval_transform_query(state):
         """
@@ -257,8 +332,7 @@ def create_agent(
         if verbose:
             print("---TRANSFORM QUERY FOR RETRIEVAL OPTIMIZATION---")
         question = state["question"]
-        messages = state["messages"]
-
+        messages = state["retrieval_messages"]
         # Re-write question
         better_user_query = retrieval_question_rewriter.invoke(
             {"question": question, "previous_conversation": messages}
@@ -266,7 +340,11 @@ def create_agent(
 
         # add to messages schema
         messages = [HumanMessage(content=better_user_query)]
-        return {"question": better_user_query, "messages": messages}
+        return {
+            "question": better_user_query,
+            "retrieval_messages": messages,
+            "combined_messages": messages,
+        }
 
     def retrieve(state):
         """
@@ -302,7 +380,7 @@ def create_agent(
         question = state["question"]
         documents = state["documents"]
         summary = state.get("summary", "")
-        messages = state["messages"]
+        messages = state["retrieval_messages"]
 
         if summary:
             system_message = f"Summary of the conversation earlier: \n\n{summary}"
@@ -323,7 +401,11 @@ def create_agent(
 
         # Add this generation to messages schema
         messages = [AIMessage(content=generation)]
-        return {"generation": generation, "messages": messages}
+        return {
+            "generation": generation,
+            "retrieval_messages": messages,
+            "combined_messages": messages,
+        }
 
     def grade_documents(state):
         """
@@ -333,13 +415,13 @@ def create_agent(
             state (dict): The current graph state
 
         Returns:
-            state (dict): Updates documents key with only filtered relevant documents
+            state (dict): Updates documents key with only filtered relevant documents and web search decision
         """
-        if verbose:
-            print("---CHECK DOCUMENT RELEVANCE TO QUESTION---")
+
+        print("---CHECK DOCUMENT RELEVANCE TO QUESTION---")
         question = state["question"]
         documents = state["documents"]
-        previous_conversation = state["messages"] + [state.get("summary", "")]
+        previous_conversation = state["retrieval_messages"] + [state.get("summary", "")]
 
         # Score each doc
         filtered_docs = []
@@ -362,11 +444,12 @@ def create_agent(
                 )
                 grade = score.binary_score
                 if grade == "yes":
-                    print("---GRADE: DOCUMENT RELEVANT---")
+                    if verbose:
+                        print("---GRADE: DOCUMENT RELEVANT---")
                     filtered_docs.append(d)
                 else:
-                    print("---GRADE: DOCUMENT NOT RELEVANT---")
-                    web_search = "Yes"
+                    if verbose:
+                        print("---GRADE: DOCUMENT NOT RELEVANT---")
 
         # count the number of retrieved documents
         relevant_doc_count = len(filtered_docs)
@@ -383,7 +466,7 @@ def create_agent(
 
     def web_search(state):
         """
-        Web search based on the re-phrased question.
+        Conduct Web search to add more relevant context
 
         Args:
             state (dict): The current graph state
@@ -398,6 +481,7 @@ def create_agent(
 
         # Web search
         docs = web_search_tool.invoke(question)
+        # append to the existing document
         documents.extend(docs)
 
         return {"documents": documents}
@@ -492,26 +576,41 @@ def create_agent(
                 print("---LESS THAN 3 CONVERSATIONS FOUND, NO SUMMARIZATION NEEDED---")
             return "__end__"
 
+    # general llm graph
+    # build graph
+    general_stategraph = StateGraph(GeneralModState)
+
+    ## nodes in graph
+    general_stategraph.add_node("general_llm_node", general_llm_node)
+
+    ## edges in graph
+    general_stategraph.add_edge(START, "general_llm_node")
+    general_stategraph.add_edge("general_llm_node", END)
+
+    ## compile the general llm subgraph
+    ############################################################################################################
+    general_llm_subgraph = general_stategraph.compile()
+
     # parent graph
-    workflow = StateGraph(GraphState)
+    retrieval_stategraph = StateGraph(RetrievalState)
 
     # Define the nodes
-    workflow.add_node(
+    retrieval_stategraph.add_node(
         "transform_query", retrieval_transform_query
     )  # rewrite user query
-    workflow.add_node("retrieve", retrieve)  # retrieve
-    workflow.add_node("grade_documents", grade_documents)  # grade documents
-    workflow.add_node("generate", generate)  # generatae
-    workflow.add_node("web_search_node", web_search)  # web search
-    workflow.add_node(
-        "conversation_summary", conversation_summary
-    )  # summary conversation to date
+    retrieval_stategraph.add_node("retrieve", retrieve)  # retrieve
+    retrieval_stategraph.add_node("grade_documents", grade_documents)  # grade documents
+    retrieval_stategraph.add_node("generate", generate)  # generatae
+    retrieval_stategraph.add_node("web_search_node", web_search)  # web search
+    # retrieval_stategraph.add_node(
+    #     "conversation_summary", conversation_summary
+    # )  # summary conversation to date
 
     # Build graph
-    workflow.add_edge(START, "transform_query")
-    workflow.add_edge("transform_query", "retrieve")
-    workflow.add_edge("retrieve", "grade_documents")
-    workflow.add_conditional_edges(
+    retrieval_stategraph.add_edge(START, "transform_query")
+    retrieval_stategraph.add_edge("transform_query", "retrieve")
+    retrieval_stategraph.add_edge("retrieve", "grade_documents")
+    retrieval_stategraph.add_conditional_edges(
         "grade_documents",
         decide_to_generate,
         {
@@ -519,18 +618,181 @@ def create_agent(
             "generate": "generate",
         },
     )
-    workflow.add_edge("web_search_node", "generate")
-    workflow.add_conditional_edges(
-        "generate",
-        summary_decide,
-        {
-            "conversation_summary": "conversation_summary",
-            "__end__": "__end__",
-        },
-    )
-    workflow.add_edge("conversation_summary", END)
+    retrieval_stategraph.add_edge("web_search_node", "generate")
+    retrieval_stategraph.add_edge("generate", END)
+
+    # retrieval_stategraph.add_conditional_edges(
+    #     "generate",
+    #     summary_decide,
+    #     {
+    #         "conversation_summary": "conversation_summary",
+    #         "__end__": "__end__",
+    #     },
+    # )
+    retrieval_stategraph.add_edge("conversation_summary", END)
 
     # Compile
-    app = workflow.compile(checkpointer=checkpointer)
+    ############################################################################################################
+    rag = retrieval_stategraph.compile()
 
-    return app
+    # ORCHESTRATOR
+    structured_llm_orchestrator = main_model.with_structured_output(Orchestrator)
+
+    orchestrator_sysprompt = """You are an orchestrator responsible for categorizing questions. Evaluate each question based on its content:
+
+    1. If the question relates to **conversation history**, **marketing**, **retail**, **products**, or **economics**, return 'RAG'.
+
+    2. If the question relates to a **conversation summary** but is **not relevant** to **marketing**, **retail**, **products**, or **economics**, return 'general_model'.
+
+    3. If the question is **completely unrelated** to both **conversation history**, **conversation summary** and any of the topics above (i.e., marketing, retail, products, or economics), return 'general_model'.
+    """
+
+    orchestrator_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", orchestrator_sysprompt),
+            (
+                "human",
+                """Here is conversation history:
+                    {retrieval_messages}\n\n
+
+                    Here is conversation summary to date: 
+                    {conversation_summary}\n\n
+
+                    Here is user question:
+                    {question}
+                """,
+            ),
+        ]
+    )
+
+    orchestrator_agent = orchestrator_prompt | structured_llm_orchestrator
+
+    # obtain orchestrator decision
+    def orchestrator_func(state):
+        question = state["question"]
+        conversation_summary = state.get("summary", "")
+        retrieval_messages = state.get("retrieval_messages", [])
+
+        # retrieval_messages = retrieval_messages + [conversation_summary]
+
+        route_decision = orchestrator_agent.invoke(
+            {
+                "question": question,
+                "conversation_summary": conversation_summary,
+                "retrieval_messages": retrieval_messages,
+            }
+        )
+
+        return {"route": route_decision.route_assignment}
+
+    # route condition
+    def route_decision(state):
+        if state["route"] == "RAG":
+            return "RAG"
+        else:
+            return "general_llm"
+
+    # summarization
+
+    def summary_check(state: EntryGraphState):
+        """Decide whether it's necessary to summarize the conversation
+            If the conversation has been more than 3 (3 humans 3 AI responses) then we should summarize it
+        Args:
+            state: current state of messages
+
+        Returns:
+            state: either summarize the conversation or end it
+        """
+        # Count the number of human messages
+        print("---ASSESS CURRENT CONVERSATION LENGTH---")
+        num_human_messages = sum(
+            1
+            for message in state["combined_messages"]
+            if isinstance(message, HumanMessage)
+        )
+        if num_human_messages > 3:
+            print("MORE THAN 3 CONVERSATIONS FOUND")
+            return {"summary_decision": "yes"}
+
+        else:
+            print("---LESS THAN 3 CONVERSATIONS FOUND, NO SUMMARIZATION NEEDED---")
+            return {"summary_decision": "no"}
+
+    def summary_decision(state: EntryGraphState) -> Literal["summarization", "__end__"]:
+        if state["summary_decision"] == "yes":
+            return "summarization"
+        else:
+            return "__end__"
+
+    def summarization(state: EntryGraphState):
+        summary = state.get("summary", "")
+        messages = state["combined_messages"]
+        retrieval_messages = state["retrieval_messages"]
+        general_model_messages = state["general_model_messages"]
+        print("DECISION: SUMMARIZE CONVERSATION")
+        if summary:
+            summary_prompt = f"Here is the conversation summary so far: {summary}\n\n Please take into account the above information to the summary and summarize all:"
+        else:
+            summary_prompt = "Create a summary of the entire conversation so far:"
+
+        new_messages = messages + [HumanMessage(content=summary_prompt)]
+        new_messages = [m for m in new_messages if not isinstance(m, RemoveMessage)]
+        conversation_summary = mini_model.invoke(new_messages)
+
+        # Keep only the 6 most recent messages (3 AI, 3 human)
+        messages_to_keep = messages[-6:]
+
+        # Create sets of IDs for messages to remove
+        combined_ids_to_remove = set(m.id for m in messages[:-4])
+        retrieval_ids_to_remove = (
+            set(m.id for m in retrieval_messages) & combined_ids_to_remove
+        )
+        general_llm_ids_to_remove = (
+            set(m.id for m in general_model_messages) & combined_ids_to_remove
+        )
+
+        # Create RemoveMessage objects only for messages that exist in both lists
+        retained_combined_messages = [
+            RemoveMessage(id=m_id) for m_id in combined_ids_to_remove
+        ]
+        retained_retrieval_messages = [
+            RemoveMessage(id=m_id) for m_id in retrieval_ids_to_remove
+        ]
+        retained_general_model_messages = [
+            RemoveMessage(id=m_id) for m_id in general_llm_ids_to_remove
+        ]
+
+        return {
+            "summary": conversation_summary.content,
+            "retrieval_messages": retained_retrieval_messages,
+            "general_model_messages": retained_general_model_messages,
+            "combined_messages": retained_combined_messages,
+        }
+
+    entry_builder = StateGraph(EntryGraphState)
+
+    # Nodes
+    entry_builder.add_node("orchestrator", orchestrator_func)
+    entry_builder.add_node("RAG", rag)
+    entry_builder.add_node("general_llm", general_llm_subgraph)
+    entry_builder.add_node(
+        "summary_check", summary_check
+    )  # summary conversation to date
+    entry_builder.add_node(
+        "summarization", summarization
+    )  # summary conversation to date
+
+    # Edges
+    entry_builder.add_edge(START, "orchestrator")
+    entry_builder.add_conditional_edges(
+        "orchestrator", route_decision, {"RAG": "RAG", "general_llm": "general_llm"}
+    )
+    entry_builder.add_edge("RAG", "summary_check")
+    entry_builder.add_edge("general_llm", "summary_check")
+    entry_builder.add_conditional_edges("summary_check", summary_decision)
+
+    entry_builder.add_edge("summarization", END)
+
+    parent_graph = entry_builder.compile(checkpointer=checkpointer)
+
+    return parent_graph
