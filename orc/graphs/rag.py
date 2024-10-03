@@ -7,7 +7,6 @@ from collections import OrderedDict
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.retrievers import BaseRetriever
 from langchain.schema import Document
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.pydantic_v1 import BaseModel, Field
 from langchain_core.language_models import LanguageModelLike
 from typing import TypedDict, List
@@ -130,7 +129,9 @@ class CustomRetriever(BaseRetriever):
                         "title": result["title"],
                         "name": (result["name"] if "name" in result else ""),
                         "chunk": (result["content"] if "content" in result else ""),
-                        "location": (result["filepath"] if "filepath" in result else ""),
+                        "location": (
+                            result["filepath"] if "filepath" in result else ""
+                        ),
                         "caption": result["@search.captions"][0]["text"],
                         "score": result["@search.rerankerScore"],
                         "index": index,
@@ -159,7 +160,6 @@ class CustomRetriever(BaseRetriever):
             reranker_threshold=self.reranker_threshold,
         )
 
-        print("ORDERED RESULTS", ordered_results)
         top_docs = []
 
         for key, value in ordered_results.items():
@@ -194,7 +194,6 @@ def create_retrieval_graph(
     )
     structured_llm_grader = model_two.with_structured_output(GradeDocuments)
     retrieval_grader = GRADE_PROMPT | structured_llm_grader
-
 
     def retrieval_transform_query(state: RetrievalState):
         """
@@ -350,31 +349,6 @@ def create_retrieval_graph(
 
         return {"documents": filtered_docs, "web_search": web_search}
 
-    def web_search(state: RetrievalState):
-        """
-        Conduct Web search to add more relevant context
-
-        Args:
-            state (dict): The current graph state
-
-        Returns:
-            state (dict): Updates documents key with appended web results
-        """
-
-        if verbose:
-            print("---WEB SEARCH---")
-
-        question = state["question"]
-        documents = state["documents"]
-
-        # Web search
-        docs = web_search_tool.invoke(question)
-
-        # append to the existing document
-        documents.extend(docs)
-
-        return {"documents": documents}
-
     def decide_to_generate(state):
         """
         Determines whether to generate an answer, or re-generate a question.
@@ -401,6 +375,31 @@ def create_retrieval_graph(
             if verbose:
                 print("---DECISION: GENERATE---")
             return "generate"
+
+    def web_search(state: RetrievalState):
+        """
+        Conduct Web search to add more relevant context
+
+        Args:
+            state (dict): The current graph state
+
+        Returns:
+            state (dict): Updates documents key with appended web results
+        """
+
+        if verbose:
+            print("---WEB SEARCH---")
+
+        question = state["question"]
+        documents = state["documents"]
+
+        # Web search
+        docs = web_search_tool.invoke(question)
+
+        # append to the existing document
+        documents.extend(docs)
+
+        return {"documents": documents}
 
     # parent graph
     retrieval_stategraph = StateGraph(RetrievalState)

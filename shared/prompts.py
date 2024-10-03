@@ -181,3 +181,39 @@ GRADE_PROMPT = ChatPromptTemplate.from_messages(
         ),
     ]
 )
+
+GENERAL_LLM_SYSTEM_PROMPT = (
+    "You are a helpful assistant that provides answer to general questions"
+)
+
+GENERAL_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        ("system", GENERAL_LLM_SYSTEM_PROMPT),
+        ("human", "Here is user question:\n{question}"),
+    ]
+)
+
+
+# Create and configure an improved general chain model for answer regeneration.
+# This function sets up a system prompt, creates a chat template, initializes an Azure ChatOpenAI model,
+# and combines them into a chain for generating improved answers.
+
+# Define the system prompt for the writing assistant
+IMPROVED_GENERAL_LLM_SYSTEMPROMPT = """
+You're a helpful writing assistant. You enrich generated answers 
+by using provided additional context to improve the previous answer,
+ensuring it fully addresses the user's question.
+"""
+
+# Create a chat prompt template
+IMPROVED_GENERAL_PROMPT = ChatPromptTemplate.from_messages(
+    [
+        ("system", IMPROVED_GENERAL_LLM_SYSTEMPROMPT),
+        (
+            "human",
+            "Here is the question: {question}\n\n"
+            "Here is the previous answer: {previous_answer}\n\n"
+            "Here is the provided additional context: {bing_documents}",
+        ),
+    ]
+)
