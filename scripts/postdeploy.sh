@@ -1,7 +1,10 @@
 #!/bin/sh
 
 echo 'Creating Python virtual environment "scripts/.venv"'
-python3 -m venv ./scripts/.venv
+python3.11 -m venv ./scripts/.venv
+
+echo 'Upgrading pip to the latest version'
+./scripts/.venv/bin/python -m pip install --upgrade pip
 
 echo 'Installing dependencies from "requirements.txt" into virtual environment'
 ./scripts/.venv/bin/python -m pip install -r ./requirements.txt
