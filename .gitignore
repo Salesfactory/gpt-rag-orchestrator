@@ -7,7 +7,6 @@ csx
 .vs
 edge
 Publish
-.vscode/
 
 # Loadtest
 Results/
@@ -55,6 +54,8 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+.vscode/
+.python-version
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
