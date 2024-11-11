@@ -136,7 +136,8 @@ def get_conversation_data(conversation_id):
             )
         except Exception as e:
             logging.error(
-                f"[CosmosDB] Failed to update 'history' for conversation_id: {conversation_id}. Error: {e}"
+                f"[CosmosDB] Failed to update 'history' for conversation_id: {conversation_id}. Error: {e}", 
+                exc_info=True
             )
 
     return conversation_data

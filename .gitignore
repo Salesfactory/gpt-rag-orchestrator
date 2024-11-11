@@ -8,6 +8,10 @@ csx
 edge
 Publish
 
+# poetry env 
+poetry.lock
+pyproject.toml
+
 # Loadtest
 Results/
 local.settings.json

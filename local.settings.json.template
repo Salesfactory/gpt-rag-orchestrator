@@ -17,6 +17,7 @@
       "AZURE_COSMOS_KEY": "<your-cosmos-key>",
       "FUNCTIONS_WORKER_RUNTIME": "python",
       "BING_SUBSCRIPTION_KEY": "<your-bing-subscription-key>",
-      "SERPER_API_KEY": "<your-serper-api-key>"
+      "SERPER_API_KEY": "<your-serper-api-key>",
+      "AZURE_KEYVAULT_URL": "<your-keyvault-url>"
     }
   }
