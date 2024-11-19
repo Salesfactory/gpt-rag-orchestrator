@@ -1190,14 +1190,14 @@ def update_organization_subscription(
 
 def create_invitation(invited_user_email, organization_id, role):
     if not invited_user_email:
-        return {"error": "Invited user email is required."}
+        return {"error": "User email is required."}
 
     if not organization_id:
         return {"error": "Organization ID is required."}
 
     if not role:
         return {"error": "Role is required."}
-    
+
     credential = DefaultAzureCredential()
     db_client = CosmosClient(AZURE_DB_URI, credential, consistency_level="Session")
     db = db_client.get_database_client(database=AZURE_DB_NAME)
