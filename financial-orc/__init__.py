@@ -41,7 +41,7 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
         return func.HttpResponse(
             json.dumps({"error": "no documentName found in json input"}),
             mimetype="application/json",
-            status_code=200,
+            status_code=400,
         )
 
     # validate documentName exists in a hardcoded list
