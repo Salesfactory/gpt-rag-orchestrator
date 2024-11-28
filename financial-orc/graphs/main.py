@@ -2,7 +2,7 @@ import os
 import json
 import requests
 from collections import OrderedDict
-from typing import List, Annotated, Sequence, TypedDict
+from typing import List, Annotated, Sequence, TypedDict, Literal
 import logging
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import (
@@ -19,7 +19,10 @@ from langchain_community.retrievers import TavilySearchAPIRetriever
 from langgraph.graph import StateGraph, END
 from langgraph.graph.message import add_messages
 from langchain_openai import AzureChatOpenAI
-
+from shared.cosmos_db import (
+    get_conversation_data,
+    update_conversation_data,
+)
 
 LOGLEVEL = os.environ.get("LOGLEVEL", "DEBUG").upper()
 logging.basicConfig(level=LOGLEVEL)
@@ -31,6 +34,7 @@ class AgentState(TypedDict):
 
     messages: Annotated[Sequence[BaseMessage], add_messages]
     report: str
+    chat_summary: str = ""
 
 
 # Update CustomRetriever with error handling
@@ -250,7 +254,9 @@ def create_main_agent(checkpointer, verbose=True):
                     )
                 ]
             }
-
+    ###################################################
+    # Define web search tool
+    ###################################################
     @tool
     def web_search(query: str) -> str:
         """Conduct web search for user query that is not included in the report"""
@@ -304,54 +310,206 @@ def create_main_agent(checkpointer, verbose=True):
             raise Exception(f"Error processing tool calls: {e}")
 
         return {"messages": outputs}
+    
+
+    def format_chat_history(messages):
+        from langchain_core.messages import HumanMessage
+        """Format chat history into a clean, readable string."""
+        if not messages:
+            return "No previous conversation history."
+            
+        formatted_messages = []
+        for msg in messages:
+            # Add a separator line
+            formatted_messages.append("-" * 50)
+            
+            # Format based on message type
+            if isinstance(msg, HumanMessage):
+                formatted_messages.append("Human:")
+                formatted_messages.append(f"{msg.content}")
+                
+            elif isinstance(msg, AIMessage):
+                formatted_messages.append("Assistant:")
+                formatted_messages.append(f"{msg.content}")
+                
+            elif isinstance(msg, ToolMessage):
+                formatted_messages.append("Tool Output:")
+                # Try to format tool output nicely
+                try:
+                    tool_name = getattr(msg, 'name', 'Unknown Tool')
+                    formatted_messages.append(f"Tool: {tool_name}")
+                    formatted_messages.append(f"Output: {msg.content[:200]}")
+                except:
+                    formatted_messages.append(f"{msg.content[:200]}")
+        
+        # Add final separator
+        formatted_messages.append("-" * 50)
+        
+        # Join all lines with newlines
+        return "\n".join(formatted_messages)
 
     def call_model(state: AgentState, config: RunnableConfig):
-
         report = state["report"][0].page_content
+        
+        # Get the most recent message except the latest one 
+        chat_history = state['messages'][:-1] or []
+
+        # Format chat history using the new formatting function
+        formatted_chat_history = format_chat_history(chat_history)
+
+        # Get chat summary
+        chat_summary = state.get("chat_summary", "")
 
         system_prompt = """
-        You are a helpful assistant. Use the available tool to help answer user queries if the provided report are deemed irrelevant
+        You are a helpful assistant. Use available tools to answer queries if provided information is irrelevant. 
+        Consider conversation history for context in your responses if available.
+        
+        Report Information:
 
-        Here is the report:
         {report}
-        """.format(
-            report=report
-        )
+        ==================
 
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                ("system", system_prompt),
-                ("placeholder", "{chat_history}"),
-                ("human", "{input}"),
-                ("placeholder", "{agent_scratchpad}"),
-            ]
+        Previous Conversation:
+
+        {formatted_chat_history}
+        ====================
+
+        Conversation Summary:
+
+        {chat_summary}
+        """.format(
+            report=report,
+            formatted_chat_history=formatted_chat_history,
+            chat_summary=chat_summary
         )
+                
+        logging.debug(f"[financial-orchestrator-agent] Formatted system prompt:\n{system_prompt}")
+        
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            ("human", "{input}"),
+            ("placeholder", "{agent_scratchpad}"),
+        ])
+    
         agent = create_tool_calling_agent(llm, tools, prompt)
         agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)
         response = agent_executor.invoke(
             {
                 "input": state["messages"][-1].content,
-                "chat_history": state["messages"][:-1],
             }
         )
 
         return {"messages": [AIMessage(content=response["output"])]}
 
+    ###################################################
+    # summarize chat history 
+    ###################################################
+    # summarize conversation at the end if total messages > 6
+    
+    # dummy node for conversation history 
+    def conv_length_check(state: AgentState):
+        return state
+    
     # define the conditional edge that determines whether to continue or not
+    def chat_length_check(state: AgentState) -> Literal['summarize_chat', "__end__"]:
+        """summarize the conversation if msg > 6, if not then end """
+        # Filter out ToolMessages and count only user/assistant messages
+        message_count = len([
+            msg for msg in state['messages'] 
+            if not isinstance(msg, ToolMessage)
+        ])
+        
+        logging.info(f"[financial-orchestrator-agent] Message count: {message_count}")
+        
+        if message_count > 6:
+            return "summarize_chat"
+        return "__end__"
+
+    def summarize_chat(state: AgentState):
+        from langchain_core.messages import HumanMessage, RemoveMessage
+        
+        # Get existing summary
+        summary = state.get("chat_summary", "")
+        
+        # Filter out tool messages for summarization
+        messages_to_summarize = [
+            msg for msg in state['messages'] 
+            if not isinstance(msg, ToolMessage)
+        ]
+        
+        logging.info(f"[financial-orchestrator-agent] Summarizing {len(messages_to_summarize)} messages")
+        
+        # Create summary prompt
+        if summary:
+            summary_msg = (
+                f"This is the summary of the conversation so far: \n\n{summary}\n\n"
+                "Extend the summary by taking into account the new messages above. "
+                "Just return the summary, no need to say anything else:"
+            )
+        else:
+            summary_msg = (
+                "Summarize the following conversation history. "
+                "Just return the summary, no need to say anything else:"
+            )
+        
+        # Create messages for summary generation
+        final_summary_msg = messages_to_summarize + [HumanMessage(content=summary_msg)]
+        
+        # Generate summary
+        new_summary = llm.invoke(final_summary_msg)
+    ###################################################
+    ### will need to revisit this later
+    ###################################################
+        # # Keep only the last two non-tool messages
+        # messages_to_keep = [
+        #     msg for msg in state['messages'][-4:] 
+        #     if not isinstance(msg, ToolMessage)
+        # ][-2:]
+        
+        # # Create remove messages for all except the kept ones
+        # messages_to_remove = [
+        #     RemoveMessage(id=msg.id) 
+        #     for msg in state['messages'] 
+        #     if msg not in messages_to_keep
+        # ]
+        
+        # Store in CosmosDB
+        conversation_id = state.get('configurable', {}).get('thread_id', '')
+        if conversation_id:
+            try:
+                conversation_data = get_conversation_data(conversation_id)
+                if conversation_data:
+                    conversation_data['summary'] = new_summary.content
+                    update_conversation_data(conversation_id, conversation_data)
+                    logging.info(f"[financial-orchestrator-agent] Updated summary in CosmosDB for conversation {conversation_id}")
+            except Exception as e:
+                logging.error(f"[financial-orchestrator-agent] Failed to update summary in CosmosDB: {str(e)}")
+        
+        return {
+            "chat_summary": new_summary.content,
+            # "messages": messages_to_remove
+        }
+        
+
     def should_continue(state: AgentState):
         messages = state["messages"]
         last_message = messages[-1]
-        # if there is not function call, then we finish
+        
+        logging.info(f"[financial-orchestrator-agent] Checking continuation condition")
+        
+        # if there is no function call, then we check conversation length
         if not last_message.tool_calls:
-            return "end"
-        # otherwise if there is, we continue
-        else:
-            return "continue"
+            logging.info("[financial-orchestrator-agent] No tool calls, checking conversation length")
+            return "conv_length_check"
+        
+        # if there is a function call, we continue with tools
+        logging.info("[financial-orchestrator-agent] Tool calls present, continuing with tools")
+        return "continue"
 
     ###################################################
     # define graph
     ###################################################
-    # define a new graph
+
     workflow = StateGraph(AgentState)
 
     # define the preload document node
@@ -359,6 +517,8 @@ def create_main_agent(checkpointer, verbose=True):
     # define the two nodes we will cycle between
     workflow.add_node("agent", call_model)
     workflow.add_node("tools", tool_node)
+    workflow.add_node("conv_length_check", conv_length_check)
+    workflow.add_node("summarize_chat", summarize_chat)
 
     # set the entry point as agent
     workflow.set_entry_point("report_preload")
@@ -367,11 +527,16 @@ def create_main_agent(checkpointer, verbose=True):
     workflow.add_edge("report_preload", "agent")
 
     workflow.add_conditional_edges(
-        "agent", should_continue, {"continue": "tools", "end": END}
+        "agent", should_continue, {"continue": "tools", "conv_length_check": "conv_length_check"}
     )
 
     # add a normal edge from tools to agent
     workflow.add_edge("tools", "agent")
+
+    workflow.add_conditional_edges(
+        "conv_length_check", chat_length_check, {"summarize_chat": "summarize_chat", "__end__": END}
+    )
+    workflow.add_edge("summarize_chat", END)
 
     # compile the graph
     graph = workflow.compile(checkpointer=checkpointer)
