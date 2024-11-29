@@ -44,8 +44,11 @@ class CustomRetriever(BaseRetriever):
         indexes (List): List of index names to search.
     """
 
-    topK: int
-    reranker_threshold: float
+    topK = 1
+    reranker_threshold = 1.2 
+    vector_similarity_threshold = 0.5
+    semantic_config = "financial-index-semantic-configuration"
+    index_name = "financial-index"
     indexes: List
     verbose: bool
 
@@ -53,8 +56,10 @@ class CustomRetriever(BaseRetriever):
         self,
         query: str,
         indexes: list,
-        k: int = 3,
-        reranker_threshold: float = 1.2,  # range between 0 and 4 (high to low)
+        k: int = topK,
+        semantic_config: str = semantic_config,
+        reranker_threshold: float = reranker_threshold,  # range between 0 and 
+        vector_similarity_threshold: float = vector_similarity_threshold,
     ) -> List[dict]:
         """
         Performs multi-index hybrid search and returns ordered dictionary with the combined results.
@@ -90,11 +95,11 @@ class CustomRetriever(BaseRetriever):
                         "k": k,
                         "threshold": {
                             "kind": "vectorSimilarity",
-                            "value": 0.5,  # 0.333 - 1.00 (Cosine), 0 to 1 for Euclidean and DotProduct.
+                            "value": vector_similarity_threshold,  # 0.333 - 1.00 (Cosine), 0 to 1 for Euclidean and DotProduct.
                         },
                     }
                 ],
-                "semanticConfiguration": "financial-index-semantic-configuration",  # change the name depends on your config name
+                "semanticConfiguration": semantic_config,  # change the name depends on your config name
                 "captions": "extractive",
                 "answers": "extractive",
                 "count": "true",
@@ -179,7 +184,7 @@ class CustomRetriever(BaseRetriever):
         return top_docs
 
 
-def create_main_agent(checkpointer, verbose=True):
+def create_main_agent(checkpointer, documentName, verbose=True):
     # Define model
     llm = AzureChatOpenAI(
         azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
@@ -204,20 +209,22 @@ def create_main_agent(checkpointer, verbose=True):
     )
 
     def report_retriever(state: AgentState):
-        """Retrieve the initial report for consumer segmentation."""
+        """Retrieve the initial report."""
         try:
             # Get documents from retriever
-            documents = retriever.invoke("consumer segmentation")
+            documents = retriever.invoke(documentName)
 
             if verbose:
                 print(f"[financial-orchestrator-agent] RETRIEVED DOCUMENTS: {len(documents)}")
+                # print(f"[financial-orchestrator-agent] DOCUMENT NAME: {documentName}")
+                # print(documents[0].page_content)
 
             if not documents or len(documents) == 0:
                 if verbose:
                     print("[financial-orchestrator-agent] No documents retrieved, using fallback content")
                 documents = [
                     Document(
-                        page_content="No information found about consumer segmentation."
+                        page_content="No information found about the report"
                     )
                 ]
 
@@ -229,7 +236,7 @@ def create_main_agent(checkpointer, verbose=True):
             return {
                 "report": [
                     Document(
-                        page_content="Error retrieving consumer segmentation information."
+                        page_content="Error retrieving report information."
                     )
                 ]
             }
@@ -342,7 +349,11 @@ def create_main_agent(checkpointer, verbose=True):
 
         system_prompt = """
         You are a helpful assistant. Use available tools to answer queries if provided information is irrelevant. 
-        Consider conversation history for context in your responses if available.
+        Consider conversation history for context in your responses if available. 
+        If the context is already relevant, then do not use any tools.
+        Treat the report as a primary source of information, but use the web search tool to supplement the information if needed.
+        
+        ***Important***: If the tool is triggered, then mention in the response that external sources were used to supplement the information. You must also provide the URL of the source in the response.
         
         Report Information:
 

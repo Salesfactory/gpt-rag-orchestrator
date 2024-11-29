@@ -47,7 +47,7 @@ async def run(conversation_id, question, documentName, client_principal):
 
         # Create and invoke agent
         agent_executor = create_main_agent(
-            checkpointer=memory, verbose=(LOGLEVEL == "DEBUG")
+            checkpointer=memory, documentName=documentName, verbose=(LOGLEVEL == "DEBUG")
         )
         config = {"configurable": {"thread_id": conversation_id}}
         response = agent_executor.invoke(
