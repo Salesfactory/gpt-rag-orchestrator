@@ -3,7 +3,6 @@ import json
 import requests
 from collections import OrderedDict
 from typing import List, Annotated, Sequence, TypedDict, Literal
-import logging
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.messages import (
     AIMessage,
@@ -24,9 +23,6 @@ from shared.cosmos_db import (
     update_conversation_data,
 )
 
-LOGLEVEL = os.environ.get("LOGLEVEL", "DEBUG").upper()
-logging.basicConfig(level=LOGLEVEL)
-
 
 # Define agent graph
 class AgentState(TypedDict):
@@ -46,13 +42,12 @@ class CustomRetriever(BaseRetriever):
         topK (int): Number of top results to retrieve.
         reranker_threshold (float): Threshold for reranker score.
         indexes (List): List of index names to search.
-        sas_token (str): SAS token for authentication.
     """
 
     topK: int
     reranker_threshold: float
     indexes: List
-    sas_token: str = None
+    verbose: bool
 
     def get_search_results(
         self,
@@ -60,7 +55,6 @@ class CustomRetriever(BaseRetriever):
         indexes: list,
         k: int = 3,
         reranker_threshold: float = 1.2,  # range between 0 and 4 (high to low)
-        sas_token: str = "",
     ) -> List[dict]:
         """
         Performs multi-index hybrid search and returns ordered dictionary with the combined results.
@@ -70,7 +64,6 @@ class CustomRetriever(BaseRetriever):
             indexes (list): List of index names to search.
             k (int): Number of top results to retrieve. Default is 5.
             reranker_threshold (float): Threshold for reranker score. Default is 1.2.
-            sas_token (str): SAS token for authentication. Default is empty string.
 
         Returns:
             OrderedDict: Ordered dictionary of search results.
@@ -122,7 +115,8 @@ class CustomRetriever(BaseRetriever):
                 search_results = resp.json()
                 agg_search_results[index] = search_results
             except Exception as e:
-                logging.info(f"[financial-orchestrator-agent] Error in get_search_results: {str(e)}")
+                if self.verbose:
+                    print(f"[financial-orchestrator-agent] Error in get_search_results: {str(e)}")
                 return []
 
         content = dict()
@@ -135,25 +129,8 @@ class CustomRetriever(BaseRetriever):
                 ):  # Range between 0 and 4
                     content[result["chunk_id"]] = {
                         "filename": result["file_name"],
-                        # "title": result['title'],
                         "chunk": (result["chunk"] if "chunk" in result else ""),
                         "location": (result["url"] if "url" in result else ""),
-                        "caption": result["@search.captions"][0]["text"],
-                        "score": result["@search.rerankerScore"],
-                        "index": index,
-                    }
-
-        for index, search_results in agg_search_results.items():
-            for result in search_results["value"]:
-                if (
-                    result["@search.rerankerScore"] > reranker_threshold
-                ):  # Range between 0 and 4
-                    content[result["chunk_id"]] = {
-                        "filename": result["file_name"],
-                        "chunk": result["chunk"],
-                        "location": (
-                            result["url"] + f"?{sas_token}" if result["url"] else ""
-                        ),
                         "date_last_modified": result["date_last_modified"],
                         "caption": result["@search.captions"][0]["text"],
                         "score": result["@search.rerankerScore"],
@@ -187,7 +164,6 @@ class CustomRetriever(BaseRetriever):
             self.indexes,
             k=self.topK,
             reranker_threshold=self.reranker_threshold,
-            sas_token=self.sas_token,
         )
         top_docs = []
 
@@ -224,7 +200,7 @@ def create_main_agent(checkpointer, verbose=True):
         indexes=indexes,
         topK=k,
         reranker_threshold=1.2,
-        sas_token=os.environ["BLOB_SAS_TOKEN"],
+        verbose=verbose,
     )
 
     def report_retriever(state: AgentState):
@@ -233,10 +209,12 @@ def create_main_agent(checkpointer, verbose=True):
             # Get documents from retriever
             documents = retriever.invoke("consumer segmentation")
 
-            logging.info(f"[financial-orchestrator-agent] RETRIEVED DOCUMENTS: {len(documents)}")
+            if verbose:
+                print(f"[financial-orchestrator-agent] RETRIEVED DOCUMENTS: {len(documents)}")
 
             if not documents or len(documents) == 0:
-                logging.info("[financial-orchestrator-agent] No documents retrieved, using fallback content")
+                if verbose:
+                    print("[financial-orchestrator-agent] No documents retrieved, using fallback content")
                 documents = [
                     Document(
                         page_content="No information found about consumer segmentation."
@@ -245,7 +223,8 @@ def create_main_agent(checkpointer, verbose=True):
 
             return {"report": documents}
         except Exception as e:
-            logging.info(f"[financial-orchestrator-agent] Error in report_retriever: {str(e)}")
+            if verbose:
+                print(f"[financial-orchestrator-agent] Error in report_retriever: {str(e)}")
             # Return a fallback document to prevent crashes
             return {
                 "report": [
@@ -280,7 +259,8 @@ def create_main_agent(checkpointer, verbose=True):
                 f"URL: {metadata['source']}\n" f"Content: {page_content}\n"
             )
 
-        logging.info(f"[financial-orchestrator-agent] WEBSEARCH RESULTS: {len(results)}")
+        if verbose:
+            print(f"[financial-orchestrator-agent] WEBSEARCH RESULTS: {len(results)}")
 
         return "\n\n".join(formatted_results)
 
@@ -382,8 +362,9 @@ def create_main_agent(checkpointer, verbose=True):
             formatted_chat_history=formatted_chat_history,
             chat_summary=chat_summary
         )
-                
-        logging.debug(f"[financial-orchestrator-agent] Formatted system prompt:\n{system_prompt}")
+
+        # if verbose:                
+        #     print(f"[financial-orchestrator-agent] Formatted system prompt:\n{system_prompt}")
         
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
@@ -419,7 +400,8 @@ def create_main_agent(checkpointer, verbose=True):
             if not isinstance(msg, ToolMessage)
         ])
         
-        logging.info(f"[financial-orchestrator-agent] Message count: {message_count}")
+        if verbose:
+            print(f"[financial-orchestrator-agent] Message count: {message_count}")
         
         if message_count > 6:
             return "summarize_chat"
@@ -437,7 +419,8 @@ def create_main_agent(checkpointer, verbose=True):
             if not isinstance(msg, ToolMessage)
         ]
         
-        logging.info(f"[financial-orchestrator-agent] Summarizing {len(messages_to_summarize)} messages")
+        if verbose:
+            print(f"[financial-orchestrator-agent] Summarizing {len(messages_to_summarize)} messages")
         
         # Create summary prompt
         if summary:
@@ -481,9 +464,11 @@ def create_main_agent(checkpointer, verbose=True):
                 if conversation_data:
                     conversation_data['summary'] = new_summary.content
                     update_conversation_data(conversation_id, conversation_data)
-                    logging.info(f"[financial-orchestrator-agent] Updated summary in CosmosDB for conversation {conversation_id}")
+                    if verbose:
+                        print(f"[financial-orchestrator-agent] Updated summary in CosmosDB for conversation {conversation_id}")
             except Exception as e:
-                logging.error(f"[financial-orchestrator-agent] Failed to update summary in CosmosDB: {str(e)}")
+                if verbose:
+                    print(f"[financial-orchestrator-agent] Failed to update summary in CosmosDB: {str(e)}")
         
         return {
             "chat_summary": new_summary.content,
@@ -495,15 +480,18 @@ def create_main_agent(checkpointer, verbose=True):
         messages = state["messages"]
         last_message = messages[-1]
         
-        logging.info(f"[financial-orchestrator-agent] Checking continuation condition")
+        if verbose:
+            print(f"[financial-orchestrator-agent] Checking continuation condition")
         
         # if there is no function call, then we check conversation length
         if not last_message.tool_calls:
-            logging.info("[financial-orchestrator-agent] No tool calls, checking conversation length")
+            if verbose:
+                print("[financial-orchestrator-agent] No tool calls, checking conversation length")
             return "conv_length_check"
         
         # if there is a function call, we continue with tools
-        logging.info("[financial-orchestrator-agent] Tool calls present, continuing with tools")
+        if verbose:
+            print("[financial-orchestrator-agent] Tool calls present, continuing with tools")
         return "continue"
 
     ###################################################
