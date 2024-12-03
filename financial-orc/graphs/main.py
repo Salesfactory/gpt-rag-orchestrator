@@ -188,17 +188,14 @@ def create_main_agent(checkpointer, documentName, verbose=True):
         return "\n".join(formatted_messages)
 
     def call_model(state: AgentState, config: RunnableConfig):
-        # get the report
-        try:
-            report = state["report"][0].page_content or ""
-        except (IndexError, AttributeError) as e:
-            raise ValueError(f"Error accessing report content: {e}")
-
-        try:
+        # check if state report if it exists, then use it, otherwise use the fallback content
+        if state.get("report"):
+            report = state["report"][0].page_content
             report_citation = state["report"][0].metadata.get("citation", "")
-        except (IndexError, AttributeError) as e:
-            raise ValueError(f"Error accessing report citation: {e}")
-
+        else:
+            report = "No report found, using websearch content" # maybe redudant, but just in case we by pass the report retrieval step in the future
+            report_citation = ""
+            
         # Get the most recent message except the latest one 
         chat_history = state['messages'][:-1] or []
 
@@ -252,8 +249,6 @@ def create_main_agent(checkpointer, documentName, verbose=True):
             ("human", "{input}. Please prioritize the report over the web search results."),
             ("placeholder", "{agent_scratchpad}"),
         ])
-
-        print(prompt)
     
         agent = create_tool_calling_agent(llm, tools, prompt)
         agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True)

@@ -19,7 +19,7 @@ class CustomRetriever(BaseRetriever):
     """
 
     topK = 1
-    reranker_threshold = 1.2
+    reranker_threshold = 0.5
     vector_similarity_threshold = 0.1
     semantic_config = "financial-index-semantic-configuration"
     index_name = "financial-index"
