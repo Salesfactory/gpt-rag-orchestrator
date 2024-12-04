@@ -221,7 +221,7 @@ def create_main_agent(checkpointer, documentName, verbose=True):
         - If the tool is triggered, then mention in the response that external sources were used to supplement the information. You must also provide the URL of the source in the response.
         - Do not use your pretrained knowledge to answer the question.
         - YOU MUST INCLUDE CITATIONS IN YOUR RESPONSE FOR EITHER THE REPORT OR THE WEB SEARCH RESULTS. You will be penalized $10,000 if you fail to do so. Here is an example of how you should format the citation:
-        - Citation must look like this: [[1]](https://www.example.com)
+        - Citation format: [[1]](https://www.example.com)
 
         Citation Example:
         ```
@@ -255,7 +255,7 @@ def create_main_agent(checkpointer, documentName, verbose=True):
 
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
-            ("human", {input}),
+            ("human", "{input}"),
             ("placeholder", "{agent_scratchpad}"),
         ])
     
