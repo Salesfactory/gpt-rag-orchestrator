@@ -161,3 +161,46 @@ def update_conversation_data(conversation_id, conversation_data):
         logging.error(f"[CosmosDB] Error updating the conversations: {e}")
 
     return conversation_data
+
+
+def get_active_schedules():
+    """Retrieve all active fetch schedules from Cosmos DB"""
+
+    try:
+        credential = DefaultAzureCredential()
+        db_client = CosmosClient(AZURE_DB_URI, credential, consistency_level="Session")
+        db = db_client.get_database_client(database=AZURE_DB_NAME)
+        container = db.get_container_client("schedules")
+
+        query = "SELECT * FROM c WHERE c.isActive = true"
+
+        schedules = list(container.query_items(
+            query=query,
+            enable_cross_partition_query=True
+        ))
+
+        return schedules
+
+    except Exception as e:
+        logging.error(f"[CosmosDB] Error retrieving the schedules: {e}")
+        return []   
+
+
+def update_last_run(schedule_id):
+    """Update the last run timestamp for a schedule"""
+
+    try:
+        credential = DefaultAzureCredential()
+        db_client = CosmosClient(AZURE_DB_URI, credential, consistency_level="Session")
+        db = db_client.get_database_client(database=AZURE_DB_NAME)
+        container = db.get_container_client("schedules")
+
+        container.upsert_item({
+            'id': schedule_id,
+            'lastRun': datetime.utcnow().isoformat()
+        })
+
+        return True
+    except Exception as e:
+        logging.error(f"[CosmosDB] Error updating the schedules: {e}")
+        return False
