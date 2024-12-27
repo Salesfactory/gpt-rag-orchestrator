@@ -3,23 +3,30 @@ import logging
 import json
 import os
 from azure.cosmos import CosmosClient
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 import azure.functions as func
 from shared.cosmos_db import get_active_schedules, update_last_run
+import requests
 
 
 def should_trigger_fetch(schedule):
     """Determine if fetch should be triggered based on schedule"""
     last_run = datetime.fromisoformat(schedule.get('lastRun', '2025-01-01'))
-    frequency = schedule['frequency']  # 'weekly' or 'monthly'
+    frequency = schedule['frequency']
     
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     if frequency == 'weekly':
         next_run = last_run + timedelta(days=7)
-    else:  # monthly
-        # Add one month (approximately)
-        # TODO: Improve this to be more accurate
+    elif frequency == 'monthly':
         next_run = last_run + timedelta(days=30)
+    elif frequency == 'twice_daily':
+        # Check if it's been at least 12 hours since last run
+        next_run = last_run + timedelta(hours=12)
+        # Only trigger at 12 AM or 12 PM UTC
+        if now.hour not in [0, 12]:
+            return False
+    elif frequency == 'every_minute':
+        next_run = last_run + timedelta(minutes=1)
         
     return now >= next_run
 
@@ -31,12 +38,27 @@ def trigger_document_fetch(schedule):
         'scheduleId': schedule['id'],
         'reportType': schedule['reportType'],
         'companyId': schedule['companyId'],
-        'timestamp': datetime.utcnow().isoformat()
+        'timestamp': datetime.now(UTC).isoformat()
     }
     
-    # TODO: Implement document fetch logic
-    # This will be implemented when document fetch logic is ready
-    logging.info(f"Queued fetch task: {json.dumps(message)}")
+    # Create payload for the API endpoint
+    after_date = datetime.now(UTC) 
+    payload = {
+        "equity_id": schedule['companyId'],
+        "filing_type": schedule['reportType'],
+        "after_date": after_date
+    }
+    
+    # Make API request
+    try:
+        response = requests.post(
+            "https://webgpt0-vm2b2htvuuclm.azurewebsites.net/api/SECEdgar/financialdocuments/process-and-summarize",
+            json=payload
+        )
+        response.raise_for_status()
+        logging.info(f"Successfully triggered document fetch: {json.dumps(message)}")
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Failed to trigger document fetch: {str(e)}")
     
     # Update last run timestamp
     update_last_run(schedule['id'])
