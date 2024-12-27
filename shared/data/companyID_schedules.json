@@ -1,0 +1,122 @@
+[
+    {
+        "companyId": "HD",
+        "reportType": "10-K",
+        "isActive": true
+    },
+    {
+        "companyId": "HD",
+        "reportType": "10-Q",
+        "isActive": true
+    },
+    {
+        "companyId": "HD",
+        "reportType": "8-K",
+        "isActive": true
+    },
+    {
+        "companyId": "HD",
+        "reportType": "DEF 14A",
+        "isActive": true
+    },
+    {
+        "companyId": "LOW",
+        "reportType": "10-K",
+        "isActive": true
+    },
+    {
+        "companyId": "LOW",
+        "reportType": "10-Q",
+        "isActive": true
+    },
+    {
+        "companyId": "LOW",
+        "reportType": "8-K",
+        "isActive": true
+    },
+    {
+        "companyId": "LOW",
+        "reportType": "DEF 14A",
+        "isActive": true
+    },
+    {
+        "companyId": "WMT",
+        "reportType": "10-K",
+        "isActive": true
+    },
+    {
+        "companyId": "WMT",
+        "reportType": "10-Q",
+        "isActive": true
+    },
+    {
+        "companyId": "WMT",
+        "reportType": "8-K",
+        "isActive": true
+    },
+    {
+        "companyId": "WMT",
+        "reportType": "DEF 14A",
+        "isActive": true
+    },
+    {
+        "companyId": "AMZN",
+        "reportType": "10-K",
+        "isActive": true
+    },
+    {
+        "companyId": "AMZN",
+        "reportType": "10-Q",
+        "isActive": true
+    },
+    {
+        "companyId": "AMZN",
+        "reportType": "8-K",
+        "isActive": true
+    },
+    {
+        "companyId": "AMZN",
+        "reportType": "DEF 14A",
+        "isActive": true
+    },
+    {
+        "companyId": "COST",
+        "reportType": "10-K",
+        "isActive": true
+    },
+    {
+        "companyId": "COST",
+        "reportType": "10-Q",
+        "isActive": true
+    },
+    {
+        "companyId": "COST",
+        "reportType": "8-K",
+        "isActive": true
+    },
+    {
+        "companyId": "COST",
+        "reportType": "DEF 14A",
+        "isActive": true
+    },
+    {
+        "companyId": "TGT",
+        "reportType": "10-K",
+        "isActive": true
+    },
+    {
+        "companyId": "TGT",
+        "reportType": "10-Q",
+        "isActive": true
+    },
+    {
+        "companyId": "TGT",
+        "reportType": "8-K",
+        "isActive": true
+    },
+    {
+        "companyId": "TGT",
+        "reportType": "DEF 14A",
+        "isActive": true
+    }
+]
