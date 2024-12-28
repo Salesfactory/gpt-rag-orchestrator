@@ -95,6 +95,33 @@ class CosmosDBLoader:
         except Exception as e:
             logger.error(f"Error deleting data from Cosmos DB: {str(e)}")
             return False
+    
+    def get_data(self, company_id: str = None, report_type: str = None) -> list:
+        try:
+            if company_id and report_type:
+                return self.container.query_items(
+                    query=f"SELECT * FROM c WHERE c.companyId = '{company_id}' AND c.reportType = '{report_type}'",
+                    enable_cross_partition_query=True
+                )
+            elif company_id:
+                return self.container.query_items(
+                    query=f"SELECT * FROM c WHERE c.companyId = '{company_id}'",
+                    enable_cross_partition_query=True
+                )   
+            elif report_type:
+                return self.container.query_items(
+                    query=f"SELECT * FROM c WHERE c.reportType = '{report_type}'",
+                    enable_cross_partition_query=True
+                )
+            else:
+                return self.container.query_items(
+                    query=f"SELECT * FROM c",
+                    enable_cross_partition_query=True
+                )
+        except Exception as e:
+            logger.error(f"Error getting data from Cosmos DB: {str(e)}")
+            return []
+
 if __name__ == "__main__":
     try:
         loader = CosmosDBLoader(container_name="schedules")

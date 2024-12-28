@@ -3,9 +3,10 @@ import logging
 import json
 import os
 from azure.cosmos import CosmosClient
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta,UTC
 import azure.functions as func
 from shared.cosmos_db import get_active_schedules, update_last_run
+from shared.cosmo_data_loader import CosmosDBLoader
 import requests
 
 
@@ -43,7 +44,8 @@ def trigger_document_fetch(schedule):
     }
     
     # Create payload for the API endpoint
-    after_date = datetime.now(UTC).strftime('%Y-%m-%d')
+    # after_date = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
+    after_date = (datetime.now(UTC)).strftime('%Y-%m-%d')
     payload = {
         "equity_id": schedule['companyId'],
         "filing_type": schedule['reportType'],
@@ -51,19 +53,21 @@ def trigger_document_fetch(schedule):
     }
     
     # Make API request
-    # try:
-    #     response = requests.post(
-    #         "https://webgpt0-vm2b2htvuuclm.azurewebsites.net/api/SECEdgar/financialdocuments/process-and-summarize",
-    #         json=payload
-    #     )
-    #     response.raise_for_status()
-    #     logging.info(f"Successfully triggered document fetch: {json.dumps(message)}")
-    # except requests.exceptions.RequestException as e:
-    #     logging.error(f"Failed to trigger document fetch: {str(e)}")
+    try:
+        response = requests.post(
+            "https://webgpt0-vm2b2htvuuclm.azurewebsites.net/api/SECEdgar/financialdocuments/process-and-summarize",
+            json=payload
+        )
+        response.raise_for_status()
+        logging.info(f"Successfully triggered document fetch: {json.dumps(message)}")
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Failed to trigger document fetch: {str(e)}")
+
+    # TODO: if failed then skip the update_last_run 
     
-    # # Update last run timestamp
-    # update_last_run(schedule['id'])
-    print('hello world')
+    # Update last run timestamp
+    update_last_run(schedule['id'])
+
 
 
 def main(timer: func.TimerRequest) -> None:
@@ -77,8 +81,9 @@ def main(timer: func.TimerRequest) -> None:
     # isActive
 
     # Main scheduling logic
+    cosmos_data_loader = CosmosDBLoader('schedules')
     try:
-        active_schedules = get_active_schedules()
+        active_schedules = cosmos_data_loader.get_data()
         for schedule in active_schedules:
             if should_trigger_fetch(schedule):
                 logging.info(f"Triggering fetch for schedule {schedule['id']}")
