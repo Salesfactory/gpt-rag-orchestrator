@@ -11,7 +11,8 @@ import requests
 
 def should_trigger_fetch(schedule):
     """Determine if fetch should be triggered based on schedule"""
-    last_run = datetime.fromisoformat(schedule.get('lastRun', '2025-01-01'))
+    # Convert last_run to timezone-aware datetime
+    last_run = datetime.fromisoformat(schedule.get('lastRun', '2025-01-01')).replace(tzinfo=UTC)
     frequency = schedule['frequency']
     
     now = datetime.now(UTC)
@@ -42,7 +43,7 @@ def trigger_document_fetch(schedule):
     }
     
     # Create payload for the API endpoint
-    after_date = datetime.now(UTC) 
+    after_date = datetime.now(UTC).strftime('%Y-%m-%d')
     payload = {
         "equity_id": schedule['companyId'],
         "filing_type": schedule['reportType'],
@@ -50,18 +51,19 @@ def trigger_document_fetch(schedule):
     }
     
     # Make API request
-    try:
-        response = requests.post(
-            "https://webgpt0-vm2b2htvuuclm.azurewebsites.net/api/SECEdgar/financialdocuments/process-and-summarize",
-            json=payload
-        )
-        response.raise_for_status()
-        logging.info(f"Successfully triggered document fetch: {json.dumps(message)}")
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Failed to trigger document fetch: {str(e)}")
+    # try:
+    #     response = requests.post(
+    #         "https://webgpt0-vm2b2htvuuclm.azurewebsites.net/api/SECEdgar/financialdocuments/process-and-summarize",
+    #         json=payload
+    #     )
+    #     response.raise_for_status()
+    #     logging.info(f"Successfully triggered document fetch: {json.dumps(message)}")
+    # except requests.exceptions.RequestException as e:
+    #     logging.error(f"Failed to trigger document fetch: {str(e)}")
     
-    # Update last run timestamp
-    update_last_run(schedule['id'])
+    # # Update last run timestamp
+    # update_last_run(schedule['id'])
+    print('hello world')
 
 
 def main(timer: func.TimerRequest) -> None:
