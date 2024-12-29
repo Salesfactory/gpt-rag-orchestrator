@@ -96,11 +96,16 @@ class CosmosDBLoader:
             logger.error(f"Error deleting data from Cosmos DB: {str(e)}")
             return False
     
-    def get_data(self, company_id: str = None, report_type: str = None) -> list:
+    def get_data(self, company_id: str = None, report_type: str = None, frequency: str = None) -> list:
         try:
-            if company_id and report_type:
+            if company_id and report_type and frequency:
                 return self.container.query_items(
-                    query=f"SELECT * FROM c WHERE c.companyId = '{company_id}' AND c.reportType = '{report_type}'",
+                    query=f"SELECT * FROM c WHERE c.companyId = '{company_id}' AND c.reportType = '{report_type}' AND c.frequency = '{frequency}'",
+                    enable_cross_partition_query=True
+                )
+            elif frequency:
+                return self.container.query_items(
+                    query=f"SELECT * FROM c WHERE c.frequency = '{frequency}'",
                     enable_cross_partition_query=True
                 )
             elif company_id:
@@ -133,17 +138,21 @@ class CosmosDBLoader:
             logger.error(f"Error updating last run in Cosmos DB: {str(e)}")
 
 if __name__ == "__main__":
-    try:
-        loader = CosmosDBLoader(container_name="schedules")
-        loader.create_container()   
-        # Use the path to your generated JSON file
-        json_file_path = os.path.join(os.path.dirname(__file__), "data/companyID_schedules.json")
-        loader.upload_data(json_file_path)
-    except ValueError as e:
-        logger.error(f"Configuration error: {str(e)}")
-    except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
+    # try:
+    #     loader = CosmosDBLoader(container_name="schedules")
+    #     loader.create_container()   
+    #     # Use the path to your generated JSON file
+    #     json_file_path = os.path.join(os.path.dirname(__file__), "data/companyID_schedules.json")
+    #     loader.upload_data(json_file_path)
+    # except ValueError as e:
+    #     logger.error(f"Configuration error: {str(e)}")
+    # except Exception as e:
+    #     logger.error(f"Unexpected error: {str(e)}")
     
+    loader = CosmosDBLoader(container_name="schedules")
+    data = loader.get_data(frequency="twice_a_day")
+    for item in data:
+        print(item)
 
 
 

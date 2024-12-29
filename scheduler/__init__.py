@@ -75,7 +75,8 @@ def main(timer: func.TimerRequest) -> None:
     # Main scheduling logic
     cosmos_data_loader = CosmosDBLoader('schedules')
     try:
-        active_schedules = cosmos_data_loader.get_data()
+        # get all schedules that are active and have a frequency of twice_a_day
+        active_schedules = cosmos_data_loader.get_data(frequency="twice_a_day")
         for schedule in active_schedules:
             logging.info(f"Triggering fetch for schedule {schedule['id']}")
             trigger_document_fetch(schedule)
