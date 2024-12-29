@@ -9,29 +9,6 @@ from shared.cosmos_db import get_active_schedules, was_summarized_today
 from shared.cosmo_data_loader import CosmosDBLoader
 import requests
 
-
-def should_trigger_fetch(schedule):
-    """Determine if fetch should be triggered based on schedule"""
-    # Convert last_run to timezone-aware datetime
-    last_run = datetime.fromisoformat(schedule.get('lastRun', '2025-01-01')).replace(tzinfo=UTC)
-    frequency = schedule['frequency']
-    
-    now = datetime.now(UTC)
-    if frequency == 'weekly':
-        next_run = last_run + timedelta(days=7)
-    elif frequency == 'monthly':
-        next_run = last_run + timedelta(days=30)
-    elif frequency == 'twice_a_day':
-        # Check if it's been at least 12 hours since last run
-        next_run = last_run + timedelta(hours=12)
-        # Only trigger at 12 AM or 12 PM UTC
-        if now.hour not in [0, 12]:
-            return False
-    elif frequency == 'every_minute':
-        next_run = last_run + timedelta(minutes=1)
-        
-    return now >= next_run
-
 def trigger_document_fetch(schedule: dict) -> None:
     """ 
     Queue the document fetch task based on schedule configuration 
@@ -100,11 +77,8 @@ def main(timer: func.TimerRequest) -> None:
     try:
         active_schedules = cosmos_data_loader.get_data()
         for schedule in active_schedules:
-            if should_trigger_fetch(schedule):
-                logging.info(f"Triggering fetch for schedule {schedule['id']}")
-                trigger_document_fetch(schedule)
-            else:
-                logging.info(f"Schedule {schedule['id']} not due for execution")
+            logging.info(f"Triggering fetch for schedule {schedule['id']}")
+            trigger_document_fetch(schedule)
                 
     except Exception as e:
         logging.error(f"Error in scheduler: {str(e)}")
