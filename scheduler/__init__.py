@@ -40,6 +40,7 @@ def trigger_document_fetch(schedule: dict) -> None:
        schedule (dict): schedule document containing companyId, reportType, frequency, lastRun, and some other attributes
     """
     cosmos_data_loader = CosmosDBLoader('schedules')
+    process_and_summarize_url = os.getenv('PROCESS_AND_SUMMARIZE_URL')
     
     # create payload for the API endpoint 
     start_time = datetime.now(UTC).isoformat()
@@ -55,7 +56,7 @@ def trigger_document_fetch(schedule: dict) -> None:
             schedule['summarized_today'] = False # reset the summarized_today flag
         else: 
             response = requests.post(
-                "https://webgpt0-vm2b2htvuuclm.azurewebsites.net/api/SECEdgar/financialdocuments/process-and-summarize",
+                process_and_summarize_url,
                 headers={
                     "Content-Type": "application/json"
                 },
