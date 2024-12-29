@@ -3,7 +3,7 @@ from azure.cosmos import CosmosClient
 from azure.identity import DefaultAzureCredential
 import uuid
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 AZURE_DB_ID = os.environ.get("AZURE_DB_ID")
@@ -162,7 +162,7 @@ def update_conversation_data(conversation_id, conversation_data):
 
     return conversation_data
 
-
+from datetime import datetime, timezone
 def get_active_schedules():
     """Retrieve all active fetch schedules from Cosmos DB"""
 
@@ -185,22 +185,36 @@ def get_active_schedules():
         logging.error(f"[CosmosDB] Error retrieving the schedules: {e}")
         return []   
 
-
-def update_last_run(schedule_id):
-    """Update the last run timestamp for a schedule"""
-
+def was_summarized_today(schedule: dict) -> bool:
+    """
+    Check if the schedule has generated a summary for the stock today already.
+    
+    Args:
+        schedule (dict): Schedule document from Cosmos DB containing 'lastRun' field
+        
+    Returns:
+        bool: True if already summarized today, False otherwise
+    """
     try:
-        credential = DefaultAzureCredential()
-        db_client = CosmosClient(AZURE_DB_URI, credential, consistency_level="Session")
-        db = db_client.get_database_client(database=AZURE_DB_NAME)
-        container = db.get_container_client("schedules")
-
-        container.upsert_item({
-            'id': schedule_id,
-            'lastRun': datetime.utcnow().isoformat()
-        })
-
-        return True
-    except Exception as e:
-        logging.error(f"[CosmosDB] Error updating the schedules: {e}")
+        # Parse the last run time and convert to UTC
+        last_run_time = datetime.fromisoformat(schedule['lastRun']).astimezone(timezone.utc)
+        current_time = datetime.now(timezone.utc)
+        
+        # Check if the last run was today and if it was already summarized
+        return (last_run_time.date() == current_time.date() and 
+                schedule.get('summarized_today', False))
+    except (KeyError, ValueError) as e:
+        logging.error(f"Error checking summary status: {e}")
         return False
+
+# check update last run 
+
+if __name__ == "__main__":
+    data = {
+        "companyId": "LOW",
+        "reportType": "8-K",
+        "isActive": False,
+        "id": "d074f28a-de01-46ec-a4e2-df6873e5b379",
+        "lastRun": "2024-12-28T15:45:31.237398"
+    }
+    update_last_run(data)

@@ -5,7 +5,7 @@ import os
 from azure.cosmos import CosmosClient
 from datetime import datetime, timedelta,UTC
 import azure.functions as func
-from shared.cosmos_db import get_active_schedules, update_last_run
+from shared.cosmos_db import get_active_schedules, was_summarized_today
 from shared.cosmo_data_loader import CosmosDBLoader
 import requests
 
@@ -21,7 +21,7 @@ def should_trigger_fetch(schedule):
         next_run = last_run + timedelta(days=7)
     elif frequency == 'monthly':
         next_run = last_run + timedelta(days=30)
-    elif frequency == 'twice_daily':
+    elif frequency == 'twice_a_day':
         # Check if it's been at least 12 hours since last run
         next_run = last_run + timedelta(hours=12)
         # Only trigger at 12 AM or 12 PM UTC
@@ -32,42 +32,56 @@ def should_trigger_fetch(schedule):
         
     return now >= next_run
 
-def trigger_document_fetch(schedule):
-    """Queue the document fetch task based on schedule configuration"""
+def trigger_document_fetch(schedule: dict) -> None:
+    """ 
+    Queue the document fetch task based on schedule configuration 
+
+    Args: 
+       schedule (dict): schedule document containing companyId, reportType, frequency, lastRun, and some other attributes
+    """
+    cosmos_data_loader = CosmosDBLoader('schedules')
     
-    # Create message
-    message = {
-        'scheduleId': schedule['id'],
-        'reportType': schedule['reportType'],
-        'companyId': schedule['companyId'],
-        'timestamp': datetime.now(UTC).isoformat()
-    }
+    # create payload for the API endpoint 
+    start_time = datetime.now(UTC).isoformat()
     
-    # Create payload for the API endpoint
-    # after_date = (datetime.now() - timedelta(days=1)).strftime('%Y-%m-%d')
-    after_date = (datetime.now(UTC)).strftime('%Y-%m-%d')
     payload = {
         "equity_id": schedule['companyId'],
         "filing_type": schedule['reportType'],
-        "after_date": after_date
+        "after_date": '2024-12-29'
     }
-    
-    # Make API request
-    try:
-        response = requests.post(
-            "https://webgpt0-vm2b2htvuuclm.azurewebsites.net/api/SECEdgar/financialdocuments/process-and-summarize",
-            json=payload
-        )
-        response.raise_for_status()
-        logging.info(f"Successfully triggered document fetch: {json.dumps(message)}")
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Failed to trigger document fetch: {str(e)}")
+    try: 
+        if was_summarized_today(schedule):
+            logging.info(f"Skipping document fetch for {schedule['companyId']} {schedule['reportType']} as it was already summarized today")
+            schedule['summarized_today'] = False # reset the summarized_today flag
+        else: 
+            response = requests.post(
+                "https://webgpt0-vm2b2htvuuclm.azurewebsites.net/api/SECEdgar/financialdocuments/process-and-summarize",
+                headers={
+                    "Content-Type": "application/json"
+                },
+                json=payload,
+                timeout = 300
+            )
 
-    # TODO: if failed then skip the update_last_run 
-    
-    # Update last run timestamp
-    update_last_run(schedule['id'])
+            response_json = response.json()
+            schedule['summarized_today'] = (response_json.get('code', 500) == 200)
 
+            # log the code outcome
+            logging.info(f"Code: {response_json.get('code')}")
+            if schedule['summarized_today']:
+                logging.info(f"Successfully triggered document fetch for: {json.dumps(schedule['companyId'])} - {json.dumps(schedule['reportType'])}")
+            else:
+                if response_json.get('code') == 404:
+                    logging.error(f"No new uploaded documents found for: {json.dumps(schedule['companyId'])} - {json.dumps(schedule['reportType'])}. Last checked time: {start_time}")
+                else:
+                    logging.error(f"Failed to trigger document fetch for: {json.dumps(schedule['companyId'])} - {json.dumps(schedule['reportType'])}")
+    
+        # update last run time regarless of the outcome 
+        schedule['lastRun'] = start_time
+        cosmos_data_loader.update_last_run(schedule)
+    except Exception as e:
+        logging.error(f"Error in trigger_document_fetch: {str(e)}")
+        schedule['summarized_today'] = False
 
 
 def main(timer: func.TimerRequest) -> None:

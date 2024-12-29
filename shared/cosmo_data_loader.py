@@ -2,7 +2,7 @@ import json
 import os
 from azure.cosmos import CosmosClient, PartitionKey, exceptions, ThroughputProperties
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 import logging
 
@@ -58,7 +58,7 @@ class CosmosDBLoader:
             # Upload each schedule to Cosmos DB
             for item in data:
                 item['id'] = str(uuid.uuid4())
-                item['lastRun'] = datetime.now().isoformat()
+                item['lastRun'] = datetime.now(timezone.utc).isoformat()
 
                 self.container.create_item(item)
             
@@ -121,6 +121,16 @@ class CosmosDBLoader:
         except Exception as e:
             logger.error(f"Error getting data from Cosmos DB: {str(e)}")
             return []
+    
+    def update_last_run(self, data: dict) -> None:
+        """ 
+        update the last run time in Cosmos DB
+        """
+        try:
+            self.container.upsert_item(data)
+            logger.info(f"Successfully updated last run in Cosmos DB")
+        except Exception as e:
+            logger.error(f"Error updating last run in Cosmos DB: {str(e)}")
 
 if __name__ == "__main__":
     try:
@@ -134,5 +144,8 @@ if __name__ == "__main__":
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
     
-    # loader = CosmosDBLoader(container_name="schedules")
-    # loader.delete_data("AMZN")
+
+
+
+
+    

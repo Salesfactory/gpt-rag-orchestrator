@@ -7,7 +7,10 @@ def create_company_schedules(companies: list[str], report_types: list[str]) -> l
     schedules = []
     for company in companies:
         for report_type in report_types:
-            schedules.append({"companyId": company, "reportType": report_type, "isActive": True})
+            schedules.append({"companyId": company, 
+                              "reportType": report_type, 
+                              "isActive": True,
+                              "frequency": "twice_a_day"})
     return schedules
 
 def save_to_json(data: list[dict], file_path: str) -> None:
