@@ -9,7 +9,7 @@ from shared.cosmos_db import get_active_schedules, was_summarized_today
 from shared.cosmo_data_loader import CosmosDBLoader
 import requests
 
-def trigger_document_fetch(schedule: dict) -> None:
+def trigger_document_fetch(schedule: dict) -> bool:
     """ 
     Queue the document fetch task based on schedule configuration 
 
@@ -31,6 +31,7 @@ def trigger_document_fetch(schedule: dict) -> None:
         if was_summarized_today(schedule):
             logging.info(f"Skipping document fetch for {schedule['companyId']} {schedule['reportType']} as it was already summarized today")
             schedule['summarized_today'] = False # reset the summarized_today flag
+            return False
         else: 
             response = requests.post(
                 process_and_summarize_url,
@@ -48,19 +49,20 @@ def trigger_document_fetch(schedule: dict) -> None:
             logging.info(f"Code: {response_json.get('code')}")
             if schedule['summarized_today']:
                 logging.info(f"Successfully triggered document fetch for: {json.dumps(schedule['companyId'])} - {json.dumps(schedule['reportType'])}")
+                return True
             else:
                 if response_json.get('code') == 404:
                     logging.error(f"No new uploaded documents found for: {json.dumps(schedule['companyId'])} - {json.dumps(schedule['reportType'])}. Last checked time: {start_time}")
                 else:
                     logging.error(f"Failed to trigger document fetch for: {json.dumps(schedule['companyId'])} - {json.dumps(schedule['reportType'])}")
-    
+                return False
         # update last run time regarless of the outcome 
         schedule['lastRun'] = start_time
         cosmos_data_loader.update_last_run(schedule)
     except Exception as e:
         logging.error(f"Error in trigger_document_fetch: {str(e)}")
         schedule['summarized_today'] = False
-
+        return False
 
 def main(timer: func.TimerRequest) -> None:
 
@@ -74,12 +76,15 @@ def main(timer: func.TimerRequest) -> None:
 
     # Main scheduling logic
     cosmos_data_loader = CosmosDBLoader('schedules')
+    success_count = 0
     try:
         # get all schedules that are active and have a frequency of twice_a_day
         active_schedules = cosmos_data_loader.get_data(frequency="twice_a_day")
         for schedule in active_schedules:
             logging.info(f"Triggering fetch for schedule {schedule['id']}")
-            trigger_document_fetch(schedule)
-                
+            success = trigger_document_fetch(schedule)
+            if success:
+                success_count += 1  
+        logging.info(f"Successfully triggered fetch for {success_count} schedules")
     except Exception as e:
         logging.error(f"Error in scheduler: {str(e)}")
