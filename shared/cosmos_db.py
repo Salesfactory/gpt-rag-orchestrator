@@ -207,14 +207,3 @@ def was_summarized_today(schedule: dict) -> bool:
         logging.error(f"Error checking summary status: {e}")
         return False
 
-# check update last run 
-
-if __name__ == "__main__":
-    data = {
-        "companyId": "LOW",
-        "reportType": "8-K",
-        "isActive": False,
-        "id": "d074f28a-de01-46ec-a4e2-df6873e5b379",
-        "lastRun": "2024-12-28T15:45:31.237398"
-    }
-    update_last_run(data)
