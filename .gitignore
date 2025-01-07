@@ -58,7 +58,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
-.vscode/
+
 .python-version
 
 # Byte-compiled / optimized / DLL files
@@ -73,3 +73,4 @@ __azurite_db*__.json
 
 .azure
 financial-orc/graphs/test.ipynb
+.vscode/
