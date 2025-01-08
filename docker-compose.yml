@@ -1,0 +1,12 @@
+version: '3'
+services:
+  functions:
+    build: .
+    ports:
+      - "7071:80"
+    environment:
+      - AzureWebJobsStorage=UseDevelopmentStorage=true
+      - FUNCTIONS_WORKER_RUNTIME=python
+    volumes:
+      - .:/home/site/wwwroot
+      - ./local.settings.json:/home/site/wwwroot/local.settings.json 

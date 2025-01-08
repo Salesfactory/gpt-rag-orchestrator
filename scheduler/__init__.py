@@ -8,6 +8,8 @@ from shared.cosmos_db import was_summarized_today
 from shared.cosmo_data_loader import CosmosDBLoader
 import requests
 
+SCHEDULES_CONTAINER = 'schedules'
+
 class LastRunUpdateError(Exception):
     """Custom exception for when the last run time update fails"""
     def __init__(self, schedule_id: str, original_error: Exception):
@@ -29,8 +31,8 @@ def trigger_document_fetch(schedule: dict) -> bool:
         LastRunUpdateError: If updating the last run time fails
     """
     # Move these outside the function if possible since they're used across multiple calls
-    cosmos_data_loader = CosmosDBLoader(os.getenv('SCHEDULES_CONTAINER'))
-    process_and_summarize_url = os.getenv('PROCESS_AND_SUMMARIZE_URL')
+    cosmos_data_loader = CosmosDBLoader(SCHEDULES_CONTAINER)
+    process_and_summarize_url = f'{os.environ["WEB_APP_URL"]}/api/SECEdgar/financialdocuments/process-and-summarize'
     
     start_time = datetime.now(UTC).isoformat()
     
