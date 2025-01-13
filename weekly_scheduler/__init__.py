@@ -91,7 +91,7 @@ def send_report_email(blob_link: str, report_name: str) -> bool:
     email_list = cosmo_db_manager.get_email_list()
 
     email_payload = {
-        'report_blob_link': blob_link,
+        'blob_link': blob_link,
         'email_subject': 'Sales Factory Weekly Report',
         'recipients': email_list,
         'save_email': 'yes'
@@ -126,7 +126,7 @@ def main(mytimer: func.TimerRequest) -> None:
             continue
 
         # extract blob link and send email 
-        blob_link = response_json.get('blob_link')
+        blob_link = response_json.get('report_url')
 
         if not blob_link:
             logger.error(f"Failed to extract blob link for {report} at {utc_timestamp}")
@@ -136,6 +136,7 @@ def main(mytimer: func.TimerRequest) -> None:
             logger.info(f"Report {report} sent successfully at {utc_timestamp}")
         else:
             logger.error(f"Failed to send email for {report} at {utc_timestamp}")
+            logger.error(f"Report with blob link {blob_link} was not sent")
 
     logger.info(f"Weekly report generation completed at {datetime.now(timezone.utc).isoformat()}")
 
