@@ -1,6 +1,7 @@
 import json
 import os
 from azure.cosmos import CosmosClient, PartitionKey, exceptions
+from azure.identity import DefaultAzureCredential
 import uuid
 from datetime import datetime, timezone
 from dotenv import load_dotenv
@@ -16,8 +17,8 @@ logger = logging.getLogger(__name__)
 class CosmosDBLoader:
     def __init__(self, container_name: str):
         load_dotenv()  # Load environment variables from .env file
-        self.db_uri = os.getenv('AZURE_COSMOS_ENDPOINT')
-        self.credential = os.getenv('AZURE_COSMOS_KEY')
+        self.db_uri = f"https://{os.getenv('AZURE_DB_ID')}.documents.azure.com:443/"
+        self.credential = DefaultAzureCredential()
         self.database_name = os.getenv('AZURE_DB_NAME')
         self.container_name = container_name or os.getenv('AZURE_COSMOS_CONTAINER_NAME')
 

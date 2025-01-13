@@ -6,6 +6,7 @@ from typing import List, Dict, Optional
 from tenacity import retry, stop_after_attempt, wait_exponential
 import azure.functions as func  
 from azure.cosmos import CosmosClient
+from azure.identity import DefaultAzureCredential
 # logger setting 
 logging.basicConfig(level=logging.INFO) 
 logger = logging.getLogger(__name__)
@@ -39,8 +40,8 @@ MAX_RETRIES = 3
 
 class CosmoDBManager:
     def __init__(self, container_name: str = 'subscription_emails', 
-                 db_uri: str = os.environ['AZURE_COSMOS_ENDPOINT'], 
-                 credential: str = os.environ['AZURE_COSMOS_KEY'], 
+                 db_uri: str = f"https://{os.environ['AZURE_DB_ID']}.documents.azure.com:443/", 
+                 credential: str = DefaultAzureCredential(), 
                  database_name: str = os.environ['AZURE_DB_NAME']):
         self.container_name = container_name
         self.db_uri = db_uri
