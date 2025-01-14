@@ -8,6 +8,9 @@ from langchain_core.documents import Document
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 import logging
+from dotenv import load_dotenv
+
+load_dotenv()
 
 LOGLEVEL = os.environ.get("LOGLEVEL", "INFO").upper()
 logging.basicConfig(level=LOGLEVEL)
@@ -15,7 +18,7 @@ logging.basicConfig(level=LOGLEVEL)
 
 
 def get_secret(secretName):
-    keyVaultName = os.environ["AZURE_KEY_VAULT_NAME"]
+    keyVaultName = os.getenv("AZURE_KEY_VAULT_NAME")
     KVUri = f"https://{keyVaultName}.vault.azure.net"
     credential = DefaultAzureCredential()
     client = SecretClient(vault_url=KVUri, credential=credential)
@@ -237,3 +240,7 @@ def format_retrieved_content(docs):
         
     except Exception as e:
         return [Document(page_content=f"Error formatting documents: {str(e)}")]
+
+
+if __name__ == "__main__":
+    print(get_secret('blobSasToken'))
