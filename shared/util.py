@@ -1003,6 +1003,42 @@ def get_organization(organization_id):
         )
     return organization
 
+def updateExpirationDate(subscription_id, expiration_date):
+    if not subscription_id:
+        return {"error": "Subscription ID not found."}
+
+    logging.info(
+        "Subscription ID found. Updating expiration date for subscription: "
+        + subscription_id
+    )
+
+    credential = DefaultAzureCredential()
+    db_client = CosmosClient(AZURE_DB_URI, credential, consistency_level="Session")
+    db = db_client.get_database_client(database=AZURE_DB_NAME)
+    container = db.get_container_client("organizations")
+    try:
+        query = "SELECT * FROM c WHERE c.subscriptionId = @subscription_id"
+        parameters = [{"name": "@subscription_id", "value": subscription_id}]
+        result = list(
+            container.query_items(
+                query=query, parameters=parameters, enable_cross_partition_query=True
+            )
+        )
+        if result:
+            organization = result[0]
+            organization["subscriptionExpirationDate"] = expiration_date
+            container.replace_item(item=organization["id"], body=organization)
+            logging.info(
+                f"[updateExpirationDate] Successfully updated expiration date for organization {organization['id']}"
+            )
+        else:
+            logging.info(
+                f"[updateExpirationDate] updateExpirationDate: {subscription_id} not found"
+            )
+    except Exception as e:
+        logging.info(
+            f"[updateExpirationDate] updateExpirationDate: something went wrong. {str(e)}"
+        )
 
 def enable_organization_subscription(subscription_id):
     if not subscription_id:
