@@ -1,3 +1,4 @@
+import os
 import logging
 import traceback
 from typing import Dict, Any
@@ -6,7 +7,8 @@ from http import HTTPStatus
 import azure.functions as func
 from azure.core.exceptions import AzureError
 from shared.blob_storage import BlobStorage
-from azure.storage.blob import ContentSettings
+from azure.identity import DefaultAzureCredential
+from azure.storage.blob import ContentSettings, BlobClient
 from .ingestion import ExcelProcessor, ChunkProcessor, LLMManager
 from .schemas import ExcelIngestionRequest, ExcelIngestionResponse
 from .exceptions import ValidationError, ProcessingError
@@ -24,6 +26,7 @@ logger = logging.getLogger(__name__)
 MAX_WORKERS = 10
 LLM_DEPLOYMENT_NAME = "Agent"
 CONTAINER_NAME = "documents"
+BLOB_ACCOUNT_URL = f"https://{os.getenv('STORAGE_ACCOUNT')}.blob.core.windows.net"
 
 class ExcelIngestionHandler:
     def __init__(self):
@@ -37,6 +40,10 @@ class ExcelIngestionHandler:
     def process_excel(self, excel_blob_path: str) -> str:
         """Process excel file and return markdown output path."""
         logger.info(f"{LOGGER_NAME} Starting excel processing for file: {excel_blob_path}")
+
+        logger.info(f"{LOGGER_NAME} Validating excel blob path")
+        self._validate_excel_blob_path(excel_blob_path)
+
         try:
             # Download and preprocess
             logger.info(f"{LOGGER_NAME} Downloading and preprocessing excel file")
@@ -67,7 +74,15 @@ class ExcelIngestionHandler:
         except Exception as e:
             logger.error(f"{LOGGER_NAME} Error processing excel file: {str(e)}")
             raise ProcessingError(f"Failed to process excel file: {str(e)}")
-
+    
+    def _validate_excel_blob_path(self, excel_blob_path: str):
+        """Validate excel blob path."""
+        if not excel_blob_path.endswith('.xlsx'):
+            raise ValidationError("Excel file must have a .xlsx extension")
+        
+        if not BlobClient(account_url=BLOB_ACCOUNT_URL, credential=DefaultAzureCredential(), container_name=CONTAINER_NAME, blob_name=excel_blob_path).exists():
+            raise ValidationError(f"Excel file not found in blob storage: {excel_blob_path}")
+        
     def _preprocess_dataframe(self, df):
         """Handle all dataframe preprocessing steps."""
         logger.debug(f"{LOGGER_NAME} Preprocessing dataframe")
@@ -142,6 +157,12 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
     except Exception as e:
         logger.error(f"{LOGGER_NAME} Unexpected error for request {request_id}: {str(e)}\n{traceback.format_exc()}")
         return func.HttpResponse(
-            body="An unexpected error occurred",
+            body=f"An unexpected error occurred: {str(e)}",
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR
         )
+    
+
+if __name__ == "__main__":
+    handler = BlobStorage(container_name=CONTAINER_NAME, blob_name="Excel-Processed/Databook_Nov8th2024_processed.md")
+    # check if the file exists
+    print(handler.blob_client.exists()) 

@@ -1,5 +1,5 @@
 from azure.identity import DefaultAzureCredential
-from azure.storage.blob import BlobServiceClient, ContentSettings
+from azure.storage.blob import BlobServiceClient
 import os
 import pandas as pd
 import io
@@ -47,6 +47,7 @@ class BlobStorage:
         try:
             self.blob_service_client = BlobServiceClient(account_url=BLOB_ACCOUNT_URL, credential=credential)
             self.container_client = self.blob_service_client.get_container_client(container_name)
+            # self.blob_client = BlobClient(account_url=BLOB_ACCOUNT_URL, credential=credential, container_name=container_name, blob_name=blob_name)
             logger.info(f"{LOGGER_NAME} Successfully initialized BlobStorage")
         except Exception as e:
             logger.error(f"{LOGGER_NAME} Failed to initialize BlobStorage: {str(e)}")
