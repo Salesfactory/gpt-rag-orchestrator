@@ -1,113 +1,147 @@
 import logging
+import traceback
+from typing import Dict, Any
+from http import HTTPStatus
+
 import azure.functions as func
-from azure.identity import DefaultAzureCredential
+from azure.core.exceptions import AzureError
 from shared.blob_storage import BlobStorage
-from .ingestion import *
+from azure.storage.blob import ContentSettings
+from .ingestion import ExcelProcessor, ChunkProcessor, LLMManager
+from .schemas import ExcelIngestionRequest, ExcelIngestionResponse
+from .exceptions import ValidationError, ProcessingError
+
+# Define logger name constant
+LOGGER_NAME = "[ExcelIngestion-Function]"
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s [Ingestion-Webbackend] %(message)s',
+    format=f'%(asctime)s {LOGGER_NAME} %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger(__name__)
 
-
+MAX_WORKERS = 10
 LLM_DEPLOYMENT_NAME = "Agent"
-MAX_WORKERS = 5
 CONTAINER_NAME = "documents"
 
+class ExcelIngestionHandler:
+    def __init__(self):
+        logger.info(f"{LOGGER_NAME} Initializing ExcelIngestionHandler")
+        self.blob_storage = BlobStorage(container_name=CONTAINER_NAME)
+        self.excel_processor = ExcelProcessor()
+        self.chunk_processor = ChunkProcessor(max_workers=MAX_WORKERS)
+        self.llm_manager = LLMManager(deployment_name=LLM_DEPLOYMENT_NAME)
+        logger.info(f"{LOGGER_NAME} ExcelIngestionHandler initialized successfully")
 
-""" 
-Here is the sequence of steps: 
-1. get the excel file from the blob storage 
-2. read the excel file 
-3. clean the excel file 
-4. convert the excel file to markdown 
-5. upload the markdown file to the blob storage 
-"""
+    def process_excel(self, excel_blob_path: str) -> str:
+        """Process excel file and return markdown output path."""
+        logger.info(f"{LOGGER_NAME} Starting excel processing for file: {excel_blob_path}")
+        try:
+            # Download and preprocess
+            logger.info(f"{LOGGER_NAME} Downloading and preprocessing excel file")
+            df = self.excel_processor.download_and_read_excel_file(excel_blob_path)
+            df = self._preprocess_dataframe(df)
+            
+            # Process with LLM
+            logger.info(f"{LOGGER_NAME} Processing with LLM")
+            date = self.excel_processor.get_date(excel_blob_path)
+            df_parts = self.excel_processor.split_data(df)
+            system_prompt = self.llm_manager.get_prompt("excel_processing_system_prompt")
+            
+            md_output = self.chunk_processor.parallel_llm_chunk_processing(
+                df_parts=df_parts,
+                date=date,
+                llm_manager=self.llm_manager,
+                system_prompt=system_prompt
+            )
 
-blob_storage = BlobStorage()
+            # Upload result
+            output_path = f"Excel-Processed/{excel_blob_path.replace('.xlsx', '_processed.md')}"
+            logger.info(f"{LOGGER_NAME} Uploading processed markdown to: {output_path}")
+            self._upload_markdown(output_path, md_output)
+            
+            logger.info(f"{LOGGER_NAME} Excel ingested and uploaded completed successfully")
+            return output_path
+
+        except Exception as e:
+            logger.error(f"{LOGGER_NAME} Error processing excel file: {str(e)}")
+            raise ProcessingError(f"Failed to process excel file: {str(e)}")
+
+    def _preprocess_dataframe(self, df):
+        """Handle all dataframe preprocessing steps."""
+        logger.debug(f"{LOGGER_NAME} Preprocessing dataframe")
+        df = self.excel_processor.rename_columns(df)
+        df = self.excel_processor.remove_unnamed_columns(df)
+        return df
+
+    def _upload_markdown(self, path: str, content: str) -> None:
+        """Upload markdown content to blob storage."""
+        try:
+            logger.info(f"{LOGGER_NAME} Uploading markdown to blob storage: {path}")
+            self.blob_storage.container_client.upload_blob(
+                name=path,
+                data=content,
+                content_settings=ContentSettings('text/plain'),
+                overwrite=True
+            )
+            logger.info(f"{LOGGER_NAME} Markdown uploaded successfully")
+        except AzureError as e:
+            logger.error(f"{LOGGER_NAME} Failed to upload markdown: {str(e)}")
+            raise ProcessingError(f"Failed to upload markdown: {str(e)}")
+
 def main(req: func.HttpRequest) -> func.HttpResponse:
-    logging.info('Python HTTP trigger function processed a request.')
+    """Azure Function endpoint for excel ingestion."""
+    request_id = req.headers.get('x-request-id', 'unknown')
+    logger.info(f"{LOGGER_NAME} Processing excel ingestion request {request_id}")
 
-    # request body should look like this:
-    # {
-    #     "excel_blob_path": "string",
-    # }
+    try:
+        # Validate request
+        if not req.get_json():
+            logger.warning(f"{LOGGER_NAME} Request body is missing for request {request_id}")
+            return func.HttpResponse(
+                body='Request body is required',
+                status_code=HTTPStatus.BAD_REQUEST
+            )
 
+        request_data = ExcelIngestionRequest(**req.get_json())
+        
+        # Process request
+        logger.info(f"{LOGGER_NAME} Creating handler and processing excel file")
+        handler = ExcelIngestionHandler()
+        output_path = handler.process_excel(request_data.excel_blob_path)
+        
+        # Return response
+        response = ExcelIngestionResponse(
+            status="success",
+            message="Excel file processed successfully",
+            output_path=output_path
+        )
+        
+        logger.info(f"{LOGGER_NAME} Request {request_id} processed successfully")
+        return func.HttpResponse(
+            body=response.model_dump_json(),
+            status_code=HTTPStatus.OK,
+            mimetype="application/json"
+        )
 
-    # Get the JSON data from the request body
-    request_body = req.get_json()
+    except ValidationError as e:
+        logger.warning(f"{LOGGER_NAME} Validation error for request {request_id}: {str(e)}")
+        return func.HttpResponse(
+            body=str(e),
+            status_code=HTTPStatus.BAD_REQUEST
+        )
     
-    # get the local blob path the excel container 
-
-    excel_blob_path = request_body.get('excel_blob_path')
-
-    # initialize the excel processor 
-    excel_processor = ExcelProcessor()
-
-    #########################################
-    # Pre Prcess the excel file (data cleaning)
-    #########################################
-
-    # download the excel file from the blob storage 
-    df = excel_processor.download_and_read_excel_file(excel_blob_path)
-
-    # rename the columns (databook)
-    df = excel_processor.rename_columns(df)
-
-    # remove the unnamed columns 
-    df = excel_processor.remove_unnamed_columns(df)
-
-    # get the date of the excel file 
-    date = excel_processor.get_date(excel_blob_path)
-
-    # vertically split the dataframe (cut in half, or more depends on the number of column)
-    df_parts = excel_processor.split_data(df)
-
-    # validate the splits 
-    validate_splits(df_parts)
-
-    #########################################
-    # Process the excel file 
-    #########################################
-
-    # initialize the chunk processor 
-    chunk_processor = ChunkProcessor(max_workers=MAX_WORKERS)
-
-    # initialize the llm manager 
-    llm_manager = LLMManager(deployment_name="Agent")
-
-    # get the system prompt 
-    system_prompt = llm_manager.get_prompt("excel_processing_system_prompt")
-
-    # parallel llm chunk processing 
-    md_output = chunk_processor.parallel_llm_chunk_processing(df_parts=df_parts, 
-                                                    date=date, 
-                                                    llm_manager=llm_manager, 
-                                                    system_prompt=system_prompt)
+    except ProcessingError as e:
+        logger.error(f"{LOGGER_NAME} Processing error for request {request_id}: {str(e)}")
+        return func.HttpResponse(
+            body=str(e),
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR
+        )
     
-    # upload the output to blob storage 
-    blob_storage.container_client.upload_blob(
-        name=f"Excel-Processed/{excel_blob_path.replace('.xlsx', '_processed.md')}", 
-        data=md_output, 
-        content_settings=ContentSettings('text/plain'), 
-        overwrite=True)
-
-    return func.HttpResponse(status_code=200, body="Excel file processed successfully")
-
-
-
-
-
-    
-
-
-
-# create 3 classes? 
-""" 
-1. Provide a blob link to the 
-2. import the data clean it 
-3. LLM Processing
-4. Upload to Blob    
-"""
+    except Exception as e:
+        logger.error(f"{LOGGER_NAME} Unexpected error for request {request_id}: {str(e)}\n{traceback.format_exc()}")
+        return func.HttpResponse(
+            body="An unexpected error occurred",
+            status_code=HTTPStatus.INTERNAL_SERVER_ERROR
+        )

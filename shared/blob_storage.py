@@ -5,9 +5,12 @@ import pandas as pd
 import io
 import logging
 
+# Define logger name constant
+LOGGER_NAME = "[BlobStorage]"
+
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s [BlobStorage] %(message)s',
+    format=f'%(asctime)s {LOGGER_NAME} %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 logger = logging.getLogger(__name__)
@@ -38,35 +41,24 @@ class BlobInitError(BlobStorageError):
 
 class BlobStorage:
     def __init__(self, container_name: str = "documents"):
+        logger.info(f"{LOGGER_NAME} Initializing BlobStorage with container: {container_name}")
         credential = DefaultAzureCredential()
         BLOB_ACCOUNT_URL = f"https://{os.getenv('STORAGE_ACCOUNT')}.blob.core.windows.net"
         try:
             self.blob_service_client = BlobServiceClient(account_url=BLOB_ACCOUNT_URL, credential=credential)
             self.container_client = self.blob_service_client.get_container_client(container_name)
+            logger.info(f"{LOGGER_NAME} Successfully initialized BlobStorage")
         except Exception as e:
+            logger.error(f"{LOGGER_NAME} Failed to initialize BlobStorage: {str(e)}")
             raise BlobInitError(f"Error initializing BlobStorage: {e}")
 
     def list_excel_files(self):
-        # list all excel files in the container 
+        logger.info(f"{LOGGER_NAME} Listing Excel files in container")
         try: 
             blob_list = self.container_client.list_blobs()
-            return [blob.name for blob in blob_list if blob.name.endswith('.xlsx')]
+            excel_files = [blob.name for blob in blob_list if blob.name.endswith('.xlsx')]
+            logger.info(f"{LOGGER_NAME} Found {len(excel_files)} Excel files")
+            return excel_files
         except Exception as e:
-            logger.error(f"Error listing excel files: {e}")
+            logger.error(f"{LOGGER_NAME} Error listing Excel files: {str(e)}")
             return []
-
-if __name__ == "__main__":
-    blob_storage = BlobStorage()
-    
-    # download files 
-    # blob_client = blob_storage.container_client.get_blob_client(blob="Databook_Nov8th2024.xlsx")
-    # downloaded_blob = blob_client.download_blob()
-    
-    # # Convert blob data to bytes and read with pandas
-    # blob_data = downloaded_blob.readall()
-    # df = pd.read_excel(io.BytesIO(blob_data))
-    # print(df.head())
-    # list all excel files in the container 
-    print(blob_storage.list_excel_files())
-
-
