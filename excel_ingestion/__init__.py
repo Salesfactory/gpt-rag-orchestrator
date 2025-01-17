@@ -160,9 +160,3 @@ def main(req: func.HttpRequest) -> func.HttpResponse:
             body=f"An unexpected error occurred: {str(e)}",
             status_code=HTTPStatus.INTERNAL_SERVER_ERROR
         )
-    
-
-if __name__ == "__main__":
-    handler = BlobStorage(container_name=CONTAINER_NAME, blob_name="Excel-Processed/Databook_Nov8th2024_processed.md")
-    # check if the file exists
-    print(handler.blob_client.exists()) 
