@@ -1199,7 +1199,10 @@ def update_subscription_logs(
     subscription_id,
     action,
     previous_plan=None,
-    current_plan=None
+    current_plan=None,
+    modified_by=None,
+    modified_by_name=None,
+    status_financial_assistant=None
 ):
     """
         Logs subscription-related events to the audit container.
@@ -1209,6 +1212,8 @@ def update_subscription_logs(
         - action: New Subscription, Subscription Tier Change, Financial Assistant On, Financial Assistant Off.
         - previous_plan: Pre-plan before a plan change.
         - current_plan: Current plan after a plan change.
+        - modified_by: UserID who made the modification
+        - modified_by_user: UserName who made the modification
     """
     if not subscription_id:
         return {"error": "Subscription ID not provided."}
@@ -1244,20 +1249,27 @@ def update_subscription_logs(
 
             audit_log_entry = {
                 "id": str(uuid.uuid4()),  # Unique ID for the audit log
-                "subscriptionId": subscription_id,
                 "organizationName": organization_name,
                 "organizationOwner": organization_owner,
+                "subscriptionId": subscription_id,
                 "action": action,
-                "changeTime": datetime.utcnow().isoformat(),
+                "changeTime": int(datetime.utcnow().timestamp()),
             }
 
             # Add previous and current plans if the action is "Subscription Tier Change"
             if action == "Subscription Tier Change":
                 audit_log_entry["previous_plan"] = previous_plan
                 audit_log_entry["current_plan"] = current_plan
+                audit_log_entry["modified_by"] = modified_by
+                audit_log_entry["modified_by_name"] = modified_by_name
 
             if action == "New Subscription":
                 audit_log_entry["current_plan"] = current_plan
+
+            if action in ["Financial Assistant Change"]:
+                audit_log_entry["modified_by"] = modified_by
+                audit_log_entry["modified_by_name"] = modified_by_name
+                audit_log_entry["status_financial_assistant"]= status_financial_assistant
 
             auditlogs_container.create_item(body=audit_log_entry)
             logging.info(
@@ -1319,7 +1331,7 @@ def handle_subscription_logs(subscription_id, event_type):
                 "organizationName": organization_name,
                 "organizationOwner": organization_owner,
                 "action": event_type,  # event_type: paused, resumed, deleted
-                "changeTime": datetime.utcnow().isoformat(),
+                "changeTime": int(datetime.utcnow().timestamp()),
             }
 
             auditlogs_container.create_item(body=audit_log_entry)

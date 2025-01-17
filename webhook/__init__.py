@@ -73,40 +73,37 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
             previous_data = event.get("data", {}).get("previous_attributes", {})
             current_items = data.get("items", {}).get("data", [])
             previous_items = previous_data.get("items", {}).get("data", [])
+            metadata=data.get("metadata",{})
+
 
             #Detect when the subscription is new
             if "status" in previous_data and previous_data["status"] == "incomplete" and data["status"] == "active":
                 current_plan = data.get("plan", {})
                 current_plan_nickname = current_plan.get("nickname", "Unknown")
-                return "New Subscription", None, current_plan_nickname
+                return "New Subscription", None, current_plan_nickname, None, None, None
 
+            #Detect whent the financial assistant is active o disabled
+            if "modification_type" in metadata:
+                modification_type = metadata.get("modification_type")
+                modified_by = metadata.get("modified_by", "Unknown")
+                modified_by_name = metadata.get("modified_by_name","Unknown")
 
-            # Detect Financial Assistant activated
-            if len(previous_items) < len(current_items):
-                new_item_ids = {item["id"] for item in current_items} - {item["id"] for item in previous_items}
-                for item in current_items:
-                    if item["id"] in new_item_ids:
-                        if item["price"]["product"] == stripe_product_fa:  # ID del Financial Assistant
-                            return "Financial Assistant on", None, None
-
-            # Detect Financial Assistant disabled
-            if len(previous_items) > len(current_items):
-                removed_item_ids = {item["id"] for item in previous_items} - {item["id"] for item in current_items}
-                for item in previous_items:
-                    if item["id"] in removed_item_ids:
-                        if item["price"]["product"] == stripe_product_fa:  # ID del Financial Assistant
-                            return "Financial Assistant off", None, None
-
-            # Detect subscription level change
-            if "plan" in previous_data:
-                previous_plan = previous_data.get("plan",{}).get("nickname",None)
-                current_plan = data.get("plan",{}).get("nickname",None)
-                return "Subscription Tier Change",previous_plan,current_plan
+            if modification_type == "add_financial_assistant":
+                status_financial_assistant = "active"
+                return "Financial Assistant Change", None, None, modified_by,modified_by_name, status_financial_assistant
+            elif modification_type == "remove_financial_assistant":
+                status_financial_assistant = "inactive"
+                return "Financial Assistant Change", None, None, modified_by,modified_by_name, status_financial_assistant
             
+            # Detect subscription level change
+            if "plan" in previous_data and metadata.get("modification_type") == "subscription_tier_change":
+                previous_plan = previous_data.get("plan", {}).get("nickname", None)
+                current_plan = data.get("plan", {}).get("nickname", None)
+                return "Subscription Tier Change", previous_plan, current_plan, modified_by,modified_by_name, None
             # Unknown action
-            return "Unknown action", None, None
+            return "Unknown action", None, None, modified_by,modified_by_name, None
         
-        action, previous_plan, current_plan = determine_action(event)
+        action, previous_plan, current_plan, modified_by, modified_by_name, status_financial_assistant = determine_action(event)
         print(f"Action determined: {action}")
 
         if action =="Subscription Tier Change":
@@ -114,7 +111,7 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
             print(f"Current Plan: {current_plan}")
 
         enable_organization_subscription(subscriptionId)
-        update_subscription_logs(subscriptionId, action, previous_plan, current_plan)
+        update_subscription_logs(subscriptionId, action, previous_plan, current_plan, modified_by, modified_by_name, status_financial_assistant)
     elif event["type"] == "customer.subscription.paused":
         print("  Webhook received!", event["type"])
         subscriptionId = event["data"]["object"]["id"]
