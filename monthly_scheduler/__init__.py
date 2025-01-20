@@ -26,7 +26,9 @@ check other way to use endpoint
 
 """
 
-MONTHLY_REPORTS = ['Monthly_Economics'] # todo: add ecommerce report
+MONTHLY_REPORTS = ['Monthly_Economics', 'Ecommerce', "Home_Improvement", "Company_Analysis"]
+
+COMPANY_NAME = ["Home Depot", "Lowes"]
 
 CURATION_REPORT_ENDPOINT = f'{os.environ["WEB_APP_URL"]}/api/reports/generate/curation'
 
@@ -62,12 +64,15 @@ class CosmoDBManager:
                 email_list.append(item['email'])
         return email_list
 
-def generate_report(report_topic: str) -> Optional[Dict]:
+def generate_report(report_topic: str, company_name: Optional[str] = None) -> Optional[Dict]:
     """Generate a report and return the response if successful """
 
     payload = {
         'report_topic': report_topic
     }
+
+    if company_name:
+        payload['company_name'] = company_name
 
     @retry(stop = stop_after_attempt(MAX_RETRIES), wait = wait_exponential(multiplier=1, min=4, max=10))
     def _make_report_request():
@@ -137,8 +142,13 @@ def main(mytimer: func.TimerRequest) -> None:
     logger.info(f"Monthly report generation started at {utc_timestamp}")
 
     for report in MONTHLY_REPORTS:
-        logger.info(f"Generating report for {report} at {utc_timestamp}")
-        response_json = generate_report(report)
+        if report == "Company_Analysis":
+            for company in COMPANY_NAME:
+                logger.info(f"Generating company report for {company} at {utc_timestamp}")
+                response_json = generate_report(report, company)
+        else:
+            logger.info(f"Generating report for {report} at {utc_timestamp}")
+            response_json = generate_report(report)
 
         if not response_json or response_json.get('status') != 'success':
             logger.error(f"Failed to generate report for {report} at {utc_timestamp}")
