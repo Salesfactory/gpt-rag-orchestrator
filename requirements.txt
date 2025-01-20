@@ -23,4 +23,5 @@ weasyprint==63.1
 python-dotenv
 openpyxl
 azure-storage-blob==12.24.0
+bleach==6.2.0
 
