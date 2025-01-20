@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import List, Dict, Optional
 from tenacity import retry, stop_after_attempt, wait_exponential
 import azure.functions as func  
+from .exceptions import CompanyNameRequiredError
 from azure.cosmos import CosmosClient
 from azure.identity import DefaultAzureCredential
 # logger setting 
@@ -71,8 +72,13 @@ def generate_report(report_topic: str, company_name: Optional[str] = None) -> Op
         'report_topic': report_topic
     }
 
-    if company_name:
-        payload['company_name'] = company_name
+    if payload['report_topic'] == "Company_Analysis":
+        if not company_name:
+            logger.error(f"Company name is required for Company Analysis report")
+            raise CompanyNameRequiredError("Company name is required for Company Analysis report")
+        else:
+            logger.info(f"Company name is {company_name}")
+            payload['company_name'] = company_name
 
     @retry(stop = stop_after_attempt(MAX_RETRIES), wait = wait_exponential(multiplier=1, min=4, max=10))
     def _make_report_request():
