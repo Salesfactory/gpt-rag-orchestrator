@@ -9,7 +9,7 @@ import tiktoken
 import time
 import urllib.parse
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from azure.cosmos import CosmosClient
 from azure.keyvault.secrets import SecretClient
 from azure.identity import DefaultAzureCredential
@@ -1195,6 +1195,23 @@ def update_organization_subscription(
                 f"[util__module] update_organization_subscription: {organization_id} not found"
             )
 
+
+def get_organization_by_subscription_id(subscription_id, organizations_container):
+    query = "SELECT * FROM c WHERE c.subscriptionId = @subscription_id"
+    parameters = [{"name": "@subscription_id", "value": subscription_id}]
+    result = organizations_container.query_items(query=query, parameters=parameters, enable_cross_partition_query=True)
+    return list(result)
+
+def create_audit_log_entry(auditlogs_container, entry):
+    try:
+        auditlogs_container.create_item(body=entry)
+        logging.info(f"Audit log entry created: {entry}")
+        return {"success": True, "message": "Audit log created successfully."}
+    except Exception as e:
+        logging.error(f"Error creating audit log: {str(e)}")
+        return {"error": f"An error occurred: {str(e)}"}
+
+
 def update_subscription_logs(
     subscription_id,
     action,
@@ -1208,12 +1225,13 @@ def update_subscription_logs(
         Logs subscription-related events to the audit container.
 
         Parameters:
-        - subscription_id (str): Subscription ID.
-        - action: New Subscription, Subscription Tier Change, Financial Assistant On, Financial Assistant Off.
-        - previous_plan: Pre-plan before a plan change.
-        - current_plan: Current plan after a plan change.
-        - modified_by: UserID who made the modification
-        - modified_by_user: UserName who made the modification
+        - subscription_id (str): ID of the subscription being modified.
+        - action (str): Action type (e.g., 'New Subscription', 'Subscription Tier Change').
+        - previous_plan (str, optional): The plan before a change (required for 'Subscription Tier Change').
+        - current_plan (str, optional): The plan after a change.
+        - modified_by (str, optional): User ID of the person making the change.
+        - modified_by_name (str, optional): Name of the person making the change.
+        - status_financial_assistant (str, optional): Status of the financial assistant feature.
     """
     if not subscription_id:
         return {"error": "Subscription ID not provided."}
@@ -1224,67 +1242,43 @@ def update_subscription_logs(
     db_client = CosmosClient(AZURE_DB_URI, credential, consistency_level="Session")
     db = db_client.get_database_client(database=AZURE_DB_NAME)
 
-    #Containers
+
     organizations_container = db.get_container_client("organizations")
     auditlogs_container = db.get_container_client("auditLogs")
 
     try:
-        #Query the organization using the subscription_id
-        query = "SELECT * FROM c WHERE c.subscriptionId = @subscription_id"
-        parameters = [{"name": "@subscription_id", "value": subscription_id}]
-        result = list(
-            organizations_container.query_items(
-                query=query, parameters=parameters, enable_cross_partition_query=True
-            )
-        )
-
-        if result:
-            organization = result[0]
-            organization_name = organization.get("name")
-            organization_owner = organization.get("owner")
-
-            if not organization_name or not organization_owner:
-                logging.warning(f"Missing required fields in organization: {organization}")
-                return {"error": "Missing 'name' or 'owner' fields in organization data."}
-
-            audit_log_entry = {
-                "id": str(uuid.uuid4()),  # Unique ID for the audit log
-                "organizationName": organization_name,
-                "organizationOwner": organization_owner,
-                "subscriptionId": subscription_id,
-                "action": action,
-                "changeTime": int(datetime.utcnow().timestamp()),
-            }
-
-            # Add previous and current plans if the action is "Subscription Tier Change"
-            if action == "Subscription Tier Change":
-                audit_log_entry["previous_plan"] = previous_plan
-                audit_log_entry["current_plan"] = current_plan
-                audit_log_entry["modified_by"] = modified_by
-                audit_log_entry["modified_by_name"] = modified_by_name
-
-            if action == "New Subscription":
-                audit_log_entry["current_plan"] = current_plan
-
-            if action in ["Financial Assistant Change"]:
-                audit_log_entry["modified_by"] = modified_by
-                audit_log_entry["modified_by_name"] = modified_by_name
-                audit_log_entry["status_financial_assistant"]= status_financial_assistant
-
-            auditlogs_container.create_item(body=audit_log_entry)
-            logging.info(
-                f"[logAuditForSubscription] Audit log created for subscription {subscription_id}"
-            )
-
-            return {"success": True, "message": "Audit log created successfully."}
-        else:
-            logging.warning(f"[logAuditForSubscription] Subscription ID {subscription_id} not found.")
+        
+        result = get_organization_by_subscription_id(subscription_id, organizations_container)
+        if not result:
+            logging.warning(f"Subscription ID {subscription_id} not found.")
             return {"error": "Subscription ID not found in organizations container."}
-
+        
+        organization = result[0]
+        organization_name = organization.get("name")
+        organization_owner = organization.get("owner")
+        if not organization_name or not organization_owner:
+            logging.warning(f"Missing required fields in organization: {organization}")
+            return {"error": "Missing 'name' or 'owner' fields in organization data."}
+        
+    # Create audit log entry
+        audit_log_entry = {
+            "id": str(uuid.uuid4()),
+            "organizationName": organization_name,
+            "organizationOwner": organization_owner,
+            "subscriptionId": subscription_id,
+            "action": action,
+            "changeTime": int(datetime.now(timezone.utc).timestamp()),
+            "previous_plan": previous_plan,
+            "current_plan": current_plan,
+            "modified_by": modified_by,
+            "modified_by_name": modified_by_name,
+            "status_financial_assistant": status_financial_assistant,
+        }
+        return create_audit_log_entry(auditlogs_container, audit_log_entry)
     except Exception as e:
-        logging.error(f"[logAuditForSubscription] Error creating audit log: {str(e)}")
+        logging.error(f"Error in update_subscription_logs: {str(e)}")
         return {"error": f"An error occurred: {str(e)}"}
-
+    
 def handle_subscription_logs(subscription_id, event_type):
     """
         Logs subscription-related events to the audit container.
@@ -1293,56 +1287,88 @@ def handle_subscription_logs(subscription_id, event_type):
         - subscription_id (str): Subscription ID.
         - event_type (str): Event type (paused, resumed, deleted).
     """
-    if not subscription_id or not event_type:
-        return {"error": "Subscription ID or event type not provided."}
+    if not subscription_id:
+        return {"error": "Subscription ID not provided."}
 
-    logging.info(f"Handling subscription event: {event_type} for subscription: {subscription_id}")
+    logging.info(f"Logging audit for subscription: {subscription_id}")
 
     credential = DefaultAzureCredential()
     db_client = CosmosClient(AZURE_DB_URI, credential, consistency_level="Session")
     db = db_client.get_database_client(database=AZURE_DB_NAME)
 
-    # Containers
+
     organizations_container = db.get_container_client("organizations")
     auditlogs_container = db.get_container_client("auditLogs")
 
     try:
-        # Query the organization using the subscription_id
-        query = "SELECT * FROM c WHERE c.subscriptionId = @subscription_id"
-        parameters = [{"name": "@subscription_id", "value": subscription_id}]
-        result = list(
-            organizations_container.query_items(
-                query=query, parameters=parameters, enable_cross_partition_query=True
-            )
+        
+        result = get_organization_by_subscription_id(subscription_id, organizations_container)
+        if not result:
+            logging.warning(f"Subscription ID {subscription_id} not found.")
+            return {"error": "Subscription ID not found in organizations container."}
+        
+        organization = result[0]
+        organization_name = organization.get("name")
+        organization_owner = organization.get("owner")
+        if not organization_name or not organization_owner:
+            logging.warning(f"Missing required fields in organization: {organization}")
+            return {"error": "Missing 'name' or 'owner' fields in organization data."}
+
+        audit_log_entry = {
+            "id": str(uuid.uuid4()),
+            "subscriptionId": subscription_id,
+            "organizationName": organization_name,
+            "organizationOwner": organization_owner,
+            "action": event_type,  # event_type: paused, resumed, deleted
+            "changeTime": int(datetime.now(timezone.utc).timestamp()),
+        }
+
+        auditlogs_container.create_item(body=audit_log_entry)
+        logging.info(
+            f"[handleSubscriptionEvent] Audit log created for subscription {subscription_id}, action: {event_type}"
         )
 
-        if result:
-            organization = result[0]
-            organization_name = organization.get("name")
-            organization_owner = organization.get("owner")
+        return {"success": True, "message": f"Audit log created for {event_type} event."}
 
-            if not organization_name or not organization_owner:
-                logging.warning(f"Missing required fields in organization: {organization}")
-                return {"error": "Missing 'name' or 'owner' fields in organization data."}
+    except Exception as e:
+        logging.error(f"[handleSubscriptionEvent] Error creating audit log: {str(e)}")
+        return {"error": f"An error occurred: {str(e)}"}
 
-            audit_log_entry = {
-                "id": str(uuid.uuid4()),
-                "subscriptionId": subscription_id,
-                "organizationName": organization_name,
-                "organizationOwner": organization_owner,
-                "action": event_type,  # event_type: paused, resumed, deleted
-                "changeTime": int(datetime.utcnow().timestamp()),
-            }
 
-            auditlogs_container.create_item(body=audit_log_entry)
-            logging.info(
-                f"[handleSubscriptionEvent] Audit log created for subscription {subscription_id}, action: {event_type}"
-            )
+def handle_new_subscription_logs(userId, organizationId, userName, organizationName):
+    """
+        Logs events related to a new subscription to the audit container.
 
-            return {"success": True, "message": f"Audit log created for {event_type} event."}
-        else:
-            logging.warning(f"[handleSubscriptionEvent] Subscription ID {subscription_id} not found.")
-            return {"error": "Subscription ID not found in organizations container."}
+        Parameters:
+        - userId (str): user ID.
+        - organizationId (str): organization ID.
+        - userName (str): user Name.
+        - organizationName (str): organization Name
+    """
+    credential = DefaultAzureCredential()
+    db_client = CosmosClient(AZURE_DB_URI, credential, consistency_level="Session")
+    db = db_client.get_database_client(database=AZURE_DB_NAME)
+
+    # Containers
+    auditlogs_container = db.get_container_client("auditLogs")
+
+    try:
+        audit_log_entry = {
+            "id": str(uuid.uuid4()),
+            "modified_by_name":userName,
+            "modified_by":userId,
+            "organizationName": organizationName,
+            "organizationId": organizationId,
+            "action": 'Subscription created',
+            "changeTime": int(datetime.now(timezone.utc).timestamp()),
+        }
+
+        auditlogs_container.create_item(body=audit_log_entry)
+        logging.info(
+            f"[handleSubscriptionEvent] Audit log created"
+        )
+
+        return {"success": True, "message": f"Audit log created"}
 
     except Exception as e:
         logging.error(f"[handleSubscriptionEvent] Error creating audit log: {str(e)}")
