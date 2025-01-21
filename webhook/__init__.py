@@ -68,7 +68,6 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
         subscriptionId = event["data"]["object"]["id"]
         status = event["data"]["object"]["status"]
         expirationDate = event["data"]["object"]["current_period_end"]
-        print(event)
         print(f"expirationDate: => {expirationDate}")
         print(f"Subscription {subscriptionId} updated to status {status}")
 
@@ -99,7 +98,7 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
                 return "Financial Assistant Change", None, None, modified_by,modified_by_name, status_financial_assistant
             
             # Detect subscription level change
-            if "plan" in previous_data and metadata.get("modification_type") == "subscription_tier_change":
+            if "plan" in previous_data and modification_type == "subscription_tier_change":
                 previous_plan = previous_data.get("plan", {}).get("nickname", None)
                 current_plan = data.get("plan", {}).get("nickname", None)
                 return "Subscription Tier Change", previous_plan, current_plan, modified_by,modified_by_name, None
