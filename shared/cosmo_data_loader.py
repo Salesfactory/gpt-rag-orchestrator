@@ -2,6 +2,7 @@ import json
 import os
 from azure.cosmos import CosmosClient, PartitionKey, exceptions
 from azure.identity import DefaultAzureCredential
+from typing import List
 import uuid
 from datetime import datetime, timezone
 from dotenv import load_dotenv
@@ -141,7 +142,22 @@ class CosmosDBLoader:
         except Exception as e:
             logger.error(f"Error updating last run in Cosmos DB: {str(e)}")
 
+    def get_email_list_by_org(self) -> dict:
+        """
+        Get the list of emails from Cosmos DB
+        this is intended to be used for sending reports
+        """
+        query = "SELECT * FROM c where c.isActive = true"
+        items = self.container.query_items(query, enable_cross_partition_query=True)
+        email_dict: dict = {}
+        for item in items:
+            if "email" in item and "organizationName" in item and "organizationId" in item:
+                if item["organizationName"] not in email_dict:
+                    email_dict[item["organizationName"]] = []
+                email_dict[item["organizationName"]].append(item["email"])
+        return email_dict
     
+
 if __name__ == "__main__":
     # run the script to upload data to Cosmos DB
     data_file_path = os.path.join(os.path.dirname(__file__), "data/companyID_schedules.json")

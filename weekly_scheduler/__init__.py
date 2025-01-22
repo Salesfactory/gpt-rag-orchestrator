@@ -5,8 +5,8 @@ from datetime import datetime, timezone
 from typing import List, Dict, Optional
 from tenacity import retry, stop_after_attempt, wait_exponential
 import azure.functions as func
-from azure.cosmos import CosmosClient
 from azure.identity import DefaultAzureCredential
+from shared.cosmo_data_loader import CosmosDBLoader
 # logger setting 
 logging.basicConfig(level=logging.INFO) 
 logger = logging.getLogger(__name__)
@@ -33,37 +33,12 @@ TIMEOUT_SECONDS = 300
 
 MAX_RETRIES = 3
 
-class CosmoDBManager:
-    def __init__(self, container_name: str, 
-                 db_uri: str, 
-                 credential: str, 
-                 database_name: str):
-        self.container_name = container_name
-        self.db_uri = db_uri
-        self.credential = credential
-        self.database_name = database_name
-
-        if not all([self.container_name, self.db_uri, self.credential, self.database_name]):
-            raise ValueError("Missing required environment variables for Cosmos DB connection")
-
-        self.client = CosmosClient(url=self.db_uri, credential=self.credential, consistency_level="Session")
-        self.database = self.client.get_database_client(self.database_name)
-        self.container = self.database.get_container_client(self.container_name)
-    
-    def get_email_list(self) -> List[str]:
-        query = "SELECT * FROM c where c.isActive = true"
-        items = self.container.query_items(query, enable_cross_partition_query=True)
-        email_list: List[str] = []
-        for item in items:
-            if "email" in item:
-                email_list.append(item['email'])
-        return email_list
-    
-def generate_report(report_topic: str) -> Optional[Dict]:
+def generate_report(report_topic: str, company_name: Optional[str]) -> Optional[Dict]:
     """Generate a report and return the response if successful """
 
     payload = {
-        'report_topic': report_topic
+        'report_topic': report_topic,
+        'company_name': company_name
     }
 
     @retry(stop = stop_after_attempt(MAX_RETRIES), wait = wait_exponential(multiplier=1, min=4, max=10))
@@ -86,25 +61,14 @@ def generate_report(report_topic: str) -> Optional[Dict]:
         logger.error(f"Failed to generate report for {report_topic}: {str(e)}")
         return None
 
-def send_report_email(blob_link: str, report_name: str) -> bool:
+def send_report_email(blob_link: str, report_name: str, organization_name: str, email_list: List[str]) -> bool:
     """Send email with report link and return success status """
 
-    container_name = 'subscription_emails'
-    db_uri = f"https://{os.environ['AZURE_DB_ID']}.documents.azure.com:443/" if os.environ.get('AZURE_DB_ID') else None
-    credential = DefaultAzureCredential()
-    database_name = os.environ.get('AZURE_DB_NAME') if os.environ.get('AZURE_DB_NAME') else None
-
-    cosmo_db_manager = CosmoDBManager(
-        container_name=container_name,
-        db_uri=db_uri,
-        credential=credential,
-        database_name=database_name
-    )
-    email_list = cosmo_db_manager.get_email_list()
+    email_subject = f"{organization_name} Weekly Report"
 
     email_payload = {
         'blob_link': blob_link,
-        'email_subject': 'Sales Factory Weekly Report',
+        'email_subject': email_subject,
         'recipients': email_list,
         'save_email': 'yes'
     }
@@ -133,26 +97,47 @@ def main(mytimer: func.TimerRequest) -> None:
     utc_timestamp = datetime.now(timezone.utc).isoformat()
     logger.info(f"Weekly report generation started at {utc_timestamp}")
 
+    container_name = 'subscription_emails'
+    db_uri = f"https://{os.environ['AZURE_DB_ID']}.documents.azure.com:443/" if os.environ.get('AZURE_DB_ID') else None
+    credential = DefaultAzureCredential()
+    database_name = os.environ.get('AZURE_DB_NAME') if os.environ.get('AZURE_DB_NAME') else None
+
+    logger.info(f"Initializing Cosmos DB Loader")
+
+    cosmo_db_manager = CosmosDBLoader(
+        container_name=container_name,
+        db_uri=db_uri,
+        credential=credential,
+        database_name=database_name
+    )
+
+    logger.info(f"Getting organization email list from Cosmos DB")
+
+    organizations = cosmo_db_manager.get_email_list_by_org()
+
     for report in WEEKLY_REPORTS:
-        logger.info(f"Generating report for {report} at {utc_timestamp}")
-        response_json = generate_report(report)
+        for organization_name, email_list in organizations.items():
+            logger.info(f"Generating {report} for organization: {organization_name} at {utc_timestamp}")
+            response_json = generate_report(report, organization_name)
 
-        if not response_json or response_json.get('status') != 'success':
-            logger.error(f"Failed to generate report for {report} at {utc_timestamp}")
-            continue
+            if not response_json or response_json.get('status') != 'success':
+                logger.error(f"Failed to generate report for {report} at {utc_timestamp}")
+                continue
 
-        # extract blob link and send email 
-        blob_link = response_json.get('report_url')
+            # extract blob link and send email 
+            blob_link = response_json.get('report_url')
 
-        if not blob_link:
-            logger.error(f"Failed to extract blob link for {report} at {utc_timestamp}")
-            continue 
+            if not blob_link:
+                logger.error(f"Failed to extract blob link for {report} at {utc_timestamp}")
+                continue 
 
-        if send_report_email(blob_link, report):
-            logger.info(f"Report {report} sent successfully at {utc_timestamp}")
-        else:
-            logger.error(f"Failed to send email for {report} at {utc_timestamp}")
-            logger.error(f"Report with blob link {blob_link} was not sent")
+            logger.info(f"Sending email for {report} at {utc_timestamp}")
+
+            if send_report_email(blob_link, report, organization_name, email_list):
+                logger.info(f"Report {report} sent successfully at {utc_timestamp}")
+            else:
+                logger.error(f"Failed to send email for {report} at {utc_timestamp}")
+                logger.error(f"Report with blob link {blob_link} was not sent")
 
     logger.info(f"Weekly report generation completed at {datetime.now(timezone.utc).isoformat()}")
 
