@@ -1,5 +1,5 @@
-import logging
 import os
+import logging
 import requests 
 from datetime import datetime, timezone 
 from typing import List, Dict, Optional
@@ -68,6 +68,22 @@ class CosmoDBManager:
             if "email" in item:
                 email_list.append(item['email'])
         return email_list
+    
+    @retry(stop=stop_after_attempt(MAX_RETRIES), wait=wait_exponential(multiplier=1, min=4, max=10))
+    def get_company_list(self) -> List[str]:
+        """Get list of active companies with retry logic"""
+        try:
+            query = "SELECT * FROM c where c.is_active = true"
+            items = self.container.query_items(query, enable_cross_partition_query=True)
+            company_list: List[str] = []
+            for item in items:
+                if "name" in item:
+                    company_list.append(item['name'])
+            return company_list
+        except Exception as e:
+            logger.error(f"Error retrieving company list: {str(e)}")
+            raise  # This will trigger the retry
+
 
 def generate_report(report_topic: str, company_name: Optional[str] = None) -> Optional[Dict]:
     """Generate a report and return the response if successful """
@@ -277,11 +293,20 @@ def main(mytimer: func.TimerRequest) -> None:
 
     all_results: List[ReportResult] = []
 
+    cosmo_db_manager = CosmoDBManager(
+        container_name = 'companyAnalysis', 
+        db_uri = f"https://{os.environ['AZURE_DB_ID']}.documents.azure.com:443/", 
+        credential = DefaultAzureCredential(), 
+        database_name = os.environ.get('AZURE_DB_NAME')
+    )
     try: 
         for report in ReportType: 
             if report == ReportType.COMPANY_ANALYSIS:
                 # process company reports in parallel 
-                company_results = process_company_reports(report, COMPANY_NAME)
+                company_list = cosmo_db_manager.get_company_list()
+                if not company_list:
+                    raise ValueError("No active companies found")
+                company_results = process_company_reports(report, company_list)
                 all_results.extend(company_results)
             else: 
                 # process regular reports 
@@ -308,5 +333,7 @@ def main(mytimer: func.TimerRequest) -> None:
         end_time = datetime.now(timezone.utc)
         duration = end_time - start_time 
         logger.info(f"Monthly report generation completed at {end_time}. Duration: {duration}")
-
+        logger.info(f"Total reports attempted: {len(all_results)}, "
+                   f"Successful: {len(successful_reports)}, "
+                   f"Failed: {len(failed_reports)}")
 
