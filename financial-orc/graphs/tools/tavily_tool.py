@@ -2,11 +2,11 @@ from tavily import TavilyClient
 import os
 
 # conduct tavily search 
-def conduct_tavily_search_news(query: str) -> str:
+def conduct_tavily_search_news(query: str, max_results: int = 2) -> str:
     tavily_client = TavilyClient(api_key=os.environ["TAVILY_API_KEY"])
     response = tavily_client.search(query=query, 
                                    search_depth="advanced",
-                                   max_results=2,
+                                   max_results=max_results,
                                    topic="news",
                                    days=30) # get news from the last 30 days only 
     return response

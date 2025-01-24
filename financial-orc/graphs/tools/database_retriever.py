@@ -7,12 +7,11 @@ from collections import OrderedDict
 from langchain_core.documents import Document
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
+from azure.identity import DefaultAzureCredential, AzureAuthorityHosts
 import logging
 LOGLEVEL = os.environ.get("LOGLEVEL", "INFO").upper()
 logging.basicConfig(level=LOGLEVEL)
-
-
-
+import time 
 def get_secret(secretName):
     keyVaultName = os.getenv("AZURE_KEY_VAULT_NAME")
     KVUri = f"https://{keyVaultName}.vault.azure.net"
@@ -21,7 +20,6 @@ def get_secret(secretName):
     logging.info(f"[webbackend] retrieving {secretName} secret from {keyVaultName}.")
     retrieved_secret = client.get_secret(secretName)
     return retrieved_secret.value
-
 
 
 class CustomRetriever(BaseRetriever):
@@ -34,13 +32,13 @@ class CustomRetriever(BaseRetriever):
         indexes (List): List of index names to search.
     """
 
-    topK = 1
-    reranker_threshold = 0.5
-    vector_similarity_threshold = 0.1
+    topK = 2
+    reranker_threshold = 0
+    vector_similarity_threshold = 0.2
     semantic_config = "financial-index-semantic-configuration"
     index_name = "financial-index"
-    indexes: List
-    verbose: bool
+    indexes: List[str] = [index_name]
+    verbose: bool = True
 
     def get_search_results(
         self,
@@ -78,7 +76,7 @@ class CustomRetriever(BaseRetriever):
             
             search_payload = {
                 "search": query,
-                "select": "chunk_id, file_name, chunk, url, date_last_modified",
+                "select": "doc_id, page_number, file_name, url, title, content",
                 "queryType": "semantic",
                 "semanticConfiguration": semantic_config,
                 "captions": "extractive",
@@ -88,7 +86,7 @@ class CustomRetriever(BaseRetriever):
                 "vectorQueries": [
                     {
                     "text": query,
-                    "fields": "text_vector",
+                    "fields": "vector",
                     "kind": "text",
                     "k": k,
                     "threshold": {
@@ -127,8 +125,6 @@ class CustomRetriever(BaseRetriever):
                 print(f"[CustomRetriever] Error response: {resp.status_code} - {resp.text}")
             return []
         search_results = resp.json()
-        if self.verbose:
-            print(f"[CustomRetriever] Results found: {len(search_results.get('value', []))}")
             
         agg_search_results[index] = search_results
 
@@ -141,11 +137,11 @@ class CustomRetriever(BaseRetriever):
                 if (
                     result["@search.rerankerScore"] > reranker_threshold
                 ):  # Range between 0 and 4
-                    content[result["chunk_id"]] = {
-                        "filename": result["file_name"],
-                        "chunk": (result["chunk"] if "chunk" in result else ""),
+                    content[result["doc_id"]] = {
+                        "file_name": result["file_name"],
+                        "content": (result["content"] if "content" in result else ""),
                         "location": (result["url"] if "url" in result else ""),
-                        "date_last_modified": result["date_last_modified"],
+                        # "date_last_modified": result["date_last_modified"],
                         "caption": result["@search.captions"][0]["text"],
                         "score": result["@search.rerankerScore"],
                         "index": index,
@@ -172,20 +168,23 @@ class CustomRetriever(BaseRetriever):
         Returns:
             List[Document]: List of relevant documents.
         """
-
         ordered_results = self.get_search_results(
             query,
             self.indexes,
             k=self.topK,
             reranker_threshold=self.reranker_threshold,
         )
-        top_docs = []
+        
+        # Return empty list if no results found
+        if not ordered_results or isinstance(ordered_results, list):
+            return []
 
+        top_docs = []
         for key, value in ordered_results.items():
             location = value["location"] if value["location"] is not None else ""
             top_docs.append(
                 Document(
-                    page_content=value["chunk"],
+                    page_content=value["content"],
                     metadata={"source": location, "score": value["score"]},
                 )
             )
@@ -218,13 +217,15 @@ def format_retrieved_content(docs):
 
             {doc.page_content.strip()}
             """
-
+            start_time = time.time()
             if doc.metadata.get('source'):
-                sas_token = get_secret('blobSasToken')
+                # sas_token = get_secret('blobSasToken')
+                sas_token = os.getenv("BLOB_SAS_TOKEN")
                 citation = f"{doc.metadata['source']}?{sas_token}"
             else:
                 citation = ""
-            
+            end_time = time.time()
+            logging.info(f"[database-retriever] Time taken to retrieve sas key from key vault: {end_time - start_time:.2f} seconds")
             formatted_docs.append(
                 Document(
                     page_content=formatted_doc,
@@ -236,4 +237,18 @@ def format_retrieved_content(docs):
         
     except Exception as e:
         return [Document(page_content=f"Error formatting documents: {str(e)}")]
+
+
+
+if __name__ == "__main__":
+    retriever = CustomRetriever(indexes=["financial-index"])
+    docs = retriever.invoke("Who is lowes CEO?")
+    
+    if docs:
+        for doc in docs:
+            print(f"\nContent: {doc.page_content[:200]}...")
+            print(f"Source: {doc.metadata.get('source', 'No source')}")
+            print(f"Score: {doc.metadata.get('score', 'No score')}")
+    else:
+        print("No documents found")
 
