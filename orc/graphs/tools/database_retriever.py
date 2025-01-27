@@ -37,15 +37,15 @@ class CustomRetriever(BaseRetriever):
     """
 
     topK: int
-    reranker_threshold: int
-    indexes: List
+    reranker_threshold: int = 2
+    indexes: List = [os.getenv("AZURE_AI_SEARCH_INDEX_NAME")]
 
     def get_search_results(
         self,
         query: str,
-        indexes: list,
+        indexes: list = [os.getenv("AZURE_AI_SEARCH_INDEX_NAME")],
         k: int = 5,
-        reranker_threshold: float = 1.2,  # range between 0 and 4 (high to low)
+        reranker_threshold: float = reranker_threshold,  # range between 0 and 4 (high to low)
     ) -> List[dict]:
         """Performs multi-index hybrid search and returns ordered dictionary with the combined results"""
 
