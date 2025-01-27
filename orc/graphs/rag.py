@@ -126,7 +126,13 @@ def create_retrieval_graph(
         # Retrieval
         documents = retriever.get_search_results(query = question)
 
-        return {"documents": documents}
+        # set web search to no if there are more than 3 documents
+        if len(documents) > 3:
+            web_search = "No"
+        else:
+            web_search = "Yes"
+
+        return {"documents": documents, "web_search": web_search}
 
     def generate(state: RetrievalState) -> Literal["conversation_summary", "__end__"]:
         """
