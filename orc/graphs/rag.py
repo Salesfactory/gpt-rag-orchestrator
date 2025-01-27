@@ -28,6 +28,10 @@ from shared.util import get_secret
 from orc.graphs.tools import CustomRetriever, GoogleSearch
 from concurrent.futures import ThreadPoolExecutor
 
+
+
+SEARCH_INDEX = os.getenv("AZURE_AI_SEARCH_INDEX_NAME")
+
 class GradeDocuments(BaseModel):
     """Binary score for relevance check on retrieved documents."""
 
@@ -64,13 +68,12 @@ def create_retrieval_graph(
     
     web_search_tool = GoogleSearch(k=3)
     rag_chain = DOCSEARCH_PROMPT | model | StrOutputParser()
-    index_name = os.environ["AZURE_AI_SEARCH_INDEX_NAME"]
-    indexes = [index_name]
+    indexes = [SEARCH_INDEX]
 
     retriever = CustomRetriever(
         indexes=indexes,
         topK=5,
-        reranker_threshold=1.2,
+        reranker_threshold=2,
     )
     retrieval_question_rewriter = (
         RETRIEVAL_REWRITER_PROMPT | model_two | StrOutputParser()
@@ -124,9 +127,15 @@ def create_retrieval_graph(
         question = state["question"]
 
         # Retrieval
-        documents = retriever.invoke(question)
+        documents = retriever.get_search_results(query=question, indexes=['ragindex']) # unknown why the global variable is not working
 
-        return {"documents": documents}
+        if verbose:
+            print(f"---NUMBER OF RETRIEVED DOCUMENTS---: {len(documents)}")
+
+        # Initialize web_search decision based on document count
+        web_search = "Yes" if len(documents) < 3 else "No"
+
+        return {"documents": documents, "web_search": web_search}
 
     def generate(state: RetrievalState) -> Literal["conversation_summary", "__end__"]:
         """
@@ -149,9 +158,7 @@ def create_retrieval_graph(
 
         if summary:
             system_message = f"Summary of the conversation earlier: \n\n{summary}"
-            previous_conversation = [SystemMessage(content=system_message)] + messages[
-                :-1
-            ]
+            previous_conversation = [SystemMessage(content=system_message)] + messages[:-1]
         else:
             previous_conversation = messages
 
@@ -173,55 +180,57 @@ def create_retrieval_graph(
             "combined_messages": messages,
         }
 
-    def grade_documents(state: RetrievalState):
-        """
-        Determines whether the retrieved documents are relevant to the question.
+    # def grade_documents(state: RetrievalState):
+    #     """
+    #     Determines whether the retrieved documents are relevant to the question.
 
-        Args:
-            state (dict): The current graph state
+    #     Args:
+    #         state (dict): The current graph state
 
-        Returns:
-            state (dict): Updates documents key with only filtered relevant documents and web search decision
-        """
+    #     Returns:
+    #         state (dict): Updates documents key with only filtered relevant documents and web search decision
+    #     """
 
-        if verbose:
-            print("---CHECK DOCUMENT RELEVANCE TO QUESTION---")
+    #     if verbose:
+    #         print("---CHECK DOCUMENT RELEVANCE TO QUESTION---")
 
-        question = state["question"]
-        documents = state["documents"]
-        previous_conversation = state["retrieval_messages"] + [state.get("summary", "")]
+    #     question = state["question"]
+    #     documents = state["documents"]
+    #     previous_conversation = state["retrieval_messages"] + [state.get("summary", "")]
 
-        def grade_document(document):
-            score = retrieval_grader.invoke(
-                {
-                    "question": question,
-                    "previous_conversation": previous_conversation,
-                    "document": document.page_content,
-                }
-            )
-            return document if score.binary_score == "yes" else None
+    #     def grade_document(document):
+    #         score = retrieval_grader.invoke(
+    #             {
+    #                 "question": question,
+    #                 "previous_conversation": previous_conversation,
+    #                 "document": document.page_content,
+    #             }
+    #         )
+    #         return document if score.binary_score == "yes" else None
 
-        if not documents:
-            if verbose:
-                print("---NO RELEVANT DOCUMENTS RETRIEVED FROM THE DATABASE---")
-            return {"documents": [], "web_search": "Yes"}
+    #     if not documents:
+    #         if verbose:
+    #             print("---NO RELEVANT DOCUMENTS RETRIEVED FROM THE DATABASE---")
+    #         return {"documents": [], "web_search": "Yes"}
 
-        if verbose:
-            print("---EVALUATING RETRIEVED DOCUMENTS---")
+    #     if verbose:
+    #         print("---EVALUATING RETRIEVED DOCUMENTS---")
 
         # Use ThreadPoolExecutor to run grading in parallel
-        with ThreadPoolExecutor() as executor:
-            graded_docs = list(executor.map(grade_document, documents))
+        # if verbose: 
+        #     print("--- STARTING TO EVALUATING DOCUMENTS IN PARALLEL")
+        # with ThreadPoolExecutor() as executor:
+        #     graded_docs = list(executor.map(grade_document, documents))
 
-        filtered_docs = [d for d in graded_docs if d is not None]
-        relevant_doc_count = len(filtered_docs)
+    #     filtered_docs = [d for d in graded_docs if d is not None]
+    #     relevant_doc_count = len(filtered_docs)
 
-        if verbose:
-            print(f"---NUMBER OF RELEVANT DATABASE RETRIEVED DOCUMENTS---: {relevant_doc_count}")
+    #     if verbose:
+    #         print(f"---NUMBER OF RELEVANT DATABASE RETRIEVED DOCUMENTS---: {relevant_doc_count}")
 
-        web_search = "No" if relevant_doc_count >= 3 else "Yes"
+    #     web_search = "No" if relevant_doc_count >= 3 else "Yes"
 
-        return {"documents": filtered_docs, "web_search": web_search}
+    #     return {"documents": filtered_docs, "web_search": web_search}
 
     def decide_to_generate(state):
         """
@@ -282,16 +291,16 @@ def create_retrieval_graph(
         "transform_query", retrieval_transform_query
     )  # rewrite user query
     retrieval_stategraph.add_node("retrieve", retrieve)  # retrieve
-    retrieval_stategraph.add_node("grade_documents", grade_documents)  # grade documents
+    # retrieval_stategraph.add_node("grade_documents", grade_documents)  # grade documents
     retrieval_stategraph.add_node("generate", generate)  # generatae
     retrieval_stategraph.add_node("web_search_node", web_search)  # web search
 
     # Build graph
     retrieval_stategraph.add_edge(START, "transform_query")
     retrieval_stategraph.add_edge("transform_query", "retrieve")
-    retrieval_stategraph.add_edge("retrieve", "grade_documents")
+    # retrieval_stategraph.add_edge("retrieve", "grade_documents")
     retrieval_stategraph.add_conditional_edges(
-        "grade_documents",
+        "retrieve",
         decide_to_generate,
         {
             "web_search_node": "web_search_node",
@@ -300,7 +309,6 @@ def create_retrieval_graph(
     )
     retrieval_stategraph.add_edge("web_search_node", "generate")
     retrieval_stategraph.add_edge("generate", END)
-    retrieval_stategraph.add_edge("conversation_summary", END)
 
     # Compile
     rag = retrieval_stategraph.compile()
