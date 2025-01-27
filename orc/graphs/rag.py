@@ -59,7 +59,7 @@ class RetrievalState(TypedDict):
 def create_retrieval_graph(
     model: LanguageModelLike,
     model_two: LanguageModelLike,
-    verbose: bool = False,
+    verbose: bool = True,
 ) -> CompiledGraph:
     
     web_search_tool = GoogleSearch(k=3)
@@ -210,6 +210,8 @@ def create_retrieval_graph(
             print("---EVALUATING RETRIEVED DOCUMENTS---")
 
         # Use ThreadPoolExecutor to run grading in parallel
+        if verbose: 
+            print("--- STARTING TO EVALUATING DOCUMENTS IN PARALLEL")
         with ThreadPoolExecutor() as executor:
             graded_docs = list(executor.map(grade_document, documents))
 
