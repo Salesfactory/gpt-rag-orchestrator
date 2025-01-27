@@ -151,12 +151,3 @@ class CustomRetriever(BaseRetriever):
             )
 
         return top_docs
-    
-
-if __name__ == "__main__":
-    retriever = CustomRetriever(
-        indexes=['ragindex'],
-        topK=5,
-        reranker_threshold=2,
-    )
-    print(retriever.get_search_results(query="Who is Home Depot CEO", indexes=['ragindex']))

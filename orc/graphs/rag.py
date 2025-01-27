@@ -31,6 +31,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 
 SEARCH_INDEX = os.getenv("AZURE_AI_SEARCH_INDEX_NAME")
+RERANKER_THRESHOLD = 2
 
 class GradeDocuments(BaseModel):
     """Binary score for relevance check on retrieved documents."""
@@ -73,7 +74,7 @@ def create_retrieval_graph(
     retriever = CustomRetriever(
         indexes=indexes,
         topK=5,
-        reranker_threshold=2,
+        reranker_threshold=RERANKER_THRESHOLD,
     )
     retrieval_question_rewriter = (
         RETRIEVAL_REWRITER_PROMPT | model_two | StrOutputParser()
