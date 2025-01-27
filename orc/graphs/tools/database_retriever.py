@@ -43,9 +43,9 @@ class CustomRetriever(BaseRetriever):
     def get_search_results(
         self,
         query: str,
-        indexes: list,
+        indexes: str = ['ragindex'],
         k: int = 5,
-        reranker_threshold: float = 1.2,  # range between 0 and 4 (high to low)
+        reranker_threshold: float = 2,  # range between 0 and 4 (high to low)
     ) -> List[dict]:
         """Performs multi-index hybrid search and returns ordered dictionary with the combined results"""
 
