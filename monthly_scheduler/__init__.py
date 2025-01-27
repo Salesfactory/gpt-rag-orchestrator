@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, Dict, List
 from enum import Enum
+from shared.cosmo_data_loader import CosmosDBLoader
 # logger setting 
 logging.basicConfig(level=logging.INFO) 
 logger = logging.getLogger(__name__)
@@ -30,9 +31,6 @@ To do:
 check other way to use endpoint 
 
 """
-
-MONTHLY_REPORTS = ['Monthly_Economics', 'Ecommerce', "Home_Improvement", "Company_Analysis"]
-
 COMPANY_NAME = ["Home Depot", "Lowes"]
 
 CURATION_REPORT_ENDPOINT = f'{os.environ["WEB_APP_URL"]}/api/reports/generate/curation'
@@ -42,48 +40,6 @@ EMAIL_ENDPOINT = f'{os.environ["WEB_APP_URL"]}/api/reports/digest'
 TIMEOUT_SECONDS = 300
 
 MAX_RETRIES = 3
-
-class CosmoDBManager:
-    def __init__(self, container_name: str, 
-                 db_uri: str, 
-                 credential: str, 
-                 database_name: str):
-        self.container_name = container_name
-        self.db_uri = db_uri
-        self.credential = credential
-        self.database_name = database_name
-
-        if not all([self.container_name, self.db_uri, self.credential, self.database_name]):
-            raise ValueError("Missing required environment variables for Cosmos DB connection")
-
-        self.client = CosmosClient(url=self.db_uri, credential=self.credential, consistency_level="Session")
-        self.database = self.client.get_database_client(self.database_name)
-        self.container = self.database.get_container_client(self.container_name)
-    
-    def get_email_list(self) -> List[str]:
-        query = "SELECT * FROM c where c.isActive = true"
-        items = self.container.query_items(query, enable_cross_partition_query=True)
-        email_list: List[str] = []
-        for item in items:
-            if "email" in item:
-                email_list.append(item['email'])
-        return email_list
-    
-    @retry(stop=stop_after_attempt(MAX_RETRIES), wait=wait_exponential(multiplier=1, min=4, max=10))
-    def get_company_list(self) -> List[str]:
-        """Get list of active companies with retry logic"""
-        try:
-            query = "SELECT * FROM c where c.is_active = true"
-            items = self.container.query_items(query, enable_cross_partition_query=True)
-            company_list: List[str] = []
-            for item in items:
-                if "name" in item:
-                    company_list.append(item['name'])
-            return company_list
-        except Exception as e:
-            logger.error(f"Error retrieving company list: {str(e)}")
-            raise  # This will trigger the retry
-
 
 def generate_report(report_topic: str, company_name: Optional[str] = None) -> Optional[Dict]:
     """Generate a report and return the response if successful """
@@ -128,7 +84,7 @@ def send_report_email(blob_link: str, report_name: str) -> bool:
     credential = DefaultAzureCredential()
     database_name = os.environ.get('AZURE_DB_NAME') if os.environ.get('AZURE_DB_NAME') else None
 
-    cosmo_db_manager = CosmoDBManager(
+    cosmo_db_manager = CosmosDBLoader(
         container_name=container_name,
         db_uri=db_uri,
         credential=credential,
@@ -167,11 +123,11 @@ def send_report_email(blob_link: str, report_name: str) -> bool:
 class ReportType(str, Enum):
     """Enum for report types to ensure type safety """
 
-    MONTHLY_ECONOMICS = "Monthly_Economics"
-    ECOMMERCE = "Ecommerce"
-    HOME_IMPROVEMENT = "Home_Improvement"
+    # MONTHLY_ECONOMICS = "Monthly_Economics"
+    # ECOMMERCE = "Ecommerce"
+    # HOME_IMPROVEMENT = "Home_Improvement"
     COMPANY_ANALYSIS = "Company_Analysis"
-    WEEKLY_ECONOMICS = "Weekly_Economics"
+    # WEEKLY_ECONOMICS = "Weekly_Economics"
 
 class ReportConfig(BaseModel): 
     """Configuration for report generation"""
@@ -245,7 +201,7 @@ def process_single_report(
             )
         
         # create email payload 
-        cosmos_db_manager = CosmoDBManager(
+        cosmos_db_manager = CosmosDBLoader(
             container_name = 'subscription_emails', 
             db_uri = f"https://{os.environ['AZURE_DB_ID']}.documents.azure.com:443/", 
             credential = DefaultAzureCredential(), 
@@ -293,7 +249,7 @@ def main(mytimer: func.TimerRequest) -> None:
 
     all_results: List[ReportResult] = []
 
-    cosmo_db_manager = CosmoDBManager(
+    cosmo_db_manager = CosmosDBLoader(
         container_name = 'companyAnalysis', 
         db_uri = f"https://{os.environ['AZURE_DB_ID']}.documents.azure.com:443/", 
         credential = DefaultAzureCredential(), 

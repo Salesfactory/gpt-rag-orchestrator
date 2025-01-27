@@ -5,6 +5,8 @@ from azure.identity import DefaultAzureCredential
 import uuid
 from datetime import datetime, timezone
 from dotenv import load_dotenv
+from typing import List
+from tenacity import retry, stop_after_attempt, wait_exponential
 import logging
 
 logging.basicConfig(
@@ -12,6 +14,8 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+MAX_RETRIES = 3
 
 
 class CosmosDBLoader:
@@ -140,6 +144,30 @@ class CosmosDBLoader:
             logger.info(f"Successfully updated last run in Cosmos DB")
         except Exception as e:
             logger.error(f"Error updating last run in Cosmos DB: {str(e)}")
+    
+    def get_email_list(self) -> List[str]:
+        query = "SELECT * FROM c where c.isActive = true"
+        items = self.container.query_items(query, enable_cross_partition_query=True)
+        email_list: List[str] = []
+        for item in items:
+            if "email" in item:
+                email_list.append(item['email'])
+        return email_list
+    
+    @retry(stop=stop_after_attempt(MAX_RETRIES), wait=wait_exponential(multiplier=1, min=4, max=10))
+    def get_company_list(self) -> List[str]:
+        """Get list of active companies with retry logic"""
+        try:
+            query = "SELECT * FROM c where c.is_active = true"
+            items = self.container.query_items(query, enable_cross_partition_query=True)
+            company_list: List[str] = []
+            for item in items:
+                if "name" in item:
+                    company_list.append(item['name'])
+            return company_list
+        except Exception as e:
+            logger.error(f"Error retrieving company list: {str(e)}")
+            raise 
 
     
 if __name__ == "__main__":
