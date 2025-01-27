@@ -214,47 +214,6 @@ class CosmosDBLoader:
         except Exception as e:
             logger.error(f"Error getting users from Cosmos DB: {str(e)}")
             return []
-
-    def get_organizations(self):
-        try:
-            query = "SELECT * FROM c"
-            items = self.container.query_items(query, enable_cross_partition_query=True)
-            organizations = []
-            for item in items:
-                if "name" in item and "id" in item and "subscriptionId" in item:
-                    organizations.append({
-                        "id": item["id"],
-                        "name": item["name"],
-                        "subscriptionId": item["subscriptionId"]
-                    })
-            return organizations
-        except Exception as e:
-            logger.error(f"Error getting organizations from Cosmos DB: {str(e)}")
-            return []
-
-    def get_users_by_organizations(self, organization_ids: List[str]) -> List[dict]:
-        """
-        Get the list of users from Cosmos DB
-        """
-        try:
-            if not organization_ids or len(organization_ids) == 0:
-                return []
-            formatted_organization_ids = "('" + "','".join(organization_ids) + "')"
-            query = f"SELECT * FROM c WHERE c.isReportEmailReceiver = 'true' AND c.data.organizationId IN {formatted_organization_ids}"
-            items = self.container.query_items(query, enable_cross_partition_query=True)
-            users_by_org = {}
-            for item in items:
-                if "data" in item and "email" in item["data"]:
-                    if "organizationId" in item["data"]:
-                        organization_id = item["data"]["organizationId"]
-                        if organization_id not in users_by_org:
-                            users_by_org[organization_id] = []
-                        users_by_org[organization_id].append(item["data"]["email"])
-            return users_by_org
-        except Exception as e:
-            logger.error(f"Error getting users from Cosmos DB: {str(e)}")
-            return []
-
     
 if __name__ == "__main__":
     # run the script to upload data to Cosmos DB
