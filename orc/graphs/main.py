@@ -58,7 +58,7 @@ def create_main_agent(
         openai_api_version=os.environ.get(
             "AZURE_OPENAI_API_VERSION", "2024-05-01-preview"
         ),
-        azure_deployment="gpt-4o-orchestrator",
+        azure_deployment="Agent",
     )
     model_mini_4o_temp_0 = AzureChatOpenAI(
         temperature=0,
