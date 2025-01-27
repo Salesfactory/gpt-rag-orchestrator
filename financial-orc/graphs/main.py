@@ -10,7 +10,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 LANGSMITH_PROJECT="financial-orc"
 LANGSMITH_TRACING=True
 LANGSMITH_ENDPOINT="https://api.smith.langchain.com"
-LANGSMITH_API_KEY="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"
+# LANGSMITH_API_KEY=""
 
 import os
 import json
