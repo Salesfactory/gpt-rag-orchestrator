@@ -125,7 +125,7 @@ class CustomRetriever(BaseRetriever):
             if count >= topk:  # Stop after adding topK results
                 break
 
-        return ordered_content
+        return list(ordered_content.values())
 
     def _get_relevant_documents(self, query: str) -> List[Document]:
         """
