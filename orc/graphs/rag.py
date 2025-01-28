@@ -75,8 +75,6 @@ def create_retrieval_graph(
     retrieval_question_rewriter = (
         RETRIEVAL_REWRITER_PROMPT | model_two | StrOutputParser()
     )
-    structured_llm_grader = model_two.with_structured_output(GradeDocuments)
-    retrieval_grader = GRADE_PROMPT | structured_llm_grader
 
     def retrieval_transform_query(state: RetrievalState):
         """
