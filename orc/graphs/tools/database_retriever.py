@@ -106,14 +106,13 @@ class CustomRetriever(BaseRetriever):
                 ):  # Range between 0 and 4
                     content[result["id"]] = {
                         "title": result["title"],
-                        "name": (result["name"] if "name" in result else ""),
-                        "chunk": (result["content"] if "content" in result else ""),
-                        "location": (
+                        "answer": (result["content"] if "content" in result else "") + "\n\nCaption: " + result["@search.captions"][0]["text"],
+                        "citation": (
                             result["filepath"] if "filepath" in result else ""
                         ),
-                        "caption": result["@search.captions"][0]["text"],
                         "score": result["@search.rerankerScore"],
-                        "index": index,
+                        "delimiter": "\n----------------------------------------------------\n============================================================\n----------------------------------------------------"
+                        # "index": index,
                     }
 
         topk = k
