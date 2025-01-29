@@ -93,6 +93,116 @@ def get_function_key(subscription_id, resource_group, function_app_name, credent
         logging.error(f"Error when getting function key. Details: {str(e)}.")        
     return function_key
 
+def get_html2pdf_function_key(subscription_id, resource_group, function_app_name, credential):
+    """
+    Returns the API key for the 'orchestrator-host--html2pdf' function.
+
+    Parameters:
+    subscription_id (str): The subscription ID.
+    resource_group (str): The resource group name.
+    function_app_name (str): The name of the function app.
+    credential (str): The credential to use.
+
+    Returns:
+    str: A unique key for the function.
+    """    
+    logging.info(f"Obtaining function key for 'orchestrator-host--html2pdf'.")
+    
+    accessToken = f"Bearer {credential.get_token('https://management.azure.com/.default').token}"
+    
+    requestUrl = f"https://management.azure.com/subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.Web/sites/{function_app_name}/functions/html_to_pdf_converter/keys/default?api-version=2022-03-01"
+    
+    requestHeaders = {
+        "Authorization": accessToken,
+        "Content-Type": "application/json"
+    }
+    
+    data = {'properties': {}}
+    response = requests.put(requestUrl, headers=requestHeaders, data=json.dumps(data))
+    
+    response_json = json.loads(response.content.decode('utf-8'))
+    
+    try:
+        function_key_html2pdf = response_json['properties']['value']
+    except Exception as e:
+        function_key_html2pdf = None
+        logging.error(f"Failed to get key for 'orchestrator-host--html2pdf'. Details:{str(e)}.")        
+    
+    return function_key_html2pdf
+
+def get_financial_function_key(subscription_id, resource_group, function_app_name, credential):
+    """
+    Returns the API key for the 'orchestrator-host--financial' function.
+
+    Parameters:
+    subscription_id (str): The subscription ID.
+    resource_group (str): The resource group name.
+    function_app_name (str): The name of the function app.
+    credential (str): The credential to use.
+
+    Returns:
+    str: A unique key for the function.
+    """    
+    logging.info(f"Obtaining function key for 'orchestrator-host--financial'.")
+    
+    accessToken = f"Bearer {credential.get_token('https://management.azure.com/.default').token}"
+    
+    requestUrl = f"https://management.azure.com/subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.Web/sites/{function_app_name}/functions/financial-orc/keys/default?api-version=2022-03-01"
+    
+    requestHeaders = {
+        "Authorization": accessToken,
+        "Content-Type": "application/json"
+    }
+    
+    data = {'properties': {}}
+    response = requests.put(requestUrl, headers=requestHeaders, data=json.dumps(data))
+    
+    response_json = json.loads(response.content.decode('utf-8'))
+    
+    try:
+        function_key_financial = response_json['properties']['value']
+    except Exception as e:
+        function_key_financial = None
+        logging.error(f"Failed to get key for 'orchestrator-host--financial'. Details:{str(e)}.")        
+    
+    return function_key_financial
+
+def get_webhook_function_key(subscription_id, resource_group, function_app_name, credential):
+    """
+    Returns the API key for the 'orchestrator-host--financial' function.
+
+    Parameters:
+    subscription_id (str): The subscription ID.
+    resource_group (str): The resource group name.
+    function_app_name (str): The name of the function app.
+    credential (str): The credential to use.
+
+    Returns:
+    str: A unique key for the function.
+    """    
+    logging.info(f"Obtaining function key for 'orchestrator-host--financial'.")
+    
+    accessToken = f"Bearer {credential.get_token('https://management.azure.com/.default').token}"
+    
+    requestUrl = f"https://management.azure.com/subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.Web/sites/{function_app_name}/functions/webhook/keys/default?api-version=2022-03-01"
+    
+    requestHeaders = {
+        "Authorization": accessToken,
+        "Content-Type": "application/json"
+    }
+    
+    data = {'properties': {}}
+    response = requests.put(requestUrl, headers=requestHeaders, data=json.dumps(data))
+    
+    response_json = json.loads(response.content.decode('utf-8'))
+    
+    try:
+        function_key_financial = response_json['properties']['value']
+    except Exception as e:
+        function_key_financial = None
+        logging.error(f"Failed to get key for 'orchestrator-host--webhook'. Details:{str(e)}.")        
+    
+    return function_key_financial
 
 
 def execute_setup(subscription_id, resource_group, function_app_name, key_vault_name, enable_managed_identities, enable_env_credentials):
@@ -125,13 +235,31 @@ def execute_setup(subscription_id, resource_group, function_app_name, key_vault_
             logging.error(f"Could not get function key. Please make sure the function {function_app_name}/orc is deployed before running this script.")
             exit() 
 
+    function_key_financial = get_financial_function_key(subscription_id, resource_group, function_app_name, credential)
+    if function_key_financial is None:
+            logging.error(f"Could not get function key. Please make sure the function {function_app_name}/financial-orc is deployed before running this script.")
+            exit() 
+
+    function_key_html2pdf = get_html2pdf_function_key(subscription_id, resource_group, function_app_name, credential)
+    if function_key_html2pdf is None:
+            logging.error(f"Could not get function key. Please make sure the function {function_app_name}/html_to_pdf_converter is deployed before running this script.")
+            exit() 
+
+    function_key_webhook = get_webhook_function_key(subscription_id, resource_group, function_app_name, credential)
+    if function_key_webhook is None:
+            logging.error(f"Could not get function key. Please make sure the function {function_app_name}/webhook is deployed before running this script.")
+            exit() 
+
+
     # Create a SecretClient object
     vault_url = f"https://{key_vault_name}.vault.azure.net"    
     secret_client = SecretClient(vault_url=vault_url, credential=credential)
 
     # Store the secret in the key vault
     secret_client.set_secret('orchestrator-host--functionKey', function_key)
-
+    secret_client.set_secret('orchestrator-host--financial', function_key_financial)
+    secret_client.set_secret('orchestrator-host--html2pdf', function_key_html2pdf)
+    secret_client.set_secret('orchestrator-host--webhook',function_key_webhook)
 
 
 def main(subscription_id=None, resource_group=None, function_app_name=None, key_vault_name=None, enable_managed_identities=False, enable_env_credentials=False):

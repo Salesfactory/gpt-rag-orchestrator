@@ -66,6 +66,15 @@ jobs:
           AZURE_LOCATION: ${{ vars.AZURE_LOCATION }}
           AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
+      - name: (Running setup.py)
+        run: |
+          python3 setup.py -s ${{ vars.AZURE_SUBSCRIPTION_ID }} -r ${{ vars.AZURE_RESOURCE_GROUP }} -f ${{ vars.AZURE_FUNCTION_APP_NAME }} -k ${{ vars.AZURE_KEY_VAULT_NAME }}
+        env:
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
+
       - name: Deploy Application
         run: azd deploy --no-prompt
         env:
