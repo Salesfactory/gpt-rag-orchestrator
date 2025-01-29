@@ -22,6 +22,25 @@ LOGLEVEL = os.environ.get("LOGLEVEL", "DEBUG").upper()
 logging.basicConfig(level=LOGLEVEL)
 AZURE_STORAGE_ACCOUNT_URL = os.environ.get("AZURE_STORAGE_ACCOUNT_URL")
 
+if AZURE_STORAGE_ACCOUNT_URL is "":
+    raise ValueError(f"AZURE_STORAGE_ACCOUNT_URL is empty")
+
+#AZURE_STORAGE_ACCOUNT_URL formating
+pattern = r"^[a-z0-9\-]+\.blob\.core\.windows\.net$"
+
+if not re.match(pattern, AZURE_STORAGE_ACCOUNT_URL):
+    AZURE_STORAGE_ACCOUNT_URL = re.sub(r'(https?://)+', '', AZURE_STORAGE_ACCOUNT_URL.strip())
+    storage_account = AZURE_STORAGE_ACCOUNT_URL.split(".")[0] if "." in AZURE_STORAGE_ACCOUNT_URL else AZURE_STORAGE_ACCOUNT_URL
+    
+    if not re.match(r'^[a-z0-9\-]+$', storage_account):
+        raise ValueError(f"Invalid storage account name.")
+    
+    AZURE_STORAGE_ACCOUNT_URL = f"{storage_account}.blob.core.windows.net"
+
+    if not re.match(pattern, AZURE_STORAGE_ACCOUNT_URL):
+        raise ValueError(f"Invalid AZURE_STORAGE_ACCOUNT_URL value")
+    
+logging.info(f"Validated and sanitized storage URL")
 
 async def run(conversation_id, ask, url, client_principal):
     try:
@@ -30,7 +49,6 @@ async def run(conversation_id, ask, url, client_principal):
             "[orchestrator] Starting conversation flow for user: %s",
             client_principal.get("id"),
         )
-
         # Create conversation_id if not provided
         if conversation_id is None or conversation_id == "":
             conversation_id = str(uuid.uuid4())
