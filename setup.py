@@ -59,8 +59,9 @@ def call_search_api(search_service, search_api_version, resource_type, resource_
         logging.error(f"Error when calling search API {method} {resource_type} {resource_name}. Error: {error_message}")
     return response
 
+API_VERSION = "2022-03-01"
 
-def get_function_key(subscription_id, resource_group, function_app_name, credential):
+def get_function_key(subscription_id, resource_group, function_app_name,function_name, credential):
     """
     Returns an API key for the given function.
 
@@ -68,31 +69,40 @@ def get_function_key(subscription_id, resource_group, function_app_name, credent
     subscription_id (str): The subscription ID.
     resource_group (str): The resource group name.
     function_app_name (str): The name of the function app.
+    function_name (str): The specific function name (e.g., "orc", "html_to_pdf_converter", etc.).
     credential (str): The credential to use.
 
     Returns:
-    str: A unique key for the function.
+    str: A unique key for the function, or None if retrieval fails.
     """    
-    logging.info(f"Obtaining function key after creating or updating its value.")
-    accessToken = f"Bearer {credential.get_token('https://management.azure.com/.default').token}"
-    # Get key
-    requestUrl = f"https://management.azure.com/subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.Web/sites/{function_app_name}/functions/orc/keys/mykey?api-version=2022-03-01"
-    requestHeaders = {
-        "Authorization": accessToken,
-        "Content-Type": "application/json"
-    }
-    data = {
-        'properties': {}
-    }
-    response = requests.put(requestUrl, headers=requestHeaders, data=json.dumps(data))
-    response_json = json.loads(response.content.decode('utf-8'))
-    try:
-        function_key = response_json['properties']['value']
-    except Exception as e:
-        function_key = None
-        logging.error(f"Error when getting function key. Details: {str(e)}.")        
-    return function_key
+    logging.info(f"Obtaining function key for '{function_name}'.")
 
+    try:
+        access_token = f"Bearer {credential.get_token('https://management.azure.com/.default').token}"
+    except Exception as e:
+        logging.error(f"Failed to obtain Azure access token: {e}")
+        return None  # Returns None if authentication fails
+
+    try:
+        request_url = f"https://management.azure.com/subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.Web/sites/{function_app_name}/functions/{function_name}/keys/default?api-version={API_VERSION}"
+        
+        request_headers = {
+            "Authorization": access_token,
+            "Content-Type": "application/json"
+        }
+
+        response = requests.put(request_url, headers=request_headers, json={})
+        response.raise_for_status()
+
+        response_json = response.json()
+        return response_json.get('properties', {}).get('value', None)
+        
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Failed to get function key for '{function_name}'. API error: {e}")
+    except json.JSONDecodeError:
+        logging.error(f"Failed to parse JSON response for function '{function_name}'.")
+
+    return None
 
 
 def execute_setup(subscription_id, resource_group, function_app_name, key_vault_name, enable_managed_identities, enable_env_credentials):
@@ -120,10 +130,11 @@ def execute_setup(subscription_id, resource_group, function_app_name, key_vault_
     ###########################################################################
     # Get function key and store into key vault
     ########################################################################### 
-    function_key = get_function_key(subscription_id, resource_group, function_app_name, credential)
-    if function_key is None:
-            logging.error(f"Could not get function key. Please make sure the function {function_app_name}/orc is deployed before running this script.")
-            exit() 
+    function_key = get_function_key(subscription_id, resource_group, function_app_name,"orc", credential)
+    function_key_financial = get_function_key(subscription_id, resource_group, function_app_name,"financial-orc", credential)
+    function_key_html2pdf = get_function_key(subscription_id, resource_group, function_app_name,"html_to_pdf_converter", credential)
+    function_key_webhook = get_function_key(subscription_id, resource_group, function_app_name,"webhook", credential)
+
 
     # Create a SecretClient object
     vault_url = f"https://{key_vault_name}.vault.azure.net"    
@@ -131,7 +142,9 @@ def execute_setup(subscription_id, resource_group, function_app_name, key_vault_
 
     # Store the secret in the key vault
     secret_client.set_secret('orchestrator-host--functionKey', function_key)
-
+    secret_client.set_secret('orchestrator-host--financial', function_key_financial)
+    secret_client.set_secret('orchestrator-host--html2pdf', function_key_html2pdf)
+    secret_client.set_secret('orchestrator-host--webhook',function_key_webhook)
 
 
 def main(subscription_id=None, resource_group=None, function_app_name=None, key_vault_name=None, enable_managed_identities=False, enable_env_credentials=False):
