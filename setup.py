@@ -78,8 +78,12 @@ def get_function_key(subscription_id, resource_group, function_app_name,function
     logging.info(f"Obtaining function key for '{function_name}'.")
 
     try:
-        # Get the Azure access token
         access_token = f"Bearer {credential.get_token('https://management.azure.com/.default').token}"
+    except Exception as e:
+        logging.error(f"Failed to obtain Azure access token: {e}")
+        return None  # Returns None if authentication fails
+
+    try:
         request_url = f"https://management.azure.com/subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.Web/sites/{function_app_name}/functions/{function_name}/keys/default?api-version={API_VERSION}"
         
         request_headers = {
@@ -92,6 +96,7 @@ def get_function_key(subscription_id, resource_group, function_app_name,function
 
         response_json = response.json()
         return response_json.get('properties', {}).get('value', None)
+        
     except requests.exceptions.RequestException as e:
         logging.error(f"Failed to get function key for '{function_name}'. API error: {e}")
     except json.JSONDecodeError:
