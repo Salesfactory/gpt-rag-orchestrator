@@ -12,9 +12,10 @@ import requests
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-PROCESS_AND_SUMMARIZE_ENDPOINT = f"{os.environ["WEB_APP_URL"]}/api/SECEdgar/financialdocuments/process-and-summarize"
-EMAIL_ENDPOINT = f'{os.environ["WEB_APP_URL"]}/api/reports/digest'
-STRIPE_SUBSCRIPTION_ENDPOINT = f"{os.environ["WEB_APP_URL"]}/api/subscriptions/<subscription_id>/tiers"
+WEB_APP_URL = os.getenv("WEB_APP_URL", None)
+PROCESS_AND_SUMMARIZE_ENDPOINT = f"{WEB_APP_URL}/api/SECEdgar/financialdocuments/process-and-summarize"
+EMAIL_ENDPOINT = f'{WEB_APP_URL}/api/reports/digest'
+STRIPE_SUBSCRIPTION_ENDPOINT = f"{WEB_APP_URL}/api/subscriptions/<subscription_id>/tiers"
 
 TIMEOUT_SECONDS = 300
 
@@ -231,6 +232,13 @@ def check_subscription_statuses(orgs: List[Dict]) -> List[Dict]:
 
 
 def main(timer: func.TimerRequest) -> None:
+    """ Main entry point for the function """
+    
+    # Check if the environment variable is set
+    if not WEB_APP_URL:
+        logger.error("WEB_APP_URL environment variable not set")
+        return
+
     # Main scheduling logic
     schedules_db_manager = CosmosDBLoader(container_name="schedules")
     orgs_db_manager = CosmosDBLoader(container_name="organizations")
