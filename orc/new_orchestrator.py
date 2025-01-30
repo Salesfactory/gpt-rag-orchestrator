@@ -22,25 +22,9 @@ LOGLEVEL = os.environ.get("LOGLEVEL", "DEBUG").upper()
 logging.basicConfig(level=LOGLEVEL)
 AZURE_STORAGE_ACCOUNT_URL = os.environ.get("AZURE_STORAGE_ACCOUNT_URL")
 
-if AZURE_STORAGE_ACCOUNT_URL is "":
+if AZURE_STORAGE_ACCOUNT_URL == "":
     raise ValueError(f"AZURE_STORAGE_ACCOUNT_URL is empty")
 
-#AZURE_STORAGE_ACCOUNT_URL formating
-pattern = r"^[a-z0-9\-]+\.blob\.core\.windows\.net$"
-
-if not re.match(pattern, AZURE_STORAGE_ACCOUNT_URL):
-    AZURE_STORAGE_ACCOUNT_URL = re.sub(r'(https?://)+', '', AZURE_STORAGE_ACCOUNT_URL.strip())
-    storage_account = AZURE_STORAGE_ACCOUNT_URL.split(".")[0] if "." in AZURE_STORAGE_ACCOUNT_URL else AZURE_STORAGE_ACCOUNT_URL
-    
-    if not re.match(r'^[a-z0-9\-]+$', storage_account):
-        raise ValueError(f"Invalid storage account name.")
-    
-    AZURE_STORAGE_ACCOUNT_URL = f"{storage_account}.blob.core.windows.net"
-
-    if not re.match(pattern, AZURE_STORAGE_ACCOUNT_URL):
-        raise ValueError(f"Invalid AZURE_STORAGE_ACCOUNT_URL value")
-    
-logging.info(f"Validated and sanitized storage URL")
 
 async def run(conversation_id, ask, url, client_principal):
     try:
@@ -126,7 +110,7 @@ async def run(conversation_id, ask, url, client_principal):
 
                 # Clean up any sensitive URLs in the response
                 if AZURE_STORAGE_ACCOUNT_URL in text:
-                    regex = rf"(Source:\s?\/?)?(source:)?(https:\/\/)?({AZURE_STORAGE_ACCOUNT_URL})?(\/?documents\/?)?"
+                    regex = rf"(Source:\s?\/?)?(source:)?({re.escape(AZURE_STORAGE_ACCOUNT_URL)})\/documents\/?"
                     text = re.sub(regex, "", text)
                     response["combined_messages"][-1].content = text
                     logging.info(
