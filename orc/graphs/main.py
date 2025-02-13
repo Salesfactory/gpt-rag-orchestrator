@@ -151,7 +151,6 @@ class GraphBuilder:
         graph.add_node("retrieve", self._retrieve_context)
         graph.add_node("search", self._web_search)
         graph.add_node("return", self._return_state)
-        #graph.add_node("generate", self._generate_response)
 
 
         # Define graph flow
@@ -170,7 +169,6 @@ class GraphBuilder:
         )
         graph.add_edge("search",  "return")
         graph.add_edge("return", END)
-        #graph.add_edge("generate", END)
 
         return graph.compile(checkpointer=memory)
 
@@ -246,93 +244,6 @@ class GraphBuilder:
         return {
             "context_docs": state.context_docs + web_docs,
             "requires_web_search": state.requires_web_search,
-        }
-
-    def _generate_response(self, state: ConversationState) -> dict:
-        """Generate final response using context and query."""
-        context = ""
-        if state.context_docs:
-            context = "\n\n==============================================\n\n".join([
-                f"\nContent: \n\n{doc.page_content}" + 
-                (f"\n\nSource: {doc.metadata['source']}" if doc.metadata.get("source") else "")
-                for doc in state.context_docs
-            ])
-
-        system_prompt = MARKETING_ANSWER_PROMPT
-        prompt = f"""
-        
-        Question: 
-        
-        <----------- USER QUESTION ------------>
-        REWRITTEN QUESTION: {state.rewritten_query}
-
-        ORIGINAL QUESTION: {state.question}
-        <----------- END OF USER QUESTION ------------>
-        
-        
-        Context: (MUST PROVIDE CITATIONS FOR ALL SOURCES USED IN THE ANSWER)
-        
-        <----------- PROVIDED CONTEXT ------------>
-        {context}
-        <----------- END OF PROVIDED CONTEXT ------------>
-
-        Chat History:
-
-        <----------- PROVIDED CHAT HISTORY ------------>
-        {state.messages}
-        <----------- END OF PROVIDED CHAT HISTORY ------------>
-
-        Chat Summary:
-
-        <----------- PROVIDED CHAT SUMMARY ------------>
-        {state.chat_summary}
-        <----------- END OF PROVIDED CHAT SUMMARY ------------>
-
-        Provide a detailed answer.
-        """
-        
-
-        # Generate response and update message history
-        response = self.llm.invoke([SystemMessage(content=system_prompt), HumanMessage(content=prompt)])
-
-        #####################################################################################
-        # Summary and chat history work
-        #####################################################################################   
-        current_messages = state.messages if state.messages is not None else []
-
-        try:
-            # Try to count tokens, fallback to conservative estimate if it fails
-            pre_token_count = num_tokens_from_string(messages_to_string(current_messages)) if current_messages else 0
-            print(f"Pre token count: {pre_token_count}")
-
-            # Summarize chat history if it exceeds token limit
-            if pre_token_count > self.config.max_tokens:
-                chat_summary = _summarize_chat(pre_token_count, current_messages, state.chat_summary, self.config.max_tokens, self.llm)
-            else:
-                chat_summary = state.chat_summary
-
-            # Prepare new messages
-            new_messages = [HumanMessage(content=state.rewritten_query), AIMessage(content=response.content)]
-            total_messages = (current_messages + new_messages) if pre_token_count <= self.config.max_tokens else new_messages
-            post_token_count = num_tokens_from_string(messages_to_string(total_messages))
-            print(f"Post token count: {post_token_count}")
-        
-
-        except Exception as e:
-            print(f"Warning: Token counting failed: {str(e)}")
-            # Fallback to simple length-based estimate
-            pre_token_count = sum(len(str(m.content)) // 4 for m in current_messages)
-
-            total_messages = current_messages + [HumanMessage(content=state.rewritten_query), 
-                                              AIMessage(content=response.content)]
-
-            post_token_count = sum(len(str(m.content)) // 4 for m in total_messages)
-
-        return {
-            "messages": total_messages,
-            "context_docs": state.context_docs,
-            "token_count": post_token_count,
-            "chat_summary": chat_summary,
         }
 
 
