@@ -32,48 +32,6 @@ class ConversationState():
     token_count: int = field(default_factory=int)
 
 
-def _summarize_chat(token_count: int, 
-                        messages: List[AIMessage | HumanMessage], 
-                        chat_summary: str, 
-                        max_tokens: int, 
-                        llm: AzureChatOpenAI) -> dict:
-        """Summarize chat history if it exceeds token limit.
-        
-
-        Args:
-            state: Current conversation state
-            
-        Returns:
-            dict: Contains updated chat_summary and token_count
-        """
-
-        if token_count > max_tokens:
-            try:
-                if chat_summary:
-                    messages = [
-                        SystemMessage(content="You are a helpful assistant that summarizes conversations."),
-                        HumanMessage(content=f"Previous summary:\n{chat_summary}\n\nNew messages to incorporate:\n{messages}\n\nPlease extend the summary. Return only the summary text.")
-                    ]
-
-                else:
-                    messages = [
-                        SystemMessage(content="You are a helpful assistant that summarizes conversations."),
-                        HumanMessage(content=f"Summarize this conversation history. Return only the summary text:\n{messages}")
-                    ]
-
-                
-                new_summary = llm.invoke(messages)
-                            
-                return new_summary.content
-
-            except Exception as e:
-                # Log the error but continue with empty summary
-                print(f"Error summarizing chat: {str(e)}")
-                return chat_summary or ""
-        else:
-            return chat_summary or ""
-
-
 @dataclass
 class GraphConfig: 
     "Config for the graph builder"
@@ -130,7 +88,11 @@ class GraphBuilder:
         except Exception as e:
             raise RuntimeError(f"Failed to initialize Google Search: {str(e)}")
         
-    def _return_state(self,state: ConversationState) -> dict:
+    def _return_state(self, state: ConversationState) -> dict:
+        # Add current Q&A to messages if not empty
+        if state.rewritten_query and not any(msg.content == state.rewritten_query for msg in state.messages):
+            state.messages.append(HumanMessage(content=state.rewritten_query))
+        
         return {
             "messages": state.messages,
             "context_docs": state.context_docs,

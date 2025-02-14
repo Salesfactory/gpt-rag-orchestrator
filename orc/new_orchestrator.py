@@ -15,7 +15,7 @@ from shared.cosmos_db import (
 )
 from langchain_openai import AzureChatOpenAI
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Generator
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, RemoveMessage
 from langchain.schema import Document
 from shared.prompts import MARKETING_ORC_PROMPT, MARKETING_ANSWER_PROMPT, QUERY_REWRITING_PROMPT
@@ -62,47 +62,6 @@ class ConversationOrchestrator:
             return re.sub(regex, "", text)
         return text
     
-    def _summarize_chat(token_count: int, 
-                        messages: List[AIMessage | HumanMessage], 
-                        chat_summary: str, 
-                        max_tokens: int, 
-                        llm: AzureChatOpenAI) -> dict:
-        """Summarize chat history if it exceeds token limit.
-        
-
-        Args:
-            state: Current conversation state
-            
-        Returns:
-            dict: Contains updated chat_summary and token_count
-        """
-
-        if token_count > max_tokens:
-            try:
-                if chat_summary:
-                    messages = [
-                        SystemMessage(content="You are a helpful assistant that summarizes conversations."),
-                        HumanMessage(content=f"Previous summary:\n{chat_summary}\n\nNew messages to incorporate:\n{messages}\n\nPlease extend the summary. Return only the summary text.")
-                    ]
-
-                else:
-                    messages = [
-                        SystemMessage(content="You are a helpful assistant that summarizes conversations."),
-                        HumanMessage(content=f"Summarize this conversation history. Return only the summary text:\n{messages}")
-                    ]
-
-                
-                new_summary = llm.invoke(messages)
-                            
-                return new_summary.content
-
-            except Exception as e:
-                # Log the error but continue with empty summary
-                print(f"Error summarizing chat: {str(e)}")
-                return chat_summary or ""
-        else:
-            return chat_summary or ""
-
     def _load_memory(self, memory_data: str) -> MemorySaver:
         """Decode and load conversation memory from base64 string."""
         memory = MemorySaver()
@@ -137,17 +96,42 @@ class ConversationOrchestrator:
             # Load conversation state
             conversation_data = get_conversation_data(conversation_id)
             memory = self._load_memory(conversation_data.get("memory_data", ""))
+            
+            # Get existing chat summary
+            existing_chat_summary = conversation_data.get("chat_summary", "")
+            
+            # Convert history to messages if exists
+            existing_messages = []
+            if "history" in conversation_data:
+                for entry in conversation_data["history"]:
+                    if entry["role"] == "user":
+                        existing_messages.append(HumanMessage(content=entry["content"]))
+                    elif entry["role"] == "assistant":
+                        existing_messages.append(AIMessage(content=entry["content"]))
 
             # Process through agent
-            agent = create_conversation_graph(memory = memory)
+            agent = create_conversation_graph(memory=memory)
             config = {"configurable": {"thread_id": conversation_id}}
 
             with get_openai_callback() as cb:
-                # Get agent response
-                response = agent.invoke({"question": question}, config)
+                # Initialize state with existing messages and chat summary
+                initial_state = {
+                    "question": question, 
+                    "messages": existing_messages,
+                    "chat_summary": existing_chat_summary
+                }
+                response = agent.invoke(initial_state, config)
                 return {
                     "conversation_id": conversation_id,
-                    "state": ConversationState(question, response["messages"], response["context_docs"], response["requires_web_search"], response["rewritten_query"], response["chat_summary"], response["token_count"]),
+                    "state": ConversationState(
+                        question=question,
+                        messages=response["messages"],
+                        context_docs=response["context_docs"],
+                        requires_web_search=response["requires_web_search"],
+                        rewritten_query=response["rewritten_query"],
+                        chat_summary=response["chat_summary"],
+                        token_count=response["token_count"]
+                    ),
                     "conversation_data": conversation_data,
                     "memory_data": self._serialize_memory(memory, config),
                     "start_time": start_time,
@@ -158,21 +142,22 @@ class ConversationOrchestrator:
             logging.error(f"[orchestrator] Error retrieving resources: {str(e)}")
             store_agent_error(user_info["id"], str(e), question)
             
-    def generate_response(self,conversation_id: str, state: ConversationState, conversation_data: dict, user_info: dict, memory_data: str,start_time: float):
-        """Generate final response using context and query."""
-        logging.info(f"[orchestrator] Generating response for: {state.question}")
+    def _prepare_prompt(self, state: ConversationState) -> str:
+        """Prepare the prompt for response generation."""
         context = ""
-        max_tokens = 2000
         if state.context_docs:
             context = "\n\n==============================================\n\n".join([
                 f"\nContent: \n\n{doc.page_content}" + 
                 (f"\n\nSource: {doc.metadata['source']}" if doc.metadata.get("source") else "")
                 for doc in state.context_docs
             ])
+        # if chat summary exists, just use the last 3 messages
+        if state.chat_summary:
+            chat_history = state.messages[-4:]
+        else:
+            chat_history = state.messages
 
-        system_prompt = MARKETING_ANSWER_PROMPT
-        prompt = f"""
-        
+        return f"""
         Question: 
         
         <----------- USER QUESTION ------------>
@@ -180,7 +165,6 @@ class ConversationOrchestrator:
 
         ORIGINAL QUESTION: {state.question}
         <----------- END OF USER QUESTION ------------>
-        
         
         Context: (MUST PROVIDE CITATIONS FOR ALL SOURCES USED IN THE ANSWER)
         
@@ -191,7 +175,7 @@ class ConversationOrchestrator:
         Chat History:
 
         <----------- PROVIDED CHAT HISTORY ------------>
-        {state.messages}
+        {chat_history}
         <----------- END OF PROVIDED CHAT HISTORY ------------>
 
         Chat Summary:
@@ -203,20 +187,23 @@ class ConversationOrchestrator:
         Provide a detailed answer.
         """
 
-        # Generate response and update message history
-        response = {
-            "content": "",
-        }
-        
+    def _stream_response(self, system_prompt: str, prompt: str) -> Generator[str, None, None]:
+        """Stream the response from the LLM."""
+        response = {"content": ""}
         response_llm = AzureChatOpenAI(
             temperature=0,
             openai_api_version="2024-05-01-preview",
             azure_deployment="gpt-4o-orchestrator",
             streaming=True,
             timeout=30,
-            max_retries=3)
+            max_retries=3
+        )
         
-        tokens = response_llm.stream([SystemMessage(content=system_prompt), HumanMessage(content=prompt)])
+        tokens = response_llm.stream([
+            SystemMessage(content=system_prompt), 
+            HumanMessage(content=prompt)
+        ])
+        
         try:
             while True:
                 try:
@@ -228,86 +215,126 @@ class ConversationOrchestrator:
                     break
         except Exception as e:
             logging.error(f"[orchestrator] Error generating response: {str(e)}")
-            response["content"] = "I'm sorry, I'm having trouble generating a response right now. Please try again later."
-            yield response["content"]
-                        
-        logging.info(f"[orchestrator] Response generated: {response['content']}")
+            error_msg = "I'm sorry, I'm having trouble generating a response right now. Please try again later."
+            response["content"] = error_msg
+            yield error_msg
         
-        #####################################################################################
-        # Summary and chat history work
-        #####################################################################################   
-        current_messages = state.messages if state.messages is not None else []
+        return response["content"]
+
+    def _process_chat_history(self, state: ConversationState, response_content: str, llm: AzureChatOpenAI) -> tuple[list, str]:
+        messages_threshold = 4
+        current_messages = state.messages or []
         
+        # Add new message pair
+        new_messages = [
+            HumanMessage(content=state.question),
+            AIMessage(content=response_content)
+        ]
+        total_messages = current_messages + new_messages
+        
+        try:
+            chat_summary = state.chat_summary
+            
+            if len(total_messages) > messages_threshold:
+                # Keep the most recent message pair and summarize everything else
+                messages_to_keep = total_messages[-2:]  # Keep latest Q&A pair
+                messages_to_summarize = total_messages[:-2]  # Summarize everything else
+                message_texts = messages_to_string(messages_to_summarize)
+                
+                # Prepare summarization prompt
+                summary_prompt = (
+                    f"Previous summary:\n{state.chat_summary}\n\n"
+                    f"New messages to incorporate:\n{message_texts}\n\n"
+                    "Please extend the summary. Return only the summary text."
+                ) if state.chat_summary else (
+                    f"Summarize this conversation history. Return only the summary text:\n{message_texts}"
+                )
+                
+                # Generate new summary
+                summary_messages = [
+                    SystemMessage(content="You are a helpful assistant that summarizes conversations."),
+                    HumanMessage(content=summary_prompt)
+                ]
+                chat_summary = llm.invoke(summary_messages).content
+                
+                # Return only the most recent message pair
+                total_messages = messages_to_keep
+            
+            return total_messages, chat_summary
+            
+        except Exception as e:
+            logging.warning(f"Chat history processing failed: {str(e)}")
+            return total_messages[-2:], state.chat_summary
+
+    def _update_conversation_data(self, conversation_id: str, conversation_data: dict, 
+                                state: ConversationState, response_content: str, 
+                                memory_data: str, chat_summary: str, 
+                                user_info: dict, start_time: float) -> None:
+        """Update and save conversation data."""
+        answer = self._sanitize_response(response_content)
+        history = conversation_data.get("history", [])
+        history.extend([
+            {"role": "user", "content": state.question},
+            {
+                "role": "assistant",
+                "content": answer,
+                "thoughts": [f"Tool name: agent_memory > Query sent: {state.rewritten_query}"],
+            },
+        ])
+
+        conversation_data.update({
+            "history": history,
+            "memory_data": memory_data,
+            "chat_summary": chat_summary,
+            "interaction": {
+                "user_id": user_info["id"],
+                "user_name": user_info["name"],
+                "response_time": round(time.time() - start_time, 2),
+            },
+        })
+        
+        update_conversation_data(conversation_id, conversation_data)
+
+    def generate_response(self, conversation_id: str, state: ConversationState, 
+                         conversation_data: dict, user_info: dict, 
+                         memory_data: str, start_time: float):
+        """Generate final response using context and query."""
+        logging.info(f"[orchestrator] Generating response for: {state.question}")
+        
+        # First generate the initial response
+        prompt = self._prepare_prompt(state)
+        response_content = ""
+        for token in self._stream_response(MARKETING_ANSWER_PROMPT, prompt):
+            response_content += token
+            yield token
+        
+        # Update messages with the new response before any follow-up prompts
+        state.messages.extend([
+            HumanMessage(content=state.question),
+            AIMessage(content=response_content)
+        ])
+        
+        # Now any subsequent prompt preparations will include the latest Q&A pair
+        
+        # Process chat history and generate summary
         llm = AzureChatOpenAI(
             temperature=0,
-            openai_api_version= "2024-05-01-preview",
+            openai_api_version="2024-05-01-preview",
             azure_deployment="gpt-4o-orchestrator",
             streaming=True,
             timeout=30,
             max_retries=3
         )
-
-        try:
-            # Try to count tokens, fallback to conservative estimate if it fails
-            pre_token_count = num_tokens_from_string(messages_to_string(current_messages)) if current_messages else 0
-            print(f"Pre token count: {pre_token_count}")
-
-            # Summarize chat history if it exceeds token limit
-            #TODO: THIS CHAT SUMMARY IS NOT BEING USED CHECK FOR WHAT IS WHAT USED ON THE GRAPH BEFORE
-            if pre_token_count > max_tokens:
-                chat_summary = self._summarize_chat(pre_token_count, current_messages, state.chat_summary, max_tokens, llm)
-            else:
-                chat_summary = state.chat_summary
-
-            # Prepare new messages
-            new_messages = [HumanMessage(content=state.rewritten_query), AIMessage(content=response["content"])]
-            total_messages = (current_messages + new_messages) if pre_token_count <= max_tokens else new_messages
-            post_token_count = num_tokens_from_string(messages_to_string(total_messages))
-            print(f"Post token count: {post_token_count}")
         
-        except Exception as e:
-            print(f"Warning: Token counting failed: {str(e)}")
-            # Fallback to simple length-based estimate
-            pre_token_count = sum(len(str(m.content)) // 4 for m in current_messages)
-
-            total_messages = current_messages + [HumanMessage(content=state.rewritten_query), 
-                                                AIMessage(content=response["content"])]
-
-            post_token_count = sum(len(str(m.content)) // 4 for m in total_messages)
-        
-        answer = self._sanitize_response(response["content"])
-        # Update conversation history
-        history = conversation_data.get("history", [])
-        history.extend(
-            [
-                {"role": "user", "content": state.question},
-                {
-                    "role": "assistant",
-                    "content": answer,
-                    "thoughts": [
-                        f"Tool name: agent_memory > Query sent: {state.rewritten_query}"
-                    ],
-                },
-            ]
-        )
-        # Save updated state
-        conversation_data.update(
-            {
-                "history": history,
-                "memory_data": memory_data,
-                "interaction": {
-                    "user_id": user_info["id"],
-                    "user_name": user_info["name"],
-                    "response_time": round(time.time() - start_time, 2),
-                },
-            }
+        total_messages, chat_summary = self._process_chat_history(
+            state, response_content, llm
         )
         
-        update_conversation_data(conversation_id, conversation_data)
-        #TODO: ENABLE CONSUME TOKENS FOR RESPONSE GENERATION
-        #store_user_consumed_tokens(user_info["id"], cb)
-
-
+        # Update conversation data
+        self._update_conversation_data(
+            conversation_id, conversation_data, state, response_content,
+            memory_data, chat_summary, user_info, start_time
+        )
 
 async def stream_run(conversation_id: str, ask: str, url: str, client_principal: dict):
     orchestrator = ConversationOrchestrator()
