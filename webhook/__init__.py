@@ -2,7 +2,7 @@ import logging
 import azure.functions as func
 import json
 import os
-
+from azurefunctions.extensions.http.fastapi import Response
 import stripe
 
 
@@ -22,6 +22,8 @@ async def main(req: func.HttpRequest) -> func.HttpResponse:
     endpoint_secret = os.getenv("STRIPE_SIGNING_SECRET")
 
     event = None
+    
+    requ = req.get_body()
     payload = await req.json()
 
     try:

@@ -61,12 +61,12 @@ async def webhook(req: Request) -> Response:
     endpoint_secret = os.getenv("STRIPE_SIGNING_SECRET")
 
     event = None
-    payload = await req.json()
+    payload = await req.body()
 
     try:
         event = json.loads(payload)
     except json.decoder.JSONDecodeError as e:
-        print("  Webhook error while parsing basic request." + str(e))
+        logging.error("  Webhook error while parsing basic request." + str(e))
         return Response(content=json.dumps({"success": False}), media_type="application/json", status_code=400)
     if endpoint_secret:
         # Only verify the event if there is an endpoint secret defined
@@ -76,12 +76,12 @@ async def webhook(req: Request) -> Response:
         try:
             event = stripe.Webhook.construct_event(payload, sig_header, endpoint_secret)
         except stripe.error.SignatureVerificationError as e:
-            logging.info("  Webhook signature verification failed. " + str(e))
+            print("  Webhook signature verification failed. " + str(e))
             return Response(content=json.dumps({"success": False}), media_type="application/json", status_code=400)
 
     # Handle the event
     if event["type"] == "checkout.session.completed":
-        logging.info("  Webhook received!", event["type"])
+        print("  Webhook received!", event["type"])
         userId = event["data"]["object"]["client_reference_id"]
         userName = event["data"]["object"].get("metadata", {}).get("userName", "") or ""
         organizationId = event["data"]["object"].get("metadata", {}).get("organizationId", "") or ""
@@ -94,7 +94,7 @@ async def webhook(req: Request) -> Response:
         try:
             update_organization_subscription(userId, organizationId, subscriptionId, sessionId, paymentStatus, organizationName, expirationDate)
             handle_new_subscription_logs(userId, organizationId, userName, organizationName)
-            logging.info(f"User {userId} updated with subscription {subscriptionId}")
+            print(f"User {userId} updated with subscription {subscriptionId}")
         except Exception as e:
             logging.exception("[webbackend] exception in /api/webhook")
             return Response(
@@ -103,12 +103,12 @@ async def webhook(req: Request) -> Response:
                 status_code=500,
             )
     elif event["type"] == "customer.subscription.updated":
-        logging.info("  Webhook received!", event["type"])
+        print("  Webhook received!", event["type"])
         subscriptionId = event["data"]["object"]["id"]
         status = event["data"]["object"]["status"]
         expirationDate = event["data"]["object"]["current_period_end"]
-        logging.info(f"expirationDate: => {expirationDate}")
-        logging.info(f"Subscription {subscriptionId} updated to status {status}")
+        print(f"expirationDate: => {expirationDate}")
+        print(f"Subscription {subscriptionId} updated to status {status}")
 
         def determine_action(event):
             data = event.get("data", {}).get("object", {})
@@ -126,7 +126,7 @@ async def webhook(req: Request) -> Response:
 
             # If modification_type is not received, log the message and do not create anything in the audit
             if modification_type is None:
-                logging.info("Modification type not received, no audit action created.")
+                print("Modification type not received, no audit action created.")
                 return "No action", None, None, modified_by, modified_by_name, None    
 
             if modification_type == "add_financial_assistant":
@@ -154,7 +154,7 @@ async def webhook(req: Request) -> Response:
             return "Unknown action", None, None, modified_by,modified_by_name, None
         
         action, previous_plan, current_plan, modified_by, modified_by_name, status_financial_assistant = determine_action(event)
-        logging.info(f"Action determined: {action}")
+        print(f"Action determined: {action}")
         
         try:
             enable_organization_subscription(subscriptionId)
@@ -171,7 +171,7 @@ async def webhook(req: Request) -> Response:
                 return Response(content=json.dumps({"error": f"Error in webhook execution: {str(e)}"}), media_type="application/json", status_code=500)
 
     elif event["type"] == "customer.subscription.paused":
-        logging.info("  Webhook received!", event["type"])
+        print("  Webhook received!", event["type"])
         subscriptionId = event["data"]["object"]["id"]
         event_type = event["type"].split(".")[-1] # Obtain "paused"
         try:
@@ -182,7 +182,7 @@ async def webhook(req: Request) -> Response:
             return Response(content=json.dumps({"error": f"Error in webhook execution: {str(e)}"}), media_type="application/json", status_code=500)
 
     elif event["type"] == "customer.subscription.resumed":
-        logging.info("  Webhook received!", event["type"])
+        print("  Webhook received!", event["type"])
         event_type = event["type"].split(".")[-1] # Obtain "resumed"
         try:
             handle_subscription_logs(subscriptionId, event_type)
@@ -192,7 +192,7 @@ async def webhook(req: Request) -> Response:
             return Response(content=json.dumps({"error": f"Error in webhook execution: {str(e)}"}), media_type="application/json", status_code=500)
         
     elif event["type"] == "customer.subscription.deleted":
-        logging.info("  Webhook received!", event["type"])
+        print("  Webhook received!", event["type"])
         event_type = event["type"].split(".")[-1] # Obtain "deleted"
         subscriptionId = event["data"]["object"]["id"]
         try:
@@ -203,7 +203,7 @@ async def webhook(req: Request) -> Response:
             return Response(content=json.dumps({"error": f"Error in webhook execution: {str(e)}"}), media_type="application/json", status_code=500)
     else:
         # Unexpected event type
-        logging.info(f"Unexpected event type: {event['type']}")
+        print(f"Unexpected event type: {event['type']}")
 
     return Response(content=json.dumps({"success": True}), media_type="application/json")
 
