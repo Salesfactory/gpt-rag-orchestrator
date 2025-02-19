@@ -236,8 +236,8 @@ async def monthly_scheduler(timer: func.TimerRequest) -> None:
     except Exception as e:
         logging.error(f"Error in monthly scheduler: {e}")
 
-@app.function_name(name="html_to_pdf")
-@app.route(route="html_to_pdf", methods=[func.HttpMethod.POST])
+@app.function_name(name="html_to_pdf_converter")
+@app.route(route="html_to_pdf_converter", methods=[func.HttpMethod.POST])
 async def html2pdf_conversion(req: Request) -> Response:
     logging.info('Python HTTP trigger function processed a request.')
 
