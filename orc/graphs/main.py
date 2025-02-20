@@ -87,8 +87,9 @@ class GraphConfig:
 class GraphBuilder:
     """Builds and manages the conversation flow graph."""
 
-    def __init__(self, config: GraphConfig = GraphConfig()):
+    def __init__(self, organization_id: str = None, config: GraphConfig = GraphConfig()):
         """Initialize with with configuration"""
+        self.organization_id = organization_id
         self.config = config
         self.llm = self._init_llm()
         self.retriever = self._init_retriever()
@@ -118,7 +119,8 @@ class GraphBuilder:
             return CustomRetriever(
                 indexes = [index_name],
                 topK = config.retriever_top_k,
-                reranker_threshold = config.reranker_threshold
+                reranker_threshold = config.reranker_threshold,
+                organization_id = self.organization_id
             )
         except Exception as e:
             raise RuntimeError(f"Failed to initialize Azure AI Search Retriever: {str(e)}")
@@ -337,12 +339,13 @@ class GraphBuilder:
         }
 
 
-def create_conversation_graph(memory) -> StateGraph:
+def create_conversation_graph(memory, organization_id = None) -> StateGraph:
     """Create and return a configured conversation graph.
     Returns:
         Compiled StateGraph for conversation processing
     """
-    builder = GraphBuilder()
+    print(f"Creating conversation graph for organization: {organization_id}")
+    builder = GraphBuilder(organization_id=organization_id)
     return builder.build(memory)
 
 
