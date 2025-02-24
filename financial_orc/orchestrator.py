@@ -10,9 +10,52 @@ from shared.cosmos_db import (
     update_conversation_data,
     store_agent_error,
 )
-from .graphs.main import create_main_agent
+from langchain_core.messages import AIMessage, ToolMessage
+from .graphs.main import create_conversation_graph
 
 LOGLEVEL = os.environ.get("LOGLEVEL", "DEBUG").upper()
+
+
+###################################################
+# Generation code 
+###################################################
+def format_chat_history(messages):
+        """Format chat history into a clean, readable string."""
+        if not messages:
+            return "No previous conversation history."
+            
+        formatted_messages = []
+        for msg in messages:
+            # Add a separator line
+            formatted_messages.append("-" * 50)
+            
+            # Format based on message type
+            if isinstance(msg, HumanMessage):
+                formatted_messages.append("Human:")
+                formatted_messages.append(f"{msg.content}")
+                
+            elif isinstance(msg, AIMessage):
+                formatted_messages.append("Assistant:")
+                formatted_messages.append(f"{msg.content}")
+                
+            elif isinstance(msg, ToolMessage):
+                formatted_messages.append("Tool Output:")
+                # Try to format tool output nicely
+                try:
+                    tool_name = getattr(msg, 'name', 'Unknown Tool')
+                    formatted_messages.append(f"Tool: {tool_name}")
+                    formatted_messages.append(f"Output: {msg.content}")
+                except:
+                    formatted_messages.append(f"{msg.content}")
+        
+        # Add final separator
+        formatted_messages.append("-" * 50)
+        
+        # Join all lines with newlines
+        return "\n".join(formatted_messages)
+    
+
+
 
 
 async def run(conversation_id, question, documentName, client_principal):
@@ -46,7 +89,7 @@ async def run(conversation_id, question, documentName, client_principal):
         )
 
         # Create and invoke agent
-        agent_executor = create_main_agent(
+        agent_executor = create_conversation_graph(
             checkpointer=memory, documentName=documentName, verbose=(LOGLEVEL == "DEBUG")
         )
         config = {"configurable": {"thread_id": conversation_id}}
