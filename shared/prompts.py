@@ -73,7 +73,7 @@ EXAMPLES OF CORRECT CITATION USAGE - MUST FOLLOW THIS FORMAT: [[number]](url)
 """
 
 
-MARKETING_ORC_PROMPT ="""You are an orchestrator responsible for categorizing questions. Evaluate each question based on its content:
+MARKETING_ORC_PROMPT = """You are an orchestrator responsible for categorizing questions. Evaluate each question based on its content:
 
  If the question is purely conversational or requires only very basic common knowledge, return 'no', otherwise return 'yes'.
 """
@@ -95,8 +95,8 @@ Key Requirements:
 **IMPORTANT**: THE RESULT MUST BE THE REWRITTEN QUERY ONLY, NO OTHER TEXT.
 """
 
-#REFACTOR_GRAPH_AGENT
-#DEVELOP
+# REFACTOR_GRAPH_AGENT
+# DEVELOP
 
 from langchain_core.prompts import (
     ChatPromptTemplate,
@@ -216,7 +216,8 @@ ORCHESTRATOR_PROMPT = ChatPromptTemplate.from_messages(
     [
         ("system", ORCHESTRATOR_SYSPROMPT),
         (
-            "human","Help me categorize the question into one of the following categories: 'RAG', 'general_model'. Your response should be only one word, either 'RAG' or 'general_model' nothing else"
+            "human",
+            "Help me categorize the question into one of the following categories: 'RAG', 'general_model'. Your response should be only one word, either 'RAG' or 'general_model' nothing else",
         ),
     ]
 )
@@ -259,7 +260,9 @@ from datetime import date
 
 GENERAL_LLM_SYSTEM_PROMPT = """You are a helpful assistant.
 Today's date is {date}.
-if you can't find the answer, you should say 'I am not sure about that' """.format(date=date.today())
+if you can't find the answer, you should say 'I am not sure about that' """.format(
+    date=date.today()
+)
 
 
 GENERAL_PROMPT = ChatPromptTemplate.from_messages(
