@@ -82,7 +82,6 @@ async def financial_orc(req: Request) -> Response:
     # }
 
     req_body = await req.json()
-    logging.info(f"[financial-orc] Request body: {req_body}")
     conversation_id = req_body.get("conversation_id")
     question = req_body.get("question")
 

@@ -12,51 +12,63 @@ from shared.cosmos_db import (
 )
 from langchain_core.messages import AIMessage, ToolMessage
 from .graphs.main import create_conversation_graph
+from dataclasses import dataclass, field
+from typing import List
+from langchain.schema import Document
 
 LOGLEVEL = os.environ.get("LOGLEVEL", "DEBUG").upper()
-
 
 ###################################################
 # Generation code 
 ###################################################
-def format_chat_history(messages):
-        """Format chat history into a clean, readable string."""
-        if not messages:
-            return "No previous conversation history."
-            
-        formatted_messages = []
-        for msg in messages:
-            # Add a separator line
-            formatted_messages.append("-" * 50)
-            
-            # Format based on message type
-            if isinstance(msg, HumanMessage):
-                formatted_messages.append("Human:")
-                formatted_messages.append(f"{msg.content}")
-                
-            elif isinstance(msg, AIMessage):
-                formatted_messages.append("Assistant:")
-                formatted_messages.append(f"{msg.content}")
-                
-            elif isinstance(msg, ToolMessage):
-                formatted_messages.append("Tool Output:")
-                # Try to format tool output nicely
-                try:
-                    tool_name = getattr(msg, 'name', 'Unknown Tool')
-                    formatted_messages.append(f"Tool: {tool_name}")
-                    formatted_messages.append(f"Output: {msg.content}")
-                except:
-                    formatted_messages.append(f"{msg.content}")
-        
-        # Add final separator
-        formatted_messages.append("-" * 50)
-        
-        # Join all lines with newlines
-        return "\n".join(formatted_messages)
+
+@dataclass
+class ConversationState:
+    """State container for conversation flow management.
+
+    Attributes:
+        question: Current user query
+        messages: Conversation history as a list of messages
+        context_docs: Retrieved documents from various sources
+    """
+
+    question: str
+    messages: List[AIMessage | HumanMessage] = field(
+        default_factory=list
+    )  # track all messages in the conversation
+    context_docs: List[Document] = field(default_factory=list)
+class FinancialOrchestrator:
+    """Manages conversation flow and state between user and AI agent.
     
-
-
-
+    Attributes:
+        question: Current user query
+        messages: Conversation history as a list of messages
+        context_docs: Retrieved documents from various sources
+    """
+    
+    def __init__(self, organization_id: str = None):
+        """Initialize orchestrator with storage URL."""
+        self.storage_url = os.environ.get("AZURE_STORAGE_ACCOUNT_URL")
+        self.organization_id = organization_id
+        
+    def _serialize_memory(self, memory: MemorySaver, config: dict) -> str:
+        """Convert memory state to base64 encoded string for storage."""
+        serialized = memory.serde.dumps(memory.get_tuple(config))
+        return base64.b64encode(serialized).decode("utf-8")
+    
+    def _load_memory(self, memory_data: str) -> MemorySaver:
+        """Decode and load conversation memory from base64 string."""
+        memory = MemorySaver()
+        if memory_data != "":
+            decoded_data = base64.b64decode(memory_data)
+            json_data = memory.serde.loads(decoded_data)
+            if json_data:
+                memory.put(
+                    config=json_data[0], checkpoint=json_data[1], metadata=json_data[2]
+                )
+        return memory
+    
+    
 
 async def run(conversation_id, question, documentName, client_principal):
     try:
@@ -90,7 +102,7 @@ async def run(conversation_id, question, documentName, client_principal):
 
         # Create and invoke agent
         agent_executor = create_conversation_graph(
-            checkpointer=memory, documentName=documentName, verbose=(LOGLEVEL == "DEBUG")
+            memory=memory, documentName=documentName
         )
         config = {"configurable": {"thread_id": conversation_id}}
         response = agent_executor.invoke(

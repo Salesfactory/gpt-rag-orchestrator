@@ -70,6 +70,7 @@ class GraphBuilder:
         config: GraphConfig = GraphConfig(),
         conversation_id: str = None,
         documentName: str = None,
+        verbose: bool = True,
     ):
         """Initialize with configuration and validate environment variables"""
         # Validate required environment variables
@@ -101,6 +102,11 @@ class GraphBuilder:
             openai_api_version=os.environ["AZURE_OPENAI_API_VERSION"],
             temperature=0.3,
         )
+        
+    def _should_continue(self) -> str:
+        """Route query based on knowledge requirement."""
+        # not sure of how to make the comparison here
+        return "return_state"
 
     def _init_retriever(self) -> CustomRetriever:
         try:
@@ -111,6 +117,7 @@ class GraphBuilder:
                 topK=self.config.retriever_top_k,
                 reranker_threshold=self.config.reranker_threshold,
                 organization_id=self.organization_id,
+                verbose=self.config.verbose
             )
         except Exception as e:
             raise RuntimeError(
@@ -254,7 +261,7 @@ class GraphBuilder:
 
 
 def create_conversation_graph(
-    memory, organization_id=None, conversation_id=None
+    memory, organization_id=None, conversation_id=None, documentName=None
 ) -> StateGraph:
     """Create and return a configured conversation graph.
     Returns:
@@ -262,9 +269,43 @@ def create_conversation_graph(
     """
     print(f"Creating conversation graph for organization: {organization_id}")
     builder = GraphBuilder(
-        organization_id=organization_id, conversation_id=conversation_id
+        organization_id=organization_id, conversation_id=conversation_id, documentName=documentName
     )
     return builder.build(memory)
+
+def format_chat_history(messages):
+        """Format chat history into a clean, readable string."""
+        if not messages:
+            return "No previous conversation history."
+            
+        formatted_messages = []
+        for msg in messages:
+            # Add a separator line
+            formatted_messages.append("-" * 50)
+            
+            # Format based on message type
+            if isinstance(msg, HumanMessage):
+                formatted_messages.append("Human:")
+                formatted_messages.append(f"{msg.content}")
+                
+            elif isinstance(msg, AIMessage):
+                formatted_messages.append("Assistant:")
+                formatted_messages.append(f"{msg.content}")
+                
+            elif isinstance(msg, ToolMessage):
+                formatted_messages.append("Tool Output:")
+                # Try to format tool output nicely
+                try:
+                    tool_name = getattr(msg, 'name', 'Unknown Tool')
+                    formatted_messages.append(f"Tool: {tool_name}")
+                    formatted_messages.append(f"Output: {msg.content}")
+                except:
+                    formatted_messages.append(f"{msg.content}")
+        
+        # Add final separator
+        formatted_messages.append("-" * 50)
+        # Join all lines with newlines
+        return "\n".join(formatted_messages)
 
 
 ###################################################
