@@ -266,17 +266,11 @@ class ConversationOrchestrator:
         history = conversation_data.get("history", [])
 
         system_prompt = MARKETING_ANSWER_PROMPT
-        prompt = f"""
-        
-        Question: 
-        
-        <----------- USER QUESTION ------------>
 
-        ORIGINAL QUESTION: {state.question}
+        # add context to the system prompt 
 
-        <----------- END OF USER QUESTION ------------>
-        
-        
+        additional_context = f"""
+
         Context: (MUST PROVIDE CITATIONS FOR ALL SOURCES USED IN THE ANSWER)
         
         <----------- PROVIDED CONTEXT ------------>
@@ -294,6 +288,20 @@ class ConversationOrchestrator:
         <----------- PROVIDED CHAT SUMMARY ------------>
         {state.chat_summary}
         <----------- END OF PROVIDED CHAT SUMMARY ------------>
+        """
+
+        # add additional context to the system prompt
+        system_prompt += additional_context
+
+        prompt = f"""
+        
+        Question: 
+        
+        <----------- USER QUESTION ------------>
+
+        ORIGINAL QUESTION: {state.question}
+
+        <----------- END OF USER QUESTION ------------>
 
         Provide a detailed answer.
         """
