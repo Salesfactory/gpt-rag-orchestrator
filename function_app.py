@@ -68,7 +68,7 @@ async def stream_response(req: Request) -> StreamingResponse:
     else:
         return StreamingResponse('{"error": "no question found in json input"}', media_type="application/json")
 
-@app.route(route="financial-orc", methods=[func.HttpMethod.GET])
+@app.route(route="financial-orc", methods=[func.HttpMethod.POST])
 async def financial_orc(req: Request) -> Response:
     logging.info("[financial-orc] Python HTTP trigger function processed a request.")
 

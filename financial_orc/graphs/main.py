@@ -131,7 +131,7 @@ class GraphBuilder:
 
         # Add processing nodes
         graph.add_node("report_preload", self._report_retriever)
-        graph.add_node("agent", self._orchestrator)
+        graph.add_node("agent", self._agent)
         graph.add_node("tools", self._tool_node)
         graph.add_node("return_state", self._return_state)
 
@@ -140,7 +140,7 @@ class GraphBuilder:
         graph.add_edge("report_preload", "agent")
         graph.add_conditional_edges(
             "agent",
-            self._should_continue,
+            self._orchestrator,
             {"continue": "tools", "return_state": "return_state"},
         )
         graph.add_edge("tools", "return_state")
@@ -187,15 +187,19 @@ class GraphBuilder:
     class ToolDecision(BaseModel):
         orc_decision: Literal["tools", "return_state"]
 
+    def _agent(self, state: AgentState) -> dict:
+        """Currently doing nothing, it just exists as a dummy node"""
+        pass
+
     def _orchestrator(self, state: AgentState) -> dict:
         """Decide if the question should be answered using a tool or not."""
 
         system_prompt = """ 
         You're a helpful assistant. Please decide if the question should be answered using a tool or not.
         """
-
+        user_query = state.get("messages", ["no messages"])[-1].content
         prompt = f"""
-        Question: {state["messages"][-1].content}
+        Question: {user_query}
         """
 
         structured_llm = self._init_llm().with_structured_output(self.ToolDecision)
@@ -254,9 +258,9 @@ class GraphBuilder:
 
     def _return_state(self, state: AgentState) -> dict:
         return {
-            "messages": state.messages,
-            "report": state.report,
-            "chat_summary": state.chat_summary,
+            "messages": state["messages"],
+            "report": state["report"],
+            "chat_summary": state["chat_summary"],
         }
 
 
