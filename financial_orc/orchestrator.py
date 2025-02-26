@@ -15,7 +15,7 @@ from .graphs.main import create_conversation_graph
 from dataclasses import dataclass, field
 from typing import List
 from langchain.schema import Document
-
+from langchain_openai import AzureChatOpenAI
 LOGLEVEL = os.environ.get("LOGLEVEL", "DEBUG").upper()
 
 ###################################################
@@ -105,11 +105,16 @@ async def run(conversation_id, question, documentName, client_principal):
             memory=memory, documentName=documentName
         )
         config = {"configurable": {"thread_id": conversation_id}}
-        response = agent_executor.invoke(
-            {"messages": [HumanMessage(content=question)]},
-            stream_mode="values",
-            config=config,
+
+        # init an LLM since we don't have one 
+        llm = AzureChatOpenAI(
+            azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+            azure_deployment="gpt-4o-orchestrator",
+            openai_api_version=os.environ["AZURE_OPENAI_API_VERSION"],
+            temperature=0.3,
         )
+
+        response = llm.invoke(question)
 
         # Serialize and store updated memory
         _tuple = memory.get_tuple(config)
@@ -122,7 +127,7 @@ async def run(conversation_id, question, documentName, client_principal):
         # Add new messages to history
         conversation_data["history"].append({"role": "user", "content": question})
         conversation_data["history"].append(
-            {"role": "assistant", "content": response["messages"][-1].content}
+            {"role": "assistant", "content": response.content}
         )
 
         # conversation data
@@ -139,7 +144,7 @@ async def run(conversation_id, question, documentName, client_principal):
 
         return {
             "conversation_id": conversation_id,
-            "answer": response["messages"][-1].content,
+            "answer": response.content,
             "data_points": "",
             "question": question,
             "documentName": documentName,
