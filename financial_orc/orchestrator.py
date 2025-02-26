@@ -280,7 +280,7 @@ class FinancialOrchestrator:
         # Add new messages to history
         conversation_data["history"].append({"role": "user", "content": question})
         conversation_data["history"].append(
-            {"role": "assistant", "content": response.content}
+            {"role": "assistant", "content": response["content"]}
         )
 
         # conversation data
