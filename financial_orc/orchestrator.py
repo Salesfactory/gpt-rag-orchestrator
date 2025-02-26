@@ -211,7 +211,7 @@ class FinancialOrchestrator:
             azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
             azure_deployment="gpt-4o-orchestrator",
             openai_api_version=os.environ["AZURE_OPENAI_API_VERSION"],
-            temperature=0.3,
+            temperature=0.3
             )
             
             history = conversation_data.get("history", [])
