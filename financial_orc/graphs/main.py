@@ -41,7 +41,8 @@ from datetime import datetime
 
 class AgentState(TypedDict):
     """The state of the agent."""
-
+    
+    question: str
     messages: Annotated[Sequence[BaseMessage], add_messages]
     report: str
     chat_summary: str = ""
@@ -197,7 +198,8 @@ class GraphBuilder:
         system_prompt = """ 
         You're a helpful assistant. Please decide if the question should be answered using a tool or not.
         """
-        user_query = state.get("messages", ["no messages"])[-1].content
+        user_query = state.get("question")
+        #user_query = state.get("messages", ["no messages"])[-1].content
         prompt = f"""
         Question: {user_query}
         """
