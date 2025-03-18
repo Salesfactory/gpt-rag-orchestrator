@@ -1561,7 +1561,7 @@ def trigger_indexer_run() -> bool:
     """Trigger Azure AI Search indexer run to process new documents"""
     try:
         search_service = os.getenv("AZURE_SEARCH_SERVICE")
-        indexer_name = os.getenv("AZURE_SEARCH_INDEXER_NAME")
+        indexer_name = os.getenv("AZURE_FINANCIAL_SEARCH_INDEXER_NAME")
         api_version = os.getenv("AZURE_SEARCH_API_VERSION", "2023-11-01")
         api_key = os.getenv("AZURE_AI_SEARCH_API_KEY")
 
