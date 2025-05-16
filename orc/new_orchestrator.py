@@ -310,6 +310,11 @@ class ConversationOrchestrator:
 
         <----------- END OF PROVIDED INDUSTRY DEFINITION ------------>
 
+        <----------- ADDITIONAL USER INSTRUCTIONS ------------>
+        This instructions are from the user, which are very important to follow. This set the tone and communication style of the answer. Please strictly follow it:
+        {get_organization(self.organization_id).get('additionalInstructions','')}
+        <----------- END OF ADDITIONAL USER INSTRUCTIONS ------------>
+
         System prompt for tool calling (if applicable):
 
         NOTE: When using the tool calling prompt, you should try to incorporate all the provided information from the Chat History and Brand information to tailor the response.
