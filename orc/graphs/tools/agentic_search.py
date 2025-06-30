@@ -39,7 +39,10 @@ class AgenticSearchConfig:
         self.azure_openai_endpoint = azure_openai_endpoint or os.getenv(
             "AZURE_OPENAI_ENDPOINT"
         )
-        self.azure_search_endpoint = azure_search_endpoint or f"https://{os.getenv('AZURE_SEARCH_SERVICE')}.search.windows.net"
+        self.azure_search_endpoint = (
+            azure_search_endpoint
+            or f"https://{os.getenv('AZURE_SEARCH_SERVICE')}.search.windows.net"
+        )
         self.azure_openai_gpt_deployment = azure_openai_gpt_deployment
         self.azure_openai_gpt_model = azure_openai_gpt_model
         self.credential = credential or DefaultAzureCredential()
@@ -638,23 +641,35 @@ def create_default_agentic_search_manager(organization_id: str) -> AgenticSearch
     """
     config = AgenticSearchConfig()
     manager = AgenticSearchManager(config, organization_id)
-    
+
     # Check if agent exists and create it if needed
     try:
-        print(f"[AgenticSearchManager] Checking if agent '{config.agent_name}' exists...")
+        print(
+            f"[AgenticSearchManager] Checking if agent '{config.agent_name}' exists..."
+        )
         if not manager.agent_exists():
-            print(f"[AgenticSearchManager] Agent '{config.agent_name}' not found. Creating...")
+            print(
+                f"[AgenticSearchManager] Agent '{config.agent_name}' not found. Creating..."
+            )
             success = manager.create_or_update_knowledge_agent()
             if success:
-                print(f"[AgenticSearchManager] Agent '{config.agent_name}' created successfully!")
+                print(
+                    f"[AgenticSearchManager] Agent '{config.agent_name}' created successfully!"
+                )
             else:
-                print(f"[AgenticSearchManager] Failed to create agent '{config.agent_name}'. Auto-creation during retrieval may be attempted.")
+                print(
+                    f"[AgenticSearchManager] Failed to create agent '{config.agent_name}'. Auto-creation during retrieval may be attempted."
+                )
         else:
-            print(f"[AgenticSearchManager] Agent '{config.agent_name}' already exists and is ready to use.")
+            print(
+                f"[AgenticSearchManager] Agent '{config.agent_name}' already exists and is ready to use."
+            )
     except Exception as e:
         print(f"[AgenticSearchManager] Error during agent check/creation: {str(e)}")
-        print(f"[AgenticSearchManager] Will attempt auto-creation during retrieval if needed.")
-    
+        print(
+            f"[AgenticSearchManager] Will attempt auto-creation during retrieval if needed."
+        )
+
     return manager
 
 
@@ -695,7 +710,7 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"Agentic search failed: {str(e)}")
         print("This might indicate a configuration issue or service unavailability.")
-    
+
     # Clean up: delete the agent
     print("\nCleaning up test agent...")
     try:
