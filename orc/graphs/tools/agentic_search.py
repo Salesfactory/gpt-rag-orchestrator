@@ -8,6 +8,7 @@ from azure.search.documents.indexes.models import (
 from azure.search.documents.indexes import SearchIndexClient
 from azure.search.documents import SearchClient
 import os
+import logging
 from azure.search.documents.agent import KnowledgeAgentRetrievalClient
 from azure.search.documents.agent.models import (
     KnowledgeAgentRetrievalRequest,
@@ -18,6 +19,37 @@ from azure.search.documents.agent.models import (
 from azure.identity import DefaultAzureCredential
 from typing import List, Dict, Optional, Any
 from langchain.schema import Document
+import sys
+
+# Set up logging for Azure Functions - this needs to be done before creating loggers
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    stream=sys.stdout,
+    force=True,  # Override any existing logging configuration
+)
+
+# Configure the main module logger
+logger = logging.getLogger(__name__)
+
+# Configure Azure SDK specific loggers as per Azure SDK documentation
+# Set logging level for Azure Search libraries
+azure_search_logger = logging.getLogger("azure.search")
+azure_search_logger.setLevel(logging.INFO)
+
+# Set logging level for Azure Identity libraries
+azure_identity_logger = logging.getLogger("azure.identity")
+azure_identity_logger.setLevel(logging.WARNING)  # Less verbose for auth
+
+# Set logging level for all Azure libraries (fallback)
+azure_logger = logging.getLogger("azure")
+azure_logger.setLevel(logging.WARNING)
+
+# Ensure propagation is enabled for Azure Functions
+logger.propagate = True
+azure_search_logger.propagate = True
+azure_identity_logger.propagate = True
+azure_logger.propagate = True
 
 
 class AgenticSearchConfig:
@@ -70,6 +102,27 @@ class AgenticSearchManager:
         self._search_client: Optional[SearchClient] = None
         self._agent_initialized = False
         self.organization_id = organization_id
+        self._enable_http_logging = False
+
+    def enable_http_logging(self, enable: bool = True):
+        """
+        Enable HTTP logging for Azure SDK operations.
+
+        Args:
+            enable (bool): Whether to enable HTTP logging
+        """
+        self._enable_http_logging = enable
+        if enable:
+            # Set Azure SDK logging to DEBUG level to see HTTP requests
+            azure_search_logger.setLevel(logging.DEBUG)
+            logger.info(
+                "[AgenticSearchManager] HTTP logging enabled for Azure SDK operations"
+            )
+        else:
+            azure_search_logger.setLevel(logging.INFO)
+            logger.info(
+                "[AgenticSearchManager] HTTP logging disabled for Azure SDK operations"
+            )
 
     def agent_exists(self) -> bool:
         """
@@ -90,7 +143,7 @@ class AgenticSearchManager:
 
         except Exception as e:
             # Agent doesn't exist or other error
-            print(f"Agent check failed: {str(e)}")
+            logger.error(f"[AgenticSearchManager] Agent check failed: {str(e)}")
             return False
 
     def create_or_update_knowledge_agent(self) -> bool:
@@ -120,20 +173,24 @@ class AgenticSearchManager:
             request_limits=KnowledgeAgentRequestLimits(max_output_size=10000),
         )
 
+        # Create index client with proper logging configuration
         index_client = SearchIndexClient(
             endpoint=self.config.azure_search_endpoint,
             credential=self.config.credential,
+            logging_enable=self._enable_http_logging,  # Enable HTTP logging if configured
         )
 
         try:
             index_client.create_or_update_agent(agent)
-            print(
-                f"Knowledge agent '{self.config.agent_name}' created or updated successfully"
+            logger.info(
+                f"[AgenticSearchManager] Knowledge agent '{self.config.agent_name}' created or updated successfully"
             )
             self._agent_initialized = True
             return True
         except Exception as e:
-            print(f"Error creating or updating knowledge agent: {str(e)}")
+            logger.error(
+                f"[AgenticSearchManager] Error creating or updating knowledge agent: {str(e)}"
+            )
             return False
 
     def delete_knowledge_agent(self) -> bool:
@@ -143,13 +200,18 @@ class AgenticSearchManager:
         index_client = SearchIndexClient(
             endpoint=self.config.azure_search_endpoint,
             credential=self.config.credential,
+            logging_enable=self._enable_http_logging,
         )
         try:
             index_client.delete_agent(self.config.agent_name)
-            print(f"Knowledge agent '{self.config.agent_name}' deleted successfully")
+            logger.info(
+                f"[AgenticSearchManager] Knowledge agent '{self.config.agent_name}' deleted successfully"
+            )
             return True
         except Exception as e:
-            print(f"Error deleting knowledge agent: {str(e)}")
+            logger.error(
+                f"[AgenticSearchManager] Error deleting knowledge agent: {str(e)}"
+            )
             return False
 
     def get_agent_client(self) -> KnowledgeAgentRetrievalClient:
@@ -164,6 +226,7 @@ class AgenticSearchManager:
                 endpoint=self.config.azure_search_endpoint,
                 agent_name=self.config.agent_name,
                 credential=self.config.credential,
+                logging_enable=self._enable_http_logging,  # Enable HTTP logging if configured
             )
         return self._agent_client
 
@@ -179,6 +242,7 @@ class AgenticSearchManager:
                 endpoint=self.config.azure_search_endpoint,
                 index_name=self.config.index_name,
                 credential=self.config.credential,
+                logging_enable=self._enable_http_logging,  # Enable HTTP logging if configured
             )
         return self._search_client
 
@@ -207,7 +271,9 @@ class AgenticSearchManager:
                             activity_query_map[activity_id] = search_query
                 except Exception as e:
                     # Log the error but continue processing other activities
-                    print(f"Error processing activity: {str(e)}")
+                    logger.error(
+                        f"[AgenticSearchManager] Error processing activity: {str(e)}"
+                    )
                     continue
 
         return activity_query_map
@@ -254,11 +320,15 @@ class AgenticSearchManager:
             if results:
                 return dict(results[0])
             else:
-                print(f"No document found with ID: {document_id}")
+                logger.info(
+                    f"[AgenticSearchManager] No document found with ID: {document_id}"
+                )
                 return None
 
         except Exception as e:
-            print(f"Error retrieving document by ID '{document_id}': {str(e)}")
+            logger.error(
+                f"[AgenticSearchManager] Error retrieving document by ID '{document_id}': {str(e)}"
+            )
             raise e
 
     def enrich_agentic_search_results(self, agentic_results) -> List[Dict]:
@@ -308,13 +378,19 @@ class AgenticSearchManager:
                         enriched_results.append(enriched_result)
                     else:
                         # Skip this document if it can't be retrieved due to organization ID mismatch
-                        print(f"Skipping document with ID '{document_id}' - not found in search index for the organization ID: {self.organization_id}")
+                        logger.info(
+                            f"[AgenticSearchManager] Skipping document with ID '{document_id}' - not found in search index for the organization ID: {self.organization_id}"
+                        )
                 else:
                     # Skip documents without document ID
-                    print("Skipping document - no document ID found for enrichment")
+                    logger.info(
+                        "[AgenticSearchManager] Skipping document - no document ID found for enrichment"
+                    )
 
         except Exception as e:
-            print(f"Error enriching agentic search results: {str(e)}")
+            logger.error(
+                f"[AgenticSearchManager] Error enriching agentic search results: {str(e)}"
+            )
             # Return original results if enrichment fails
             return references if "references" in locals() else []
 
@@ -395,8 +471,8 @@ class AgenticSearchManager:
                 documents.append(document)
 
         except Exception as e:
-            print(
-                f"Error converting agentic search results to Document objects: {str(e)}"
+            logger.error(
+                f"[AgenticSearchManager] Error converting agentic search results to Document objects: {str(e)}"
             )
             return []
 
@@ -440,13 +516,13 @@ class AgenticSearchManager:
                 duplicate_count += 1
                 # Optionally log the duplicate (for debugging)
                 title = doc.metadata.get("title", "Unknown")
-                print(
-                    f"Removing duplicate document: '{title}' with doc_key: {doc_key[:50]}..."
+                logger.info(
+                    f"[AgenticSearchManager] Removing duplicate document: '{title}' with doc_key: {doc_key[:50]}..."
                 )
 
         if duplicate_count > 0:
-            print(
-                f"De-duplication complete: Removed {duplicate_count} duplicate document(s). "
+            logger.info(
+                f"[AgenticSearchManager] De-duplication complete: Removed {duplicate_count} duplicate document(s). "
                 f"Returning {len(deduplicated_docs)} unique documents."
             )
 
@@ -472,12 +548,25 @@ class AgenticSearchManager:
         Returns:
             KnowledgeAgentRetrievalRequest object
         """
+        logger.info(
+            f"[AgenticSearchManager] Starting agentic retrieval with {len(conversation_history)} messages"
+        )
+        logger.info(
+            f"[AgenticSearchManager] Reranker threshold: {reranker_threshold or self.config.reranker_threshold}"
+        )
+        logger.info(
+            f"[AgenticSearchManager] Max docs for reranker: {max_docs_for_reranker}"
+        )
+
         # Use config default if not specified
         if reranker_threshold is None:
             reranker_threshold = self.config.reranker_threshold
 
         try:
+            logger.info("[AgenticSearchManager] Getting agent client...")
             agent_client = self.get_agent_client()
+
+            logger.info("[AgenticSearchManager] Preparing retrieval request...")
 
             # Convert to KnowledgeAgentMessage format
             agent_messages = agent_client.retrieve(
@@ -502,10 +591,16 @@ class AgenticSearchManager:
                 )
             )
 
+            logger.info(
+                "[AgenticSearchManager] Agentic retrieval completed successfully"
+            )
             return agent_messages
 
         except Exception as e:
             error_message = str(e).lower()
+            logger.error(
+                f"[AgenticSearchManager] Agentic retrieval failed with error: {str(e)}"
+            )
 
             # Check if the error is related to missing/invalid agent
             agent_related_errors = [
@@ -522,18 +617,27 @@ class AgenticSearchManager:
             )
 
             if auto_create_agent and is_agent_error:
-                print(f"Agent-related error detected: {str(e)}")
-                print("Attempting to create/update the knowledge agent...")
+                logger.info(
+                    f"[AgenticSearchManager] Agent-related error detected: {str(e)}"
+                )
+                logger.info(
+                    "[AgenticSearchManager] Attempting to create/update the knowledge agent..."
+                )
 
                 # Try to create or update the agent
                 if self.create_or_update_knowledge_agent():
-                    print("Agent created/updated successfully. Retrying retrieval...")
+                    logger.info(
+                        "[AgenticSearchManager] Agent created/updated successfully. Retrying retrieval..."
+                    )
 
                     # Reset the agent client to use the new agent
                     self._agent_client = None
 
                     # Retry the retrieval
                     try:
+                        logger.info(
+                            "[AgenticSearchManager] Retrying agentic retrieval after agent creation..."
+                        )
                         agent_client = self.get_agent_client()
                         agent_messages = agent_client.retrieve(
                             retrieval_request=KnowledgeAgentRetrievalRequest(
@@ -558,17 +662,22 @@ class AgenticSearchManager:
                                 ],
                             )
                         )
+                        logger.info("[AgenticSearchManager] Retry successful!")
                         return agent_messages
 
                     except Exception as retry_error:
-                        print(f"Retry failed after agent creation: {str(retry_error)}")
+                        logger.error(
+                            f"[AgenticSearchManager] Retry failed after agent creation: {str(retry_error)}"
+                        )
                         raise retry_error
                 else:
-                    print("Failed to create/update agent")
+                    logger.error("[AgenticSearchManager] Failed to create/update agent")
                     raise e
             else:
                 # Re-raise the original error if it's not agent-related or auto_create is disabled
-                print(f"Non-agent error or auto-creation disabled: {str(e)}")
+                logger.error(
+                    f"[AgenticSearchManager] Non-agent error or auto-creation disabled: {str(e)}"
+                )
                 raise e
 
     def enrich_and_display_results(self, agentic_results, max_results: int = 5) -> None:
@@ -584,44 +693,58 @@ class AgenticSearchManager:
         # Create a mapping of activity IDs to search queries
         activity_query_map = self._build_activity_query_map(agentic_results)
 
-        print(f"\n{'='*80}")
-        print(
-            f"ENRICHED AGENTIC SEARCH RESULTS (showing {min(len(enriched_results), max_results)} of {len(enriched_results)})"
+        logger.info(f"\n{'='*80}")
+        logger.info(
+            f"[AgenticSearchManager] ENRICHED AGENTIC SEARCH RESULTS (showing {min(len(enriched_results), max_results)} of {len(enriched_results)})"
         )
-        print(f"{'='*80}")
+        logger.info(f"{'='*80}")
 
         for i, result in enumerate(enriched_results[:max_results]):
-            print(f"\n--- Result {i+1} ---")
+            logger.info(f"\n--- Result {i+1} ---")
 
             # Basic info
-            print(f"Document ID: {result.get('source_data', {}).get('id', 'N/A')}")
-            print(f"Title: {result.get('source_data', {}).get('title', 'N/A')}")
+            logger.info(
+                f"[AgenticSearchManager] Document ID: {result.get('source_data', {}).get('id', 'N/A')}"
+            )
+            logger.info(
+                f"[AgenticSearchManager] Title: {result.get('source_data', {}).get('title', 'N/A')}"
+            )
 
             # Display search query
             activity_source_id = result.get("activity_source", "N/A")
             if activity_source_id != "N/A" and activity_source_id in activity_query_map:
                 search_query = activity_query_map[activity_source_id]
-                print(f"Search Query: '{search_query}'")
+                logger.info(f"[AgenticSearchManager] Search Query: '{search_query}'")
             else:
-                print(f"Activity Source: {activity_source_id}")
+                logger.info(
+                    f"[AgenticSearchManager] Activity Source: {activity_source_id}"
+                )
 
             # Enriched data
             if "enriched_data" in result:
                 enriched = result["enriched_data"]
                 if "error" not in enriched:
-                    print(f"Source: {enriched.get('source', 'N/A')}")
-                    print(f"Last Modified: {enriched.get('date_last_modified', 'N/A')}")
-                    print(f"Organization ID: {enriched.get('organization_id', 'N/A')}")
+                    logger.info(
+                        f"[AgenticSearchManager] Source: {enriched.get('source', 'N/A')}"
+                    )
+                    logger.info(
+                        f"[AgenticSearchManager] Last Modified: {enriched.get('date_last_modified', 'N/A')}"
+                    )
+                    logger.info(
+                        f"[AgenticSearchManager] Organization ID: {enriched.get('organization_id', 'N/A')}"
+                    )
                 else:
-                    print(f"Enrichment Error: {enriched['error']}")
+                    logger.info(
+                        f"[AgenticSearchManager] Enrichment Error: {enriched['error']}"
+                    )
 
             # Content preview
             content = result.get("source_data", {}).get("content", "")
             if content:
                 preview = content[:200] + "..." if len(content) > 200 else content
-                print(f"Content Preview: {preview}")
+                logger.info(f"[AgenticSearchManager] Content Preview: {preview}")
 
-            print("-" * 40)
+            logger.info("[AgenticSearchManager] -" * 40)
 
 
 def create_default_agentic_search_manager(organization_id: str) -> AgenticSearchManager:
@@ -638,32 +761,49 @@ def create_default_agentic_search_manager(organization_id: str) -> AgenticSearch
     config = AgenticSearchConfig()
     manager = AgenticSearchManager(config, organization_id)
 
+    # Test logging to verify configuration
+    logger.info(
+        " [Agentic Search Initialization] Creating default agentic search manager..."
+    )
+    logger.info(f"[Agentic Search Initialization] Organization ID: {organization_id}")
+    logger.info(f"[Agentic Search Initialization] Agent name: {config.agent_name}")
+    logger.info(f"[Agentic Search Initialization] Index name: {config.index_name}")
+
+    # Enable HTTP logging only if DEBUG level is enabled (following Azure SDK best practices)
+    if azure_search_logger.isEnabledFor(logging.DEBUG):
+        manager.enable_http_logging(True)
+        logger.info(
+            "[Agentic Search Initialization] HTTP logging enabled due to DEBUG log level"
+        )
+
     # Check if agent exists and create it if needed
     try:
-        print(
-            f"[AgenticSearchManager] Checking if agent '{config.agent_name}' exists..."
+        logger.info(
+            f"[Agentic Search Initialization] Checking if agent '{config.agent_name}' exists..."
         )
         if not manager.agent_exists():
-            print(
-                f"[AgenticSearchManager] Agent '{config.agent_name}' not found. Creating..."
+            logger.info(
+                f"[Agentic Search Initialization] Agent '{config.agent_name}' not found. Creating..."
             )
             success = manager.create_or_update_knowledge_agent()
             if success:
-                print(
-                    f"[AgenticSearchManager] Agent '{config.agent_name}' created successfully!"
+                logger.info(
+                    f"[Agentic Search Initialization] Agent '{config.agent_name}' created successfully!"
                 )
             else:
-                print(
-                    f"[AgenticSearchManager] Failed to create agent '{config.agent_name}'. Auto-creation during retrieval may be attempted."
+                logger.info(
+                    f"[Agentic Search Initialization] Failed to create agent '{config.agent_name}'. Auto-creation during retrieval may be attempted."
                 )
         else:
-            print(
-                f"[AgenticSearchManager] Agent '{config.agent_name}' already exists and is ready to use."
+            logger.info(
+                f"[Agentic Search Initialization] Agent '{config.agent_name}' already exists and is ready to use."
             )
     except Exception as e:
-        print(f"[AgenticSearchManager] Error during agent check/creation: {str(e)}")
-        print(
-            f"[AgenticSearchManager] Will attempt auto-creation during retrieval if needed."
+        logger.error(
+            f"[Agentic Search Initialization] Error during agent check/creation: {str(e)}"
+        )
+        logger.info(
+            "[Agentic Search Initialization] Will attempt auto-creation during retrieval if needed."
         )
 
     return manager
@@ -675,15 +815,25 @@ def retrieve_and_convert_to_document_format(
     """
     Retrieve documents and convert them to LangChain Document objects.
     """
+    logger.info("[Agentic Search] Starting retrieve_and_convert_to_document_format...")
     manager = create_default_agentic_search_manager(organization_id)
+
+    logger.info("[Agentic Search] Performing agentic retrieval...")
     agent_messages_simple = manager.agentic_retriever(conversation_history)
-    return manager.convert_to_documents(agent_messages_simple, use_enriched_data=True)
+
+    logger.info("[Agentic Search] Converting results to document format...")
+    documents = manager.convert_to_documents(
+        agent_messages_simple, use_enriched_data=True
+    )
+    logger.info(f"[Agentic Search] Retrieved {len(documents)} documents")
+
+    return documents
 
 
 # Test/example code - only runs when script is executed directly
 if __name__ == "__main__":
-    print("Testing Agentic Search functionality")
-    print("=" * 50)
+    logger.info("Testing Agentic Search functionality")
+    logger.info("=" * 50)
 
     # Test conversation
     simple_messages = [
@@ -696,23 +846,25 @@ if __name__ == "__main__":
 
     try:
         # Perform agentic retrieval (will auto-create agent if needed)
-        print("\nPerforming agentic retrieval...")
+        logger.info("\nPerforming agentic retrieval...")
         agent_messages_simple = retrieve_and_convert_to_document_format(
             simple_messages, organization_id="123"
         )
 
-        print(agent_messages_simple)
+        logger.info(agent_messages_simple)
 
     except Exception as e:
-        print(f"Agentic search failed: {str(e)}")
-        print("This might indicate a configuration issue or service unavailability.")
+        logger.error(f"Agentic search failed: {str(e)}")
+        logger.info(
+            "This might indicate a configuration issue or service unavailability."
+        )
 
     # Clean up: delete the agent
-    print("\nCleaning up test agent...")
+    logger.info("\nCleaning up test agent...")
     try:
         config = AgenticSearchConfig()
         cleanup_manager = AgenticSearchManager(config, "123")
         cleanup_manager.delete_knowledge_agent()
-        print("Test agent deleted successfully.")
+        logger.info("Test agent deleted successfully.")
     except Exception as e:
-        print(f"Failed to delete test agent: {str(e)}")
+        logger.error(f"Failed to delete test agent: {str(e)}")
