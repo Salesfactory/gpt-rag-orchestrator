@@ -47,7 +47,7 @@ azure_logger.setLevel(logging.WARNING)
 
 # Suppress noisy Azure Functions worker logs
 azure_functions_worker_logger = logging.getLogger("azure_functions_worker")
-azure_functions_worker_logger.setLevel(logging.WARNING)  
+azure_functions_worker_logger.setLevel(logging.WARNING)
 
 # Ensure propagation is enabled for Azure Functions
 logger.propagate = True
@@ -687,6 +687,7 @@ class AgenticSearchManager:
     def enrich_and_display_results(self, agentic_results, max_results: int = 5) -> None:
         """
         Enrich agentic search results and display them in a formatted way.
+        NOTE: This display raw agentic search results, unfiltered.
 
         Args:
             agentic_results: The result object from agentic_retrieval
@@ -697,58 +698,157 @@ class AgenticSearchManager:
         # Create a mapping of activity IDs to search queries
         activity_query_map = self._build_activity_query_map(agentic_results)
 
-        logger.info(f"\n{'='*80}")
-        logger.info(
-            f"[AgenticSearchManager] ENRICHED AGENTIC SEARCH RESULTS (showing {min(len(enriched_results), max_results)} of {len(enriched_results)})"
-        )
-        logger.info(f"{'='*80}")
+        total_results = len(enriched_results)
+        showing_count = min(total_results, max_results)
 
-        for i, result in enumerate(enriched_results[:max_results]):
-            logger.info(f"\n--- Result {i+1} ---")
+        # Single header log
+        header = f"""
+{'='*80}
+📋 AGENTIC SEARCH RESULTS SUMMARY
+{'='*80}
+📊 Total Results Found: {total_results}
+🔍 Displaying: {showing_count} results
+{'='*80}"""
 
-            # Basic info
-            logger.info(
-                f"[AgenticSearchManager] Document ID: {result.get('source_data', {}).get('id', 'N/A')}"
-            )
-            logger.info(
-                f"[AgenticSearchManager] Title: {result.get('source_data', {}).get('title', 'N/A')}"
-            )
+        logger.info(header)
 
-            # Display search query
+        for i, result in enumerate(enriched_results[:max_results], 1):
+            # Extract data
+            source_data = result.get("source_data", {})
+            doc_id = source_data.get("id", "N/A")
+            title = source_data.get("title", "N/A")
+
+            # Truncate long document ID for readability
+            display_doc_id = doc_id[:50] + "..." if len(doc_id) > 50 else doc_id
+
+            # Get search query
             activity_source_id = result.get("activity_source", "N/A")
+            search_query = "N/A"
             if activity_source_id != "N/A" and activity_source_id in activity_query_map:
                 search_query = activity_query_map[activity_source_id]
-                logger.info(f"[AgenticSearchManager] Search Query: '{search_query}'")
-            else:
-                logger.info(
-                    f"[AgenticSearchManager] Activity Source: {activity_source_id}"
-                )
 
-            # Enriched data
+            # Get enriched data
+            enriched_info = ""
             if "enriched_data" in result:
                 enriched = result["enriched_data"]
                 if "error" not in enriched:
-                    logger.info(
-                        f"[AgenticSearchManager] Source: {enriched.get('source', 'N/A')}"
-                    )
-                    logger.info(
-                        f"[AgenticSearchManager] Last Modified: {enriched.get('date_last_modified', 'N/A')}"
-                    )
-                    logger.info(
-                        f"[AgenticSearchManager] Organization ID: {enriched.get('organization_id', 'N/A')}"
-                    )
+                    source_url = enriched.get("source", "N/A")
+                    last_modified = enriched.get("date_last_modified", "N/A")
+                    org_id = enriched.get("organization_id", "None")
+
+                    # Extract path after ".net" for cleaner display
+                    if source_url != "N/A" and ".net/" in source_url:
+                        display_source = source_url.split(".net/", 1)[
+                            1
+                        ]  # Get everything after .net/
+                    else:
+                        display_source = source_url
+
+                    enriched_info = f"""
+📁 Source: {display_source}
+📅 Last Modified: {last_modified}
+🏢 Organization ID: {org_id}"""
                 else:
-                    logger.info(
-                        f"[AgenticSearchManager] Enrichment Error: {enriched['error']}"
-                    )
+                    enriched_info = f"❌ Enrichment Error: {enriched['error']}"
 
-            # Content preview
-            content = result.get("source_data", {}).get("content", "")
+            # Get content preview
+            content = source_data.get("content", "")
+            content_preview = ""
             if content:
-                preview = content[:200] + "..." if len(content) > 200 else content
-                logger.info(f"[AgenticSearchManager] Content Preview: {preview}")
+                preview_text = content[:150] + "..." if len(content) > 150 else content
+                content_preview = f"📄 Content Preview: {preview_text}"
 
-            logger.info("[AgenticSearchManager] -" * 40)
+            # Create formatted result block
+            result_block = f"""
+┌─ Result #{i} ─────────────────────────────────────────────────
+│ 📋 Title: {title}
+│ 🆔 Document ID: {display_doc_id}
+│ 🔍 Search Query: '{search_query}'{enriched_info}
+│ {content_preview}
+└─────────────────────────────────────────────────────────────────"""
+
+            logger.info(result_block)
+
+        # Footer
+        footer = f"{'='*80}\n✅ Agentic Search Results Display Complete"
+        logger.info(footer)
+
+    def display_document_results(
+        self, documents: List[Document], max_results: int = 5
+    ) -> None:
+        """
+        Display converted LangChain Document objects in a formatted way.
+        NOTE: This displays final processed documents after conversion and deduplication.
+
+        Args:
+            documents: List of LangChain Document objects from convert_to_documents
+            max_results (int): Maximum number of results to display (default: 5)
+        """
+        total_docs = len(documents)
+        showing_count = min(total_docs, max_results)
+
+        # Single header log
+        header = f"""
+{'='*80}
+📚 CONVERTED LANGCHAIN DOCUMENTS SUMMARY
+{'='*80}
+📊 Total Documents: {total_docs}
+🔍 Displaying: {showing_count} documents
+🔄 Status: Post-conversion & deduplication
+{'='*80}"""
+
+        logger.info(header)
+
+        for i, doc in enumerate(documents[:max_results], 1):
+            # Extract metadata
+            metadata = doc.metadata
+            title = metadata.get("title", "N/A")
+            doc_key = metadata.get("doc_key", "N/A")
+            search_query = metadata.get("search_query", "N/A")
+            source = metadata.get("source", "N/A")
+            date_modified = metadata.get("date_last_modified", "N/A")
+            org_id = metadata.get("organization_id", "None")
+            content_length = metadata.get("content_length", "N/A")
+
+            # Truncate long doc_key for readability
+            display_doc_key = doc_key[:50] + "..." if len(doc_key) > 50 else doc_key
+
+            # Extract path after ".net/" for cleaner source display
+            if source != "N/A" and ".net/" in source:
+                display_source = source.split(".net/", 1)[1]
+            else:
+                display_source = source
+
+            # Get content preview
+            content = doc.page_content
+            content_preview = ""
+            if content:
+                preview_text = content[:200] + "..." if len(content) > 200 else content
+                content_preview = f"📄 Content: {preview_text}"
+            else:
+                content_preview = "📄 Content: [No content available]"
+
+            # Build metadata info
+            metadata_info = f"""
+🔍 Search Query: '{search_query}'
+📋 Title: {title}
+🔑 Doc Key: {display_doc_key}
+📁 Source: {display_source}
+📅 Last Modified: {date_modified}
+🏢 Organization ID: {org_id}
+📏 Content Length: {content_length}"""
+
+            # Create formatted document block
+            doc_block = f"""
+┌─ Document #{i} ─────────────────────────────────────────────{metadata_info}
+│ {content_preview}
+└─────────────────────────────────────────────────────────────────"""
+
+            logger.info(doc_block)
+
+        # Footer
+        footer = "✅ Document Results Display Complete"
+        logger.info(footer)
 
 
 def create_default_agentic_search_manager(organization_id: str) -> AgenticSearchManager:
@@ -819,17 +919,20 @@ def retrieve_and_convert_to_document_format(
     """
     Retrieve documents and convert them to LangChain Document objects.
     """
-    logger.info("[Agentic Search] Starting retrieve_and_convert_to_document_format...")
+    logger.info("[Agentic Search] Starting Agentic Search Manager...")
     manager = create_default_agentic_search_manager(organization_id)
 
-    logger.info("[Agentic Search] Performing agentic retrieval...")
-    agent_messages_simple = manager.agentic_retriever(conversation_history)
+    logger.info("[Agentic Search] Performing Agentic Retrieval...")
+    raw_results = manager.agentic_retriever(conversation_history)
 
-    logger.info("[Agentic Search] Converting results to document format...")
-    documents = manager.convert_to_documents(
-        agent_messages_simple, use_enriched_data=True
+    logger.info(
+        "[Agentic Search] Converting Agentic Retrieval Results to LangChain Document Format..."
     )
+    documents = manager.convert_to_documents(raw_results, use_enriched_data=True)
     logger.info(f"[Agentic Search] Retrieved {len(documents)} documents")
+
+    logger.info("[Agentic Search] Displaying Converted Document Results...")
+    manager.display_document_results(documents, max_results=5)
 
     return documents
 
