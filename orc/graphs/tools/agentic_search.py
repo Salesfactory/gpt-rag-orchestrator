@@ -774,7 +774,7 @@ class AgenticSearchManager:
         logger.info(footer)
 
     def display_document_results(
-        self, documents: List[Document], max_results: int = 5
+        self, documents: List[Document], max_results: int = 1000  # a large number to display all documents
     ) -> None:
         """
         Display converted LangChain Document objects in a formatted way.
