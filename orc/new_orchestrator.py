@@ -298,6 +298,7 @@ class ConversationOrchestrator:
         if state.context_docs:
             context = self._format_context(state.context_docs)
 
+        logging.info(f"[orchestrator-generate_response] Retrieving conversation history")
         history = conversation_data.get("history", [])
 
         system_prompt = MARKETING_ANSWER_PROMPT

@@ -45,6 +45,10 @@ azure_identity_logger.setLevel(logging.WARNING)  # Less verbose for auth
 azure_logger = logging.getLogger("azure")
 azure_logger.setLevel(logging.WARNING)
 
+# Suppress noisy Azure Functions worker logs
+azure_functions_worker_logger = logging.getLogger("azure_functions_worker")
+azure_functions_worker_logger.setLevel(logging.WARNING)  
+
 # Ensure propagation is enabled for Azure Functions
 logger.propagate = True
 azure_search_logger.propagate = True
