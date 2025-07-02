@@ -379,7 +379,7 @@ class ConversationOrchestrator:
 
         <----------- END OF USER QUESTION ------------>
 
-        Provide a detailed answer.
+        Provide a detailed answer that is highly relevant to the user's question and context and you must follow the instructions provided in the system prompt strictly.
         """
 
         logging.info(f"[orchestrator-generate_response] Prompt: {prompt}")
@@ -478,7 +478,7 @@ class ConversationOrchestrator:
             yield error_message
 
         logging.info(
-            f"[orchestrator-generate_response] Response generated: {complete_response}"
+            f"[orchestrator-generate_response] Response generated: {complete_response[:100] + '...' if len(complete_response) > 100 else complete_response}"
         )
 
         answer = self._sanitize_response(complete_response)
