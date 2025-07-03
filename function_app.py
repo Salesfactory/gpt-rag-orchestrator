@@ -27,7 +27,7 @@ from shared.util import (
     delete_conversation,
     trigger_indexer_with_retry,
 )
-
+from shared.cosmos_db import get_conversation_data
 from orc import new_orchestrator
 from financial_orc import orchestrator as financial_orchestrator
 from shared.conversation_export import export_conversation
@@ -515,6 +515,61 @@ async def conversations(req: Request) -> Response:
 
     else:
         return Response("Method not allowed", status_code=405)
+
+@app.route(route="conversation-data", methods=[func.HttpMethod.GET])
+async def conversation_data(req: Request) -> Response:
+    """
+    Endpoint to retrieve conversation data from Cosmos DB.
+    
+    Query parameters:
+    - conversation_id (required): The ID of the conversation to retrieve
+    - type (optional): The type of conversation
+    
+    Returns:
+        JSON response with conversation data
+    """
+    logging.info('[FunctionApp] Conversation-data endpoint processed a request.')
+    
+    try:
+        # Get conversation_id from query parameters
+        conversation_id = req.query_params.get('conversation_id')
+        
+        if not conversation_id:
+            return Response(
+                content=json.dumps({
+                    "status": "error", 
+                    "message": "conversation_id query parameter is required"
+                }),
+                media_type="application/json",
+                status_code=400
+            )
+        
+        # Get optional type parameter
+        conversation_type = req.query_params.get('type')
+        
+        # Call the get_conversation_data function
+        conversation_data = get_conversation_data(conversation_id, conversation_type)
+
+        return Response(        
+            content=json.dumps({
+                "status": "success",
+                "conversation_id": conversation_id,
+                "data": conversation_data
+            }),
+            media_type="application/json",
+            status_code=200
+        )
+        
+    except Exception as e:
+        logging.error(f"Error in conversation-data endpoint: {str(e)}")
+        return Response(
+            content=json.dumps({
+                "status": "error",
+                "message": f"Internal server error: {str(e)}"
+            }),
+            media_type="application/json",
+            status_code=500
+        )
 
 @app.route(route="scrape-pages", methods=[func.HttpMethod.POST])
 async def scrape_pages(req: Request) -> Response:
