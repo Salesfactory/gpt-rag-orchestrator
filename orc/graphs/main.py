@@ -409,7 +409,7 @@ class GraphBuilder:
         try:
             config = self.config
             # index_name = os.getenv("AZURE_AI_SEARCH_INDEX_NAME")
-            index_name = "ragindex-test"
+            index_name = "ragindex"
             if not index_name:
                 logger.error("[GraphBuilder Retriever Init] AZURE_AI_SEARCH_INDEX_NAME is not set")
                 raise ValueError(
