@@ -472,6 +472,7 @@ class GraphBuilder:
                 f"Failed to initialize Azure AI Search Retriever: {str(e)}"
             )
 
+#! TBR (to be removed)
     def _run_agentic_retriever(self, conversation_history: List[dict]):
         # Safe handling of potentially None conversation_history
         conversation_history = conversation_history or []
@@ -488,6 +489,7 @@ class GraphBuilder:
         )
         return results or []
 
+#! TBR (to be removed)
     async def _execute_single_query_async(
         self, query_info: tuple, semaphore: asyncio.Semaphore = None
     ) -> tuple:
@@ -576,6 +578,7 @@ class GraphBuilder:
 
                 return (query_index, query_type, query_text, [], [], execution_time)
 
+#! TBR (to be removed)
     async def _execute_queries_async(self, sub_queries: List[str]) -> tuple:
         """Execute all queries asynchronously with improved error handling and rate limiting.
 
@@ -729,6 +732,7 @@ class GraphBuilder:
             any_web_search_used,
         )
 
+#! TBR (to be removed)
     def _execute_custom_agentic_search(
         self, original_query: str, rewritten_query: str, historical_conversation: str
     ) -> tuple:
@@ -822,6 +826,7 @@ class GraphBuilder:
 
         return docs, any_web_search_used
 
+#! TBR (to be removed)
     def _init_web_search(self):
         logger.info("[GraphBuilder Web Search Init] Initializing Tavily web search")
         try:
@@ -851,7 +856,7 @@ class GraphBuilder:
             "context_docs": state.context_docs,
             "chat_summary": state.chat_summary,
             "token_count": state.token_count,
-            "requires_web_search": state.requires_web_search,
+            "requires_web_search": state.requires_web_search, #! TBR
             "rewritten_query": state.rewritten_query,
             "query_category": state.query_category,
         }
@@ -864,21 +869,20 @@ class GraphBuilder:
         # Add processing nodes
 
         graph.add_node("rewrite", self._rewrite_query)
-        graph.add_node("tool_choice", self._categorize_query)
         graph.add_node("route", self._route_query)
+        graph.add_node("tool_choice", self._categorize_query)
         graph.add_node("retrieve", self._retrieve_context)
         graph.add_node("return", self._return_state)
 
         # Define graph flow
         graph.add_edge(START, "rewrite")
-        graph.add_edge("rewrite", "tool_choice")
-        graph.add_edge("tool_choice", "route")
+        graph.add_edge("rewrite", "route")
         graph.add_conditional_edges(
             "route",
             self._route_decision,
-            {"retrieve": "retrieve", "return": "return"},
+            {"tool_choice": "tool_choice", "return": "return"},
         )
-
+        graph.add_edge("tool_choice", "retrieve")
         graph.add_edge("retrieve", "return")
         graph.add_edge("return", END)
 
@@ -1047,7 +1051,7 @@ class GraphBuilder:
 
         system_prompt = MARKETING_ORC_PROMPT
 
-        logger.info("[Query Routing] Sending async routing decision request to LLM")
+        logger.info("[Query Routing] Sending routing decision request to LLM")
         response = await self.llm.ainvoke(
             [
                 SystemMessage(content=system_prompt),
@@ -1064,11 +1068,13 @@ class GraphBuilder:
 
         return {
             "requires_retrieval": llm_suggests_retrieval,
+            "query_category": "General"
+
         }
 
     def _route_decision(self, state: ConversationState) -> str:
         """Route query based on knowledge requirement."""
-        decision = "retrieve" if state.requires_retrieval else "return"
+        decision = "tool_choice" if state.requires_retrieval else "return"
         logger.info(
             f"[Route Decision] Routing to: '{decision}' (requires_retrieval: {state.requires_retrieval})"
         )
@@ -1107,38 +1113,6 @@ class GraphBuilder:
                 rewritten_query=state.rewritten_query,
                 historical_conversation=conversation_history,
             )
-        ### <-------------------------------->
-        ### Since we're adopting sub queries, let's turn off the adjacent chunks for now
-        # if docs:
-        #     # print id of the first document in the list
-        #     print(f'Document ID of the top ranked doc: {docs[0].id}')
-        #     # get adjacent chunks
-        #     adjacent_chunks = self.retriever._search_adjacent_pages(docs[0].id)
-        #     # reformat adjacent chunks
-        #     if adjacent_chunks:
-        #         for chunk in adjacent_chunks:
-        #             # Create Document object for adjacent chunk
-        #             adjacent_doc = Document(
-        #                 page_content=chunk['content'],
-        #                 metadata={'source': chunk['filepath'], 'score': "adjacent chunk"}
-        #             )
-
-        #             # Add to dictionary (automatically handles deduplication)
-        #             if hasattr(adjacent_doc, 'id') and adjacent_doc.id:
-        #                 docs_dict[adjacent_doc.id] = adjacent_doc
-        #             else:
-        #                 # For adjacent chunks without ID, use a fallback key
-        #                 fallback_key = f"adjacent_{hash(chunk['content'])}"
-        #                 docs_dict[fallback_key] = adjacent_doc
-
-        #         print(f"total number of docs before adding adjacent chunks: {len(docs)}")
-        #         # Update docs list with potentially new adjacent chunks
-        #         docs = list(docs_dict.values())
-        #         print(f"total number of docs after adding adjacent chunks: {len(docs)}")
-        ### <-------------------------------->
-
-        # Final decision based on actual retrieval results
-        # If any individual query used web search, we mark it as web search needed
         web_search_needed = (
             any_web_search_used
             if not self.config.agentic_search_mode
