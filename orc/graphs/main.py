@@ -472,7 +472,7 @@ class GraphBuilder:
                 f"Failed to initialize Azure AI Search Retriever: {str(e)}"
             )
 
-#! TBR (to be removed)
+    #! TBR (to be removed)
     def _run_agentic_retriever(self, conversation_history: List[dict]):
         # Safe handling of potentially None conversation_history
         conversation_history = conversation_history or []
@@ -489,7 +489,7 @@ class GraphBuilder:
         )
         return results or []
 
-#! TBR (to be removed)
+    #! TBR (to be removed)
     async def _execute_single_query_async(
         self, query_info: tuple, semaphore: asyncio.Semaphore = None
     ) -> tuple:
@@ -578,7 +578,7 @@ class GraphBuilder:
 
                 return (query_index, query_type, query_text, [], [], execution_time)
 
-#! TBR (to be removed)
+    #! TBR (to be removed)
     async def _execute_queries_async(self, sub_queries: List[str]) -> tuple:
         """Execute all queries asynchronously with improved error handling and rate limiting.
 
@@ -663,9 +663,7 @@ class GraphBuilder:
 
                 # Log retrieval documents first
                 if retriever_results:
-                    logger.info(
-                        "[Async Custom Agentic Search] │  ├─ 🗄️ From retrieval:"
-                    )
+                    logger.info("[Async Custom Agentic Search] │  ├─ 🗄️ From retrieval:")
                     for j, doc in enumerate(retriever_results, 1):
                         source = doc.metadata.get("source", "Unknown source")
                         logger.info(
@@ -732,7 +730,7 @@ class GraphBuilder:
             any_web_search_used,
         )
 
-#! TBR (to be removed)
+    #! TBR (to be removed)
     def _execute_custom_agentic_search(
         self, original_query: str, rewritten_query: str, historical_conversation: str
     ) -> tuple:
@@ -746,9 +744,7 @@ class GraphBuilder:
             Tuple of (docs_list, any_web_search_used)
         """
         # generate sub queries
-        logger.info(
-            "[Custom Agentic Search Main] Generating sub-queries for retrieval"
-        )
+        logger.info("[Custom Agentic Search Main] Generating sub-queries for retrieval")
         sub_queries = generate_sub_queries(
             original_query, rewritten_query, historical_conversation, self.llm
         )
@@ -826,7 +822,7 @@ class GraphBuilder:
 
         return docs, any_web_search_used
 
-#! TBR (to be removed)
+    #! TBR (to be removed)
     def _init_web_search(self):
         logger.info("[GraphBuilder Web Search Init] Initializing Tavily web search")
         try:
@@ -856,7 +852,7 @@ class GraphBuilder:
             "context_docs": state.context_docs,
             "chat_summary": state.chat_summary,
             "token_count": state.token_count,
-            "requires_web_search": state.requires_web_search, #! TBR
+            "requires_web_search": state.requires_web_search,  #! TBR
             "rewritten_query": state.rewritten_query,
             "query_category": state.query_category,
         }
@@ -1068,8 +1064,7 @@ class GraphBuilder:
 
         return {
             "requires_retrieval": llm_suggests_retrieval,
-            "query_category": "General"
-
+            "query_category": "General",
         }
 
     def _route_decision(self, state: ConversationState) -> str:
