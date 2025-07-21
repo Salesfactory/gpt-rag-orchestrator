@@ -170,7 +170,6 @@ class ConversationState:
     chat_summary: str = field(default_factory=str)
     token_count: int = field(default_factory=int)
     query_category: str = field(default_factory=str)
-    agentic_search_mode: bool = field(default=True)
     augmented_query: str = field(default_factory=str)
 
 
@@ -263,21 +262,17 @@ def clean_chat_history_for_llm(chat_history: List[dict]) -> str:
 
 
 # Backward compatibility function
-def clean_chat_history(chat_history: List[dict], agentic_search_mode: bool = False):
+def clean_chat_history(chat_history: List[dict]):
     """
     Clean the chat history and format it for consumption.
 
     Args:
         chat_history: List of chat message dictionaries
-        agentic_search_mode: Whether to format for agentic search mode
 
     Returns:
-        List[dict] for agentic search mode, str for LLM consumption
+        str for LLM consumption
     """
-    if agentic_search_mode:
-        return clean_chat_history_for_agentic_search(chat_history)
-    else:
-        return clean_chat_history_for_llm(chat_history)
+    return clean_chat_history_for_llm(chat_history)
 
 
 @dataclass
@@ -291,7 +286,6 @@ class GraphConfig:
     web_search_results: int = 2
     temperature: float = 0.4
     max_tokens: int = 50000  # input tokens could be really large
-    agentic_search_mode: bool = False
 
 
 class GraphBuilder:
@@ -308,7 +302,7 @@ class GraphBuilder:
             f"[GraphBuilder Init] Initializing GraphBuilder for conversation: {conversation_id}"
         )
         logger.info(
-            f"[GraphBuilder Init] Config - agentic_search_mode: {config.agentic_search_mode}, model temperature: {config.temperature}, max_tokens: {config.max_tokens}"
+            f"[GraphBuilder Init] Config - model temperature: {config.temperature}, max_tokens: {config.max_tokens}"
         )
 
         self.organization_id = organization_id
@@ -1042,7 +1036,7 @@ class GraphBuilder:
     async def _route_query(self, state: ConversationState) -> dict:
         """Determine if external knowledge is needed."""
         logger.info(
-            f"[Query Routing] Determining async routing decision for query: '{state.rewritten_query[:100]}...'"
+            f"[Query Routing] Determining routing decision for query: '{state.rewritten_query[:100]}...'"
         )
 
         system_prompt = MARKETING_ORC_PROMPT
@@ -1079,9 +1073,6 @@ class GraphBuilder:
         """Get relevant documents from vector store."""
         logger.info("\n" + "=" * 78)
         logger.info("[Retrieve Context] 🔍 STARTING CONTEXT RETRIEVAL PHASE")
-        logger.info(
-            f"[Retrieve Context] ├─ Search mode: {'Agentic Search' if self.config.agentic_search_mode else 'Custom Agentic Search'}"
-        )
         logger.info(f"[Retrieve Context] ├─ Rewritten query: {state.rewritten_query}")
         docs = []
         any_web_search_used = False
@@ -1096,22 +1087,11 @@ class GraphBuilder:
 
         # append the rewritten query to the conversation history
         conversation_history.append({"role": "user", "content": state.rewritten_query})
-        if self.config.agentic_search_mode:
 
-            docs = self._run_agentic_retriever(conversation_history)
-            # For agentic search mode, we don't track per-query web search usage
-            any_web_search_used = False
-
-        else:
-            docs, any_web_search_used = self._execute_custom_agentic_search(
-                original_query=state.question,
-                rewritten_query=state.rewritten_query,
-                historical_conversation=conversation_history,
-            )
-        web_search_needed = (
-            any_web_search_used
-            if not self.config.agentic_search_mode
-            else len(docs) < 2
+        docs, any_web_search_used = self._execute_custom_agentic_search(
+            original_query=state.question,
+            rewritten_query=state.rewritten_query,
+            historical_conversation=conversation_history,
         )
 
         # Final verification of document sources in retrieved docs
@@ -1122,21 +1102,14 @@ class GraphBuilder:
         logger.info(
             f"[Retrieve Context] ├─ 📊 Final docs composition: {final_retrieval_docs} retrieval + {final_web_docs} web"
         )
-        if not self.config.agentic_search_mode:
-            logger.info(
-                f"[Retrieve Context] ├─ Per-query web search: {'Used by at least one query' if any_web_search_used else 'Not used by any query'}"
-            )
-            logger.info(
-                f"[Retrieve Context] ├─ Web search : {'YES' if web_search_needed else 'NO'} (based on per-query usage)"
-            )
-        else:
-            logger.info(
-                "[Retrieve Context] ├─ Final web search threshold: < 2 total documents"
-            )
-            logger.info(
-                f"[Retrieve Context] ├─ Final web search needed: {'YES' if web_search_needed else 'NO'}"
-            )
-        if web_search_needed and len(docs) < 2:
+        logger.info(
+            f"[Retrieve Context] ├─ Per-query web search: {'Used by at least one query' if any_web_search_used else 'Not used by any query'}"
+        )
+        logger.info(
+            f"[Retrieve Context] ├─ Web search : {'YES' if any_web_search_used else 'NO'} (based on per-query usage)"
+        )
+
+        if any_web_search_used and len(docs) < 2:
             logger.info(
                 "[Retrieve Context] ├─ 🌐 Will perform additional web search with rewritten query"
             )
@@ -1145,7 +1118,7 @@ class GraphBuilder:
 
         return {
             "context_docs": docs,
-            "requires_web_search": web_search_needed,
+            "requires_web_search": any_web_search_used,
         }
 
 
