@@ -4,6 +4,10 @@ import logging
 import asyncio
 from dataclasses import dataclass, field
 from typing import List
+from dotenv import load_dotenv
+
+# Load environment variables FIRST, before importing modules that read them
+load_dotenv()
 
 from langchain_core.messages import (
     AIMessage,
@@ -19,22 +23,10 @@ from shared.prompts import (
     QUERY_REWRITING_PROMPT,
     AUGMENTED_QUERY_PROMPT,
 )
-from shared.cosmos_db import get_conversation_data as _original_get_conversation_data
+from shared.cosmos_db import get_conversation_data
+from shared.util import get_organization
 from orc.graphs.utiils import clean_chat_history_for_llm
 from langgraph.checkpoint.memory import MemorySaver
-from dotenv import load_dotenv
-
-# Load environment variables first
-load_dotenv()
-
-# Try to import get_organization, but create a mock if it fails
-try:
-    from shared.util import get_organization as _original_get_organization
-    IMPORT_SUCCESS = True
-except Exception as e:
-    logging.warning(f"Failed to import get_organization: {e}")
-    IMPORT_SUCCESS = False
-    _original_get_organization = None
 
 # Set up logging for Azure Functions - this needs to be done before creating loggers
 logging.basicConfig(
@@ -47,7 +39,6 @@ logging.basicConfig(
 # Configure the main module logger
 logger = logging.getLogger(__name__)
 
-# Configure Azure SDK specific loggers as per Azure SDK documentation
 # Set logging level for Azure Search libraries
 azure_search_logger = logging.getLogger("azure.search")
 azure_search_logger.setLevel(logging.INFO)
@@ -81,118 +72,6 @@ langchain_logger.propagate = True
 openai_logger.propagate = True
 
 
-def is_azure_config_available() -> bool:
-    """Check if Azure configuration is available for database operations."""
-    required_vars = ["AZURE_DB_ID", "AZURE_DB_NAME", "O1_ENDPOINT", "O1_KEY"]
-    missing_vars = [var for var in required_vars if not os.getenv(var)]
-    
-    if missing_vars:
-        logger.warning(f"[Config Check] Missing Azure configuration variables: {missing_vars}")
-        logger.info("[Config Check] Running in MOCK MODE - database operations will be simulated")
-        return False
-    return True
-
-
-def get_mock_organization_data() -> dict:
-    """Return mock organization data for testing purposes."""
-    return {
-        "segmentSynonyms": "students -> young adults\nworking professionals -> corporate employees",
-        "brandInformation": "A modern technology company focused on innovative solutions",
-        "industryInformation": "Technology and Software Development",
-    }
-
-
-def get_mock_conversation_data() -> dict:
-    """Return mock conversation data for testing purposes."""
-    return {
-        "history": [
-            {"role": "user", "content": "Hello, I need help with marketing strategy"},
-            {"role": "assistant", "content": "I'd be happy to help you with your marketing strategy. What specific area would you like to focus on?"}
-        ]
-    }
-
-
-def get_organization(organization_id: str) -> dict:
-    """
-    Wrapper for get_organization that uses mock data when Azure config is not available.
-    
-    Args:
-        organization_id: The organization ID to retrieve data for
-        
-    Returns:
-        Organization data dictionary (either real or mock)
-    """
-    # Check if Azure configuration is available
-    if not is_azure_config_available() or not IMPORT_SUCCESS:
-        logger.info(f"[Mock Organization] Using mock organization data for ID: {organization_id}")
-        return get_mock_organization_data()
-    else:
-        try:
-            logger.info(f"[Real Organization] Fetching real organization data for ID: {organization_id}")
-            return _original_get_organization(organization_id)
-        except Exception as e:
-            logger.error(f"[Organization Fallback] Failed to get real organization data, using mock: {e}")
-            return get_mock_organization_data()
-
-
-def get_conversation_data(conversation_id: str) -> dict:
-    """
-    Wrapper for get_conversation_data that uses mock data when Azure config is not available.
-    
-    Args:
-        conversation_id: The conversation ID to retrieve data for
-        
-    Returns:
-        Conversation data dictionary (either real or mock)
-    """
-    # Check if Azure configuration is available
-    if not is_azure_config_available():
-        logger.info(f"[Mock Conversation] Using mock conversation data for ID: {conversation_id}")
-        return get_mock_conversation_data()
-    else:
-        try:
-            logger.info(f"[Real Conversation] Fetching real conversation data for ID: {conversation_id}")
-            return _original_get_conversation_data(conversation_id)
-        except Exception as e:
-            logger.error(f"[Conversation Fallback] Failed to get real conversation data, using mock: {e}")
-            return get_mock_conversation_data()
-
-
-class MockAzureChatOpenAI:
-    """Mock Azure OpenAI client for testing when credentials are not available."""
-    
-    def __init__(self):
-        logger.info("[MockAzureChatOpenAI] Initialized mock LLM for testing")
-    
-    async def ainvoke(self, messages, **kwargs):
-        """Mock async invoke that returns a mock response based on the prompt."""
-        logger.info("[MockAzureChatOpenAI] Mock async invoke called")
-        
-        # Extract the content from the last message
-        last_message = messages[-1] if messages else None
-        content = last_message.content if hasattr(last_message, 'content') else str(last_message)
-        
-        # Return mock responses based on the type of request
-        if "rewrite" in content.lower() or "Original Question" in content:
-            return MockResponse("Rewritten query: What are the latest marketing strategies for young adults in technology?")
-        elif "categorize" in content.lower() or "Creative Brief" in content:
-            return MockResponse("General")
-        elif "yes/no" in content.lower() or "How should I categorize" in content:
-            return MockResponse("yes")
-        elif "augment" in content.lower():
-            return MockResponse("Augmented query: What are effective marketing strategies for young adults in technology sector considering recent market trends?")
-        else:
-            return MockResponse("This is a mock response for testing purposes.")
-
-
-class MockResponse:
-    """Mock response object that mimics the structure of Azure OpenAI responses."""
-    
-    def __init__(self, content: str):
-        self.content = content
-
-
-# initialize memory saver
 @dataclass
 class ConversationState:
     """State container for conversation flow management.
@@ -214,8 +93,6 @@ class ConversationState:
     )  
     query_category: str = field(default_factory=str)
     augmented_query: str = field(default_factory=str)
-    answer: str = field(default_factory=str)
-
 
 
 @dataclass
@@ -229,8 +106,6 @@ class GraphConfig:
     web_search_results: int = 2
     temperature: float = 0.4
     max_tokens: int = 200000
-
-
 
 class GraphBuilder:
     """Builds and manages the conversation flow graph."""
@@ -252,14 +127,23 @@ class GraphBuilder:
         self.organization_id = organization_id
         self.config = config
         self.conversation_id = conversation_id
-        self.use_mock_mode = not is_azure_config_available()
         
         # Initialize LLM and retriever
         self.llm = self._init_llm()
         self.retriever = self._init_retriever()
         
-        # Initialize organization data (wrapper handles mock/real mode automatically)
-        self.organization_data = get_organization(organization_id)
+        # Initialize organization data with error handling
+        try:
+            self.organization_data = get_organization(organization_id)
+            logger.info(f"[GraphBuilder Init] Successfully retrieved organization data for ID: {organization_id}")
+        except Exception as e:
+            logger.error(f"[GraphBuilder Init] Failed to retrieve organization data: {str(e)}")
+            logger.warning("[GraphBuilder Init] Using empty organization data as fallback")
+            self.organization_data = {
+                "segmentSynonyms": "",
+                "brandInformation": "",
+                "industryInformation": "",
+            }
 
         logger.info("[GraphBuilder Init] Successfully initialized GraphBuilder")
 
@@ -268,7 +152,6 @@ class GraphBuilder:
         logger.info("[GraphBuilder LLM Init] Initializing Azure OpenAI client")
         config = self.config
         
-        # Check if we have the required Azure OpenAI credentials
         endpoint = os.getenv("O1_ENDPOINT")
         api_key = os.getenv("O1_KEY")
         
@@ -306,7 +189,7 @@ class GraphBuilder:
         """
         data_value = self.organization_data.get(data_key, "")
         logger.info(
-            f"[GraphBuilder {data_name} Init] Retrieved {data_name.lower()} (local memory) for organization {self.organization_id}"
+            f"[GraphBuilder {data_name} Init] Retrieved {data_name.lower()} for organization {self.organization_id}"
         )
         return data_value
 
@@ -329,7 +212,15 @@ class GraphBuilder:
         Returns:
             Dictionary containing conversation data with history
         """
-        return get_conversation_data(self.conversation_id)
+        logger.info(f"[Conversation] Fetching conversation data for ID: {self.conversation_id}")
+        try:
+            return get_conversation_data(self.conversation_id)
+        except Exception as e:
+            logger.error(f"[Conversation] Failed to retrieve conversation data: {str(e)}")
+            logger.warning("[Conversation] Using empty conversation history as fallback")
+            return {
+                "history": []
+            }
 
     async def _llm_invoke(self, messages, **kwargs):
         """
@@ -419,8 +310,6 @@ class GraphBuilder:
             "query_category": state.query_category,
         }
 
-
-
     def build(self, memory) -> StateGraph:
         """Construct the conversation processing graph."""
         logger.info("[GraphBuilder Build] Starting graph construction")
@@ -432,7 +321,6 @@ class GraphBuilder:
         graph.add_node("tool_choice", self._categorize_query)
         graph.add_node("retrieve", self._retrieve_context)
         graph.add_node("return", self._return_state)
-        graph.add_node("final", self.final_llm)
 
         # Define graph flow
         graph.add_edge(START, "rewrite")
@@ -444,8 +332,7 @@ class GraphBuilder:
         )
         graph.add_edge("tool_choice", "retrieve")
         graph.add_edge("retrieve", "return")
-        graph.add_edge("return", "final")
-        graph.add_edge("final", END)
+        graph.add_edge("return", END)
 
         compiled_graph = graph.compile(checkpointer=memory)
         logger.info(
@@ -624,7 +511,7 @@ class GraphBuilder:
 
         llm_suggests_retrieval = response.content.lower().startswith("y")
         logger.info(
-            f"[Query Routing] LLM initial assessment - Not a casual/conversational question, proceed to retrieve documents: {llm_suggests_retrieval}"
+            f"[Query Routing] LLM assessment - Not a casual/conversational question, proceed to retrieve documents: {llm_suggests_retrieval}"
         )
 
         return {
@@ -641,8 +528,7 @@ class GraphBuilder:
         return decision
 
     def _retrieve_context(self, state: ConversationState) -> dict:
-        """Get relevant documents from Azure Search
-            Mocking the custom agentic search for now"""
+        """Get relevant documents from Azure Search"""
 
         docs = []
 
@@ -650,45 +536,24 @@ class GraphBuilder:
             "context_docs": docs,
         }
 
-    async def final_llm(self, state: ConversationState) -> dict:
-        """
-        Final LLM invocation.
-        """
-        logger.info(f"[Final LLM] Invoking final LLM with messages: {state.messages}")
-        sys_llm_prompt = f"""
-        You are a senior marketing strategist. Your task is to answer the user's question based on the context provided.
-        """
-        answer = await self.llm.ainvoke(
-            [
-                SystemMessage(content=sys_llm_prompt),
-                HumanMessage(content=state.question),
-            ]
-        )
-        return {"answer": answer.content}
 
 if __name__ == "__main__":
 
     config = GraphConfig()
-    
-    # Initialize GraphBuilder
-    
+    # Initialize memory saver
     memory = MemorySaver()
 
     graph_builder = GraphBuilder(
-        organization_id="123",
+        organization_id="6c33b530-22f6-49ca-831b-25d587056237",
         config=config,
         conversation_id="123",
     )
 
-    # Build the graph
     graph = graph_builder.build(memory=memory)
     
-    # Invoke the graph with a sample question
     print(f"\n🚀 Invoking Graph with Sample Question...")
     
-    # Create initial state
-    # Define async function to run the graph
-    question = "What are the best marketing strategies for young professionals in technology?"
+    question = "What is consumer segmentation?"
     async def run_graph():
         try:
             config_dict = {"configurable": {"thread_id": "test-thread-123"}}
@@ -697,7 +562,6 @@ if __name__ == "__main__":
             print(result)
                 
         except Exception as e:
-            print(f"❌ Error invoking graph: {str(e)}")
+            print(f"Error invoking graph: {str(e)}")
     
-    # Run the async function
     asyncio.run(run_graph())
