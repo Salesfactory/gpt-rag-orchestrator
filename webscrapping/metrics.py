@@ -15,9 +15,7 @@ _logger = logging.getLogger(__name__)
 class CrawlerSummary:
     """Tracks crawler execution metrics and statistics."""
 
-    def __init__(self, config_name: str):
-        self.activity: str = "scrape_pages"
-        self.config_name: str = config_name
+    def __init__(self):
         self.start_time: datetime = datetime.now(timezone.utc)
         self.end_time: Optional[datetime] = None
 
@@ -53,8 +51,6 @@ class CrawlerSummary:
         """Get summary metrics for the crawl session."""
         DATETIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
         return {
-            "activity": self.activity,
-            "config_name": self.config_name,
             "start_time": self.start_time.strftime(DATETIME_FORMAT),
             "end_time": (
                 self.end_time.strftime(DATETIME_FORMAT) if self.end_time else None
@@ -81,7 +77,6 @@ class CrawlerSummary:
     def __str__(self) -> str:
         """String representation of the summary."""
         return (
-            f"CrawlerSummary(config={self.config_name}, "
             f"processed={len(self.visited_urls)}, "
             f"success={len(self.success_pages)}, "
             f"failure={len(self.failure_pages)})"
