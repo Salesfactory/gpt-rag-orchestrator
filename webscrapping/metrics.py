@@ -22,8 +22,6 @@ class CrawlerSummary:
         self.success_pages: List[str] = []
         self.failure_pages: List[str] = []
         self.visited_urls: List[str] = []
-        self.new_pages: List[str] = []
-        self.updated_pages: List[str] = []
 
     def add_success(self, url: str):
         """Add a successful page scrape to the summary."""
@@ -37,15 +35,6 @@ class CrawlerSummary:
         if url not in self.visited_urls:
             self.visited_urls.append(url)
 
-    def add_new_page(self, url: str):
-        """Mark a page as newly scraped."""
-        if url not in self.new_pages:
-            self.new_pages.append(url)
-
-    def add_updated_page(self, url: str):
-        """Mark a page as updated."""
-        if url not in self.updated_pages:
-            self.updated_pages.append(url)
 
     def get_metrics(self):
         """Get summary metrics for the crawl session."""
@@ -63,8 +52,6 @@ class CrawlerSummary:
             "success": len(self.success_pages),
             "failure": len(self.failure_pages),
             "processed": len(self.visited_urls),
-            "new": len(self.new_pages),
-            "updated": len(self.updated_pages),
         }
 
     def get_success_rate(self) -> float:
