@@ -6,11 +6,9 @@ import stripe
 import platform
 
 from azurefunctions.extensions.http.fastapi import Request, StreamingResponse, Response
-from webscrapping.scraper import scrape_single_url
-from webscrapping.utils import generate_request_id
-# from scheduler import main as scheduler_main
-# from weekly_scheduler import main as weekly_scheduler_main
-# from monthly_scheduler import main as monthly_scheduler_main
+from scheduler import main as scheduler_main
+from weekly_scheduler import main as weekly_scheduler_main
+from monthly_scheduler import main as monthly_scheduler_main
 from html_to_pdf_converter import html_to_pdf
 
 from shared.util import (
@@ -571,7 +569,8 @@ async def scrape_pages(req: Request) -> Response:
         except Exception as e:
             logging.info(f"[scrape-pages] No organization tracking - {str(e)}")
         
-
+        from webscrapping import scrape_single_url
+        from webscrapping.utils import generate_request_id
         request_id = req.headers.get("x-request-id") or generate_request_id()
         
         result_data = scrape_single_url(url.strip(), request_id, organization_id)
