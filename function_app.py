@@ -291,33 +291,6 @@ async def webhook(req: Request) -> Response:
 
     return Response(content=json.dumps({"success": True}), media_type="application/json")
 
-# @app.function_name(name="scheduler")
-# @app.schedule(schedule="0 0 11,23 * * *", arg_name="timer", run_on_startup=False)
-# async def scheduler(timer: func.TimerRequest) -> None:
-#     # Your scheduler implementation
-#     try:
-#         scheduler_main(timer)
-#     except Exception as e:
-#         logging.error(f"Error in scheduler: {e}")
-
-# @app.function_name(name="weekly_scheduler")
-# @app.schedule(schedule="0 20 19 * * *", arg_name="timer", run_on_startup=False)
-# async def weekly_scheduler(timer: func.TimerRequest) -> None:
-#     # Your weekly scheduler implementation
-#     try:
-#         weekly_scheduler_main(timer)
-#     except Exception as e:
-#         logging.error(f"Error in weekly scheduler: {e}")
-
-# @app.function_name(name="monthly_scheduler")
-# @app.schedule(schedule="0 0 13 1 * *", arg_name="timer")
-# async def monthly_scheduler(timer: func.TimerRequest) -> None:
-#     # Your monthly scheduler implementation
-#     try:
-#         monthly_scheduler_main(timer)
-#     except Exception as e:
-#         logging.error(f"Error in monthly scheduler: {e}")
-
 @app.function_name(name="html_to_pdf_converter")
 @app.route(route="html_to_pdf_converter", methods=[func.HttpMethod.POST])
 async def html2pdf_conversion(req: Request) -> Response:
