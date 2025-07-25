@@ -27,9 +27,6 @@ class CrawlerSummary:
         self.new_pages: List[str] = []
         self.updated_pages: List[str] = []
 
-        self.closed_reason: Optional[str] = None
-        self.log: Optional[str] = None
-
     def add_success(self, url: str):
         """Add a successful page scrape to the summary."""
         self.success_pages.append(url)
@@ -52,11 +49,6 @@ class CrawlerSummary:
         if url not in self.updated_pages:
             self.updated_pages.append(url)
 
-    def finalize(self, closed_reason: str = None):
-        """Finalize the summary with end time and closing reason."""
-        self.end_time = datetime.now(timezone.utc)
-        self.closed_reason = closed_reason
-
     def get_metrics(self):
         """Get summary metrics for the crawl session."""
         DATETIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
@@ -77,8 +69,6 @@ class CrawlerSummary:
             "processed": len(self.visited_urls),
             "new": len(self.new_pages),
             "updated": len(self.updated_pages),
-            "log": self.log,
-            "closed_reason": self.closed_reason,
         }
 
     def get_success_rate(self) -> float:
