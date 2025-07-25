@@ -488,8 +488,8 @@ async def conversations(req: Request) -> Response:
     else:
         return Response("Method not allowed", status_code=405)
 
-@app.route(route="scrape-pages", methods=[func.HttpMethod.POST])
-async def scrape_pages(req: Request) -> Response:
+@app.route(route="scrape-page", methods=[func.HttpMethod.POST])
+async def scrape_page(req: Request) -> Response:
     """
     Endpoint to scrape a single web page.
     
