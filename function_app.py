@@ -31,6 +31,12 @@ from orc import new_orchestrator
 from financial_orc import orchestrator as financial_orchestrator
 from shared.conversation_export import export_conversation
 from webscrapping.multipage_scrape import crawl_website
+
+# MULTIPAGE SCRAPING CONSTANTS
+DEFAULT_LIMIT = 30
+DEFAULT_MAX_DEPTH = 4
+DEFAULT_MAX_BREADTH = 15
+
 app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
 @app.route(route="orc", methods=[func.HttpMethod.POST])
 async def stream_response(req: Request) -> StreamingResponse:
@@ -656,9 +662,9 @@ async def multipage_scrape(req: Request) -> Response:
                 status_code=400
             )
 
-        limit = req_body.get('limit', 30)
-        max_depth = req_body.get('max_depth', 4)
-        max_breadth = req_body.get('max_breadth', 15)
+        limit = req_body.get('limit', DEFAULT_LIMIT)
+        max_depth = req_body.get('max_depth', DEFAULT_MAX_DEPTH)
+        max_breadth = req_body.get('max_breadth', DEFAULT_MAX_BREADTH)
         
         if not isinstance(limit, int) or limit < 1 or limit > 100:
             return Response(
@@ -807,9 +813,21 @@ async def multipage_scrape(req: Request) -> Response:
         # Create preview results for API response (truncated raw_content)
         preview_results = create_preview_results(crawl_result.get('results', []))
         
+        # Generate message based on blob storage result  
+        if blob_storage_result.get("total_successful", 0) > 0:
+            if blob_storage_result.get("total_failed", 0) > 0:
+                message = f"Scraped {blob_storage_result['total_successful']} pages successfully, {blob_storage_result['total_failed']} failed"
+            else:
+                message = f"Successfully scraped {blob_storage_result['total_successful']} pages and uploaded to blob storage"
+        elif blob_storage_result.get("status") == "not_configured":
+            message = f"Scraped {len(crawl_result.get('results', []))} pages (blob storage not configured)"
+        else:
+            message = f"Scraped {len(crawl_result.get('results', []))} pages but blob storage failed"
+
         # Format successful response with preview results
         response_data = {
             "status": "completed",
+            "message": message,
             "url": url,
             "parameters": {
                 "limit": limit,
