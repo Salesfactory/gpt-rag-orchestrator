@@ -582,6 +582,36 @@ async def scrape_page(req: Request) -> Response:
             status_code=500
         )
 
+def create_preview_results(results: list, preview_length: int = 100) -> list:
+    """
+    Create a preview version of crawl results with truncated raw_content.
+    
+    Args:
+        results: List of crawl results from Tavily
+        preview_length: Number of characters to show in preview (default: 100)
+        
+    Returns:
+        List of results with truncated raw_content for API response
+    """
+    if not results:
+        return results
+    
+    preview_results = []
+    for result in results:
+        # Create a copy of the result
+        preview_result = result.copy()
+        
+        # Truncate raw_content if it exists
+        if 'raw_content' in preview_result and preview_result['raw_content']:
+            content = preview_result['raw_content'] 
+            if len(content) > preview_length:
+                preview_result['raw_content'] = content[:preview_length] + "..."
+            
+        preview_results.append(preview_result)
+    
+    return preview_results
+
+
 @app.route(route="multipage-scrape", methods=[func.HttpMethod.POST])
 async def multipage_scrape(req: Request) -> Response:
     """
@@ -774,7 +804,10 @@ async def multipage_scrape(req: Request) -> Response:
                 "total_duplicates": 0
             }
         
-        # Format successful response
+        # Create preview results for API response (truncated raw_content)
+        preview_results = create_preview_results(crawl_result.get('results', []))
+        
+        # Format successful response with preview results
         response_data = {
             "status": "completed",
             "url": url,
@@ -783,7 +816,7 @@ async def multipage_scrape(req: Request) -> Response:
                 "max_depth": max_depth,
                 "max_breadth": max_breadth
             },
-            "results": crawl_result.get('results', []),
+            "results": preview_results,
             "pages_found": len(crawl_result.get('results', [])),
             "response_time": crawl_result.get('response_time', 0.0),
             "organization_id": organization_id,
