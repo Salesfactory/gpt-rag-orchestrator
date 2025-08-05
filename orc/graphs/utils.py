@@ -1,6 +1,6 @@
 import logging
 import sys
-from typing import List
+from typing import List, Any
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -49,13 +49,13 @@ openai_logger.propagate = True
 
 
 def truncate_chat_history(
-    chat_history: List[dict], max_messages: int = 4
-) -> List[dict]:
+    chat_history: List[Any], max_messages: int = 4
+) -> List[Any]:
     """
     Truncate chat history to the most recent messages.
 
     Args:
-        chat_history: List of chat message dictionaries
+        chat_history: List of chat message objects (AIMessage, HumanMessage, or dict)
         max_messages: Maximum number of messages to keep
 
     Returns:
@@ -80,12 +80,12 @@ def truncate_chat_history(
         return chat_history
 
 
-def clean_chat_history_for_llm(chat_history: List[dict]) -> str:
+def clean_chat_history_for_llm(chat_history: List[Any]) -> str:
     """
     Clean and format chat history for LLM consumption as a string.
 
     Args:
-        chat_history: List of chat message dictionaries
+        chat_history: List of chat message objects (AIMessage, HumanMessage, or dict)
 
     Returns:
         Formatted chat history string in the format:
@@ -98,14 +98,36 @@ def clean_chat_history_for_llm(chat_history: List[dict]) -> str:
 
     formatted_history = []
     for message in truncated_history:
-        if not message.get("content"):
+        if hasattr(message, 'content'):
+            content = message.content
+            if not content:
+                continue
+            
+            if hasattr(message, 'type'):
+                if message.type == 'human':
+                    display_role = "Human"
+                elif message.type == 'ai':
+                    display_role = "AI Message"
+                else:
+                    display_role = "AI Message" 
+            else:
+                display_role = "AI Message"
+                
+        elif isinstance(message, dict):
+            if not message.get("content"):
+                continue
+
+            role = message.get("role", "").lower()
+            content = message.get("content", "")
+
+            if role and content:
+                display_role = "Human" if role == "user" else "AI Message"
+            else:
+                continue
+        else:
             continue
 
-        role = message.get("role", "").lower()
-        content = message.get("content", "")
-
-        if role and content:
-            display_role = "Human" if role == "user" else "AI Message"
+        if content:
             formatted_history.append(f"{display_role}: {content}")
 
     logger.info(
