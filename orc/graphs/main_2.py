@@ -103,8 +103,18 @@ class ConversationState:
 
 @dataclass
 class GraphConfig:
-    "Config for the graph builder"
+    """
+    Configuration parameters for the graph builder.
 
+    Attributes:
+        azure_api_version (str): Azure OpenAI API version to use. Default is "2025-01-01-preview".
+        azure_deployment (str): Name of the Azure OpenAI deployment. Default is "gpt-4.1".
+        retriever_top_k (int): Number of top documents to retrieve. Default is 5.
+        reranker_threshold (float): Threshold for reranking retrieved documents. Default is 2.
+        web_search_results (int): Number of web search results to include. Default is 2.
+        temperature (float): Sampling temperature for the language model. Default is 0.4.
+        max_tokens (int): Maximum number of tokens for the model output. Default is 200000.
+    """
     azure_api_version: str = "2025-01-01-preview"
     azure_deployment: str = "gpt-4.1"
     retriever_top_k: int = 5
