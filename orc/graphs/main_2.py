@@ -619,7 +619,7 @@ class GraphBuilder:
         logger.info(f"Found {len(tools)} tools")
 
         # equip the llm with the tools
-        llm_with_tools = self.llm.bind_tools(tools, tool_choice="any") # switch to auton in case we want to use no tool 
+        llm_with_tools = self.llm.bind_tools(tools, tool_choice="any") # switch to auto in case we want to use no tool 
 
         message = [SystemMessage(content=MCP_SYSTEM_PROMPT), HumanMessage(content=state.question)]
         try:
