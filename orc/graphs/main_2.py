@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import logging
 import asyncio
 from dataclasses import dataclass, field
@@ -319,6 +320,23 @@ class GraphBuilder:
         """
 
     def _return_state(self, state: ConversationState) -> dict:
+
+        # pass tool result to context_docs 
+        if state.mcp_tool_used and state.tool_results:
+            for i, tool_call in enumerate(state.mcp_tool_used):
+                if i < len(state.tool_results):
+                    tool_result = state.tool_results[i]
+                    
+                    if isinstance(tool_result, str):
+                        tool_result = json.loads(tool_result)
+                        
+                    if tool_call["name"] == "agentic_search" and isinstance(tool_result, dict):
+                        state.context_docs.append(tool_result.get("results", tool_result))
+                    elif tool_call["name"] == "data_analyst" and isinstance(tool_result, dict):
+                        state.context_docs.append(tool_result.get("last_agent_message", tool_result))
+                    else:
+                        state.context_docs.append(tool_result)
+        
         return {
             "messages": state.messages,
             "context_docs": state.context_docs,
@@ -623,7 +641,6 @@ class GraphBuilder:
         
         logger.info(f"Executing {len(mcp_tool_used)} tool(s)...")
         
-        # Re-initialize MCP client and get fresh tools for execution
         client = await self._init_mcp_client()
         mcp_available_tools = await client.get_tools()
         
@@ -649,8 +666,6 @@ class GraphBuilder:
                 logger.error(error_msg)
                 tool_results.append(error_msg)
         
-        print(f"tool_call: {tool_call}")
-
         if tool_results:
             preview = str(tool_results[0])
             if len(preview) > 200:
@@ -666,31 +681,48 @@ class GraphBuilder:
                 "tool_results": tool_results,
             }
 
-if __name__ == "__main__":
-
-    config = GraphConfig()
-    # Initialize memory saver
-    memory = MemorySaver()
-
-    graph_builder = GraphBuilder(
-        organization_id="6c33b530-22f6-49ca-831b-25d587056237",
-        config=config,
-        conversation_id="123",
+def create_conversation_graph(
+    memory, organization_id=None, conversation_id=None
+) -> StateGraph:
+    """Create and return a configured conversation graph.
+    Returns:
+        Compiled StateGraph for conversation processing
+    """
+    logger.info(
+        f"[Conversation Graph Creation] Creating conversation graph for conversation: {conversation_id}"
     )
+    builder = GraphBuilder(
+        organization_id=organization_id, conversation_id=conversation_id
+    )
+    return builder.build(memory)
 
-    graph = graph_builder.build(memory=memory)
+
+# if __name__ == "__main__":
+
+#     config = GraphConfig()
+#     # Initialize memory saver
+#     memory = MemorySaver()
+
+#     graph_builder = GraphBuilder(
+#         organization_id="6c33b530-22f6-49ca-831b-25d587056237",
+#         config=config,
+#         conversation_id="123",
+#     )
+
+#     graph = graph_builder.build(memory=memory)
     
-    print(f"\nInvoking Graph with Sample Question...")
+#     print(f"\nInvoking Graph with Sample Question...")
     
-    question = "What is consumer segmentation?"
-    async def run_graph():
-        try:
-            config_dict = {"configurable": {"thread_id": "test-thread-123"}}
-            result = await graph.ainvoke({"question": question}, config=config_dict)
+#     question = "How has total POS $ and POS Units evolved month-over-month from Jan 2024 through the latest month in 2025?"
+
+#     async def run_graph():
+#         try:
+#             config_dict = {"configurable": {"thread_id": "test-thread-123"}}
+#             result = await graph.ainvoke({"question": question}, config=config_dict)
             
-            print(result)
+#             print(result)
                 
-        except Exception as e:
-            print(f"Error invoking graph: {str(e)}")
+#         except Exception as e:
+#             print(f"Error invoking graph: {str(e)}")
     
-    asyncio.run(run_graph())
+#     asyncio.run(run_graph())
