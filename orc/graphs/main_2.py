@@ -5,6 +5,9 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import List
 from dotenv import load_dotenv
+from langchain_mcp_adapters.client import MultiServerMCPClient
+from typing import Dict, Any
+from shared.util import get_secret
 
 # Load environment variables FIRST, before importing modules that read them
 load_dotenv()
@@ -22,10 +25,11 @@ from shared.prompts import (
     MARKETING_ORC_PROMPT,
     QUERY_REWRITING_PROMPT,
     AUGMENTED_QUERY_PROMPT,
+    MCP_SYSTEM_PROMPT,
 )
 from shared.cosmos_db import get_conversation_data
 from shared.util import get_organization
-from orc.graphs.utiils import clean_chat_history_for_llm
+from orc.graphs.utils import clean_chat_history_for_llm
 from langgraph.checkpoint.memory import MemorySaver
 
 # Set up logging for Azure Functions - this needs to be done before creating loggers
@@ -79,7 +83,6 @@ class ConversationState:
     Attributes:
         question: Current user query
         messages: Conversation history as a list of messages
-        context_docs: Retrieved documents from various sources
     """
 
     question: str
@@ -93,6 +96,8 @@ class ConversationState:
     )  
     query_category: str = field(default_factory=str)
     augmented_query: str = field(default_factory=str)
+    mcp_tool_used: List[Dict[str, Any]] = field(default_factory=list)
+    tool_results: List[Any] = field(default_factory=list)
 
 
 @dataclass
@@ -130,7 +135,6 @@ class GraphBuilder:
         
         # Initialize LLM and retriever
         self.llm = self._init_llm()
-        self.retriever = self._init_retriever()
         
         # Initialize organization data with error handling
         try:
@@ -234,6 +238,22 @@ class GraphBuilder:
             LLM response
         """
         return await self.llm.ainvoke(messages, **kwargs)
+    
+    def _find_tool_by_name(self, tools: List[Any], tool_name: str):
+        """
+        Find a tool in the tools list by its name.
+
+        Args:
+            tools: List of available tools
+            tool_name: Name of the tool to find
+
+        Returns:
+            The tool object if found, None otherwise
+        """
+        for tool in tools:
+            if tool.name == tool_name:
+                return tool
+        return None
 
     def _build_organization_context_prompt(self, history: List[dict]) -> str:
         """
@@ -298,16 +318,14 @@ class GraphBuilder:
 
         """
 
-    def _init_retriever(self) -> None:
-        """Initialize the retriever."""
-        return None
-
     def _return_state(self, state: ConversationState) -> dict:
         return {
             "messages": state.messages,
             "context_docs": state.context_docs,
             "rewritten_query": state.rewritten_query,
             "query_category": state.query_category,
+            "mcp_tool_used": state.mcp_tool_used,
+            "tool_results": state.tool_results,
         }
 
     def build(self, memory) -> StateGraph:
@@ -319,7 +337,8 @@ class GraphBuilder:
         graph.add_node("rewrite", self._rewrite_query)
         graph.add_node("route", self._route_query)
         graph.add_node("tool_choice", self._categorize_query)
-        graph.add_node("retrieve", self._retrieve_context)
+        graph.add_node("get_mcp_tool_calls", self._get_tool_calls)
+        graph.add_node("execute_mcp_tool_calls", self._execute_mcp_tool_calls)
         graph.add_node("return", self._return_state)
 
         # Define graph flow
@@ -330,8 +349,9 @@ class GraphBuilder:
             self._route_decision,
             {"tool_choice": "tool_choice", "return": "return"},
         )
-        graph.add_edge("tool_choice", "retrieve")
-        graph.add_edge("retrieve", "return")
+        graph.add_edge("tool_choice", "get_mcp_tool_calls")
+        graph.add_edge("get_mcp_tool_calls", "execute_mcp_tool_calls")
+        graph.add_edge("execute_mcp_tool_calls", "return")
         graph.add_edge("return", END)
 
         compiled_graph = graph.compile(checkpointer=memory)
@@ -526,16 +546,125 @@ class GraphBuilder:
             f"[Route Decision] Routing to: '{decision}' (requires_retrieval: {state.requires_retrieval})"
         )
         return decision
+    
+    def _configure_agentic_search_args(
+        self,
+        tool_call: Dict[str, Any],
+        state: ConversationState
+    ) -> Dict[str, Any]:
+        """
+        Configure additional arguments for agentic_search tool calls.
+        """
+        if tool_call["name"] == "agentic_search":
+            tool_call["args"].update(
+                {
+                    "organization_id": self.organization_id,
+                    "rewritten_query": state.rewritten_query,
+                    "reranker_threshold": self.config.reranker_threshold,
+                    "historical_conversation": clean_chat_history_for_llm(state.messages), 
+                    "web_search_threshold": self.config.web_search_results,
+                }
+            )
+    
+    def _configure_data_analyst_args(
+        self,
+        tool_call: Dict[str, Any],
+        state: ConversationState
+    ) -> Dict[str, Any]:
+        """Configure additional arguments for data_analyst tool calls."""
+        pass
+    
+    async def _init_mcp_client(self) -> MultiServerMCPClient:
+        """Initialize the MCP client"""
+        try: 
+            mcp_function_secret = get_secret("mcp-host--functionkey")
+            mcp_function_name = os.getenv("MCP_FUNCTION_NAME")
+        except Exception as e:
+            logger.error(f"Error getting MCP function variables: {str(e)}")
+            raise RuntimeError(f"Error getting MCP function variables: {str(e)}")
+        
+        client = MultiServerMCPClient(
+            {
+                "search": {
+                    "url": f"https://{mcp_function_name}.azurewebsites.net/runtime/webhooks/mcp/sse?code={mcp_function_secret}",
+                    "transport": "sse",
+                }
+            }
+        )
+        return client
+    
+    async def _get_tool_calls(self, state: ConversationState) -> dict:
+        """Get tool calls from the MCP server"""
+        client = await self._init_mcp_client()
 
-    def _retrieve_context(self, state: ConversationState) -> dict:
-        """Get relevant documents from Azure Search"""
+        tools = await client.get_tools()
+        logger.info(f"Found {len(tools)} tools")
 
-        docs = []
+        # equip the llm with the tools
+        llm_with_tools = self.llm.bind_tools(tools, tool_choice="any") # switch to auton in case we want to use no tool 
 
+        message = [SystemMessage(content=MCP_SYSTEM_PROMPT), HumanMessage(content=state.question)]
+        try:
+            response = await llm_with_tools.ainvoke(message)
+        except Exception as e:
+            logger.error(f"Error getting tool calls from LLM: {str(e)}")
+            raise RuntimeError(f"Error getting tool calls from LLM: {str(e)}")
         return {
-            "context_docs": docs,
+            "mcp_tool_used": response.tool_calls,
         }
+        
+    async def _execute_mcp_tool_calls(self, state: ConversationState) -> List[Any]:
+        """Execute tool calls."""
+        mcp_tool_used = state.mcp_tool_used
+        tool_results = []
+        if not mcp_tool_used:
+            logger.info("No tool calls to execute")
+            return tool_results
+        
+        logger.info(f"Executing {len(mcp_tool_used)} tool(s)...")
+        
+        # Re-initialize MCP client and get fresh tools for execution
+        client = await self._init_mcp_client()
+        mcp_available_tools = await client.get_tools()
+        
+        for tool_call in mcp_tool_used:
+            tool_name = tool_call["name"]
+            if tool_name == "agentic_search":
+                self._configure_agentic_search_args(tool_call, state)
+            elif tool_name == "data_analyst":
+                self._configure_data_analyst_args(tool_call, state)
 
+            tool = self._find_tool_by_name(mcp_available_tools, tool_name)
+            if tool:
+                try:
+                    logger.info(f"Running {tool_name}...")
+                    tool_result = await tool.ainvoke(tool_call["args"])
+                    tool_results.append(tool_result)
+                    logger.info(f"{tool_name} completed successfully")
+                except Exception as e:
+                    logger.error(f"Error executing {tool_name}: {e}")
+                    tool_results.append(f"Error: {e}")
+            else:
+                error_msg = f"Tool '{tool_name}' not found in available tools"
+                logger.error(error_msg)
+                tool_results.append(error_msg)
+        
+        print(f"tool_call: {tool_call}")
+
+        if tool_results:
+            preview = str(tool_results[0])
+            if len(preview) > 200:
+                preview = preview[:200] + "..."
+            logger.info(f"Tool results: {preview}")
+            return {
+                "tool_results": tool_results,
+            }
+            
+        else:
+            logger.info("No tool results to return")
+            return {
+                "tool_results": tool_results,
+            }
 
 if __name__ == "__main__":
 
@@ -551,7 +680,7 @@ if __name__ == "__main__":
 
     graph = graph_builder.build(memory=memory)
     
-    print(f"\n🚀 Invoking Graph with Sample Question...")
+    print(f"\nInvoking Graph with Sample Question...")
     
     question = "What is consumer segmentation?"
     async def run_graph():
