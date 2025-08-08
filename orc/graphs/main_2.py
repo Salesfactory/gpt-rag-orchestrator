@@ -722,7 +722,7 @@ class GraphBuilder:
         else:
             logger.info("No tool results to return")
             return {
-                "tool_results": tool_results
+                "tool_results": tool_results,
             }
 
 def create_conversation_graph(
