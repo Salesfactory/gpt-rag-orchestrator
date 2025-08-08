@@ -425,7 +425,7 @@ class GraphBuilder:
         conversation_data = self._get_conversation_data()
         history = conversation_data.get("history", [])
         logger.info(
-            f"[Query Rewrite] Using cached {len(history)} messages from conversation history"
+            f"[Query Rewrite] Retrieved {len(history)} messages from conversation history"
         )
 
         # combine the system prompt with the additional system prompt
@@ -518,7 +518,7 @@ class GraphBuilder:
         conversation_data = self._get_conversation_data()
         history = conversation_data.get("history", [])
         logger.info(
-            f"[Query Categorization] Using cached {len(history)} conversation history messages for context"
+            f"[Query Categorization] Retrieved {len(history)} conversation history messages for context"
         )
 
         category_prompt = f"""
