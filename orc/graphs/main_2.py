@@ -635,6 +635,10 @@ class GraphBuilder:
                 }
             )
     
+    def _is_local_environment(self) -> bool:
+        """Check if the current environment is local development."""
+        return os.getenv("ENVIRONMENT", "").lower() == "local"
+    
     async def _init_mcp_client(self) -> MultiServerMCPClient:
         """Initialize the MCP client"""
         try: 
@@ -644,10 +648,16 @@ class GraphBuilder:
             logger.error(f"Error getting MCP function variables: {str(e)}")
             raise RuntimeError(f"Error getting MCP function variables: {str(e)}")
         
+        # Use different endpoint for local environment
+        if self._is_local_environment():
+            mcp_url = f"http://localhost:7073/runtime/webhooks/mcp/sse"
+        else:
+            mcp_url = f"https://{mcp_function_name}.azurewebsites.net/runtime/webhooks/mcp/sse?code={mcp_function_secret}"
+        
         client = MultiServerMCPClient(
             {
                 "search": {
-                    "url": f"https://{mcp_function_name}.azurewebsites.net/runtime/webhooks/mcp/sse?code={mcp_function_secret}",
+                    "url": mcp_url,
                     "transport": "sse",
                 }
             }
