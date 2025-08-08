@@ -537,7 +537,7 @@ class ConversationOrchestrator:
                         f"""Model Used: {user_settings['model']} / Tool Selected: {state.query_category} / Original Query : {state.question} / Rewritten Query: {state.rewritten_query} / Required Retrieval: {state.requires_retrieval} / Number of documents retrieved: {len(state.context_docs) if state.context_docs else 0} / MCP Tools Used: {len(state.mcp_tool_used)} / Context Retrieved using the rewritten query: / {self._format_context(state.context_docs, display_source=True)}"""
                     ],
                     "images_blob_urls": blob_urls,
-                    "code_thread_id": state.code_thread_id if state.code_thread_id else None
+                    "code_thread_id": state.code_thread_id
                 },
             ]
         )
