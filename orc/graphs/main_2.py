@@ -166,7 +166,7 @@ class GraphBuilder:
             self.conversation_data = get_conversation_data(conversation_id)
             logger.info(f"[GraphBuilder Init] Successfully retrieved conversation data for ID: {conversation_id}")
         except Exception as e:
-            logger.error(f"[GraphBuilder Init] Failed to retrieve conversation data: {str(e)}")
+            logger.exception(f"[GraphBuilder Init] Failed to retrieve conversation data")
             logger.warning("[GraphBuilder Init] Using empty conversation data as fallback")
             self.conversation_data = {
                 "history": []
