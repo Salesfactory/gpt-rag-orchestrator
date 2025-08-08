@@ -1,4 +1,4 @@
-# Enterprise RAG Orchestrator
+# Enterprise RAG Orchestrator Sales Factory
 
 This Orchestrator is part of the **Enterprise RAG (GPT-RAG)** Solution Accelerator.
 
