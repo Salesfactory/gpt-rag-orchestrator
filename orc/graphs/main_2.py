@@ -374,8 +374,6 @@ class GraphBuilder:
                                     logger.info(f"[MCP] Adding blob path to context: {blob_path}")
                                     blob_path_content = f"Here is the graph/visualization link: \n\n{blob_path}"
                                     context_docs.append(blob_path_content)
-                        else:
-                            context_docs.append(tool_result)
         return context_docs
 
     def _return_state(self, state: ConversationState) -> dict:
