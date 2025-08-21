@@ -512,6 +512,8 @@ System Instruction: Segment Alias Normalization with Rewrite Step
 You are provided with a table mapping consumer segment aliases in the format A → B, where A is the original (canonical) name and B is an alternative alias.
 NEVER EVER MENTION A IN YOUR OUTPUT.
 
+CRITICAL: Do NOT apply segment alias mapping to demographic generation labels (Gen Z, Generation Z, Millennials, Gen X, Baby Boomers, Boomers). Treat demographic tokens as immutable for aliasing purposes.
+
 	1.	Always output segment names using the alternative name B — never include or mention A in your final output.
 	2.	Retrieved content will most likely mention A, rewrite it internally to B before composing your response.
 	3.	Maintain clarity by matching segment names in the final answer to the ones used in the user’s query.
