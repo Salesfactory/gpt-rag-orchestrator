@@ -600,21 +600,12 @@ async def stream_run(
     ask: str,
     url: str,
     client_principal: dict,
+    organization_id: str = None,
 ):
-    """
-    Fixed stream_run method that properly handles user settings
-    and should reduce model hallucinations by passing correct settings.
-    """
-
-    # Get user settings properly
-    user_settings = get_settings(client_principal)
-
-    orchestrator = ConversationOrchestrator(user_settings=user_settings)
-
+    orchestrator = ConversationOrchestrator(organization_id=organization_id)
     resources = await asyncio.to_thread(
         orchestrator.process_conversation, conversation_id, ask, client_principal
     )
-    
     return await asyncio.to_thread(
         orchestrator.generate_response,
         resources["conversation_id"],
@@ -623,5 +614,5 @@ async def stream_run(
         client_principal,
         resources["memory_data"],
         resources["start_time"],
-        user_settings,  # Pass user_settings instead of organization_id
+        organization_id,
     )
