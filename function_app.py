@@ -529,8 +529,8 @@ async def html2pdf_conversion(req: Request) -> Response:
             status_code=500
         )
 
-#@app.blob_trigger(arg_name="myblob", path="documents/{name}",
-#                               connection="AZURE_STORAGE_CONNECTION_STRING") 
+@app.blob_trigger(arg_name="myblob", path="documents/{name}",
+                               connection="AZURE_STORAGE_CONNECTION_STRING") 
 def blob_trigger(myblob: func.InputStream):
     """
     Azure Blob Storage trigger that processes uploaded documents and triggers search index updates.
