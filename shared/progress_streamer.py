@@ -62,7 +62,7 @@ class ProgressSteps:
     ROUTING = "routing"
     TOOL_SELECTION = "tool_selection"
     TOOL_EXECUTION = "tool_execution"
-    DOCUMENT_RETRIEVAL = "document_retrieval"
+    AGENTIC_SEARCH = "agentic_search"
     DATA_ANALYSIS = "data_analysis"
     RESPONSE_GENERATION = "response_generation"
 
@@ -73,8 +73,8 @@ STEP_MESSAGES = {
     ProgressSteps.QUERY_CATEGORIZATION: "Categorizing your request...",
     ProgressSteps.ROUTING: "Determining information sources needed...",
     ProgressSteps.TOOL_SELECTION: "Selecting appropriate tools...",
-    ProgressSteps.TOOL_EXECUTION: "Executing tools and gathering data...",
-    ProgressSteps.DOCUMENT_RETRIEVAL: "Searching knowledge base...",
-    ProgressSteps.DATA_ANALYSIS: "Processing data and generating insights...",
+    ProgressSteps.TOOL_EXECUTION: "Executing tools...",
+    ProgressSteps.AGENTIC_SEARCH: "Executing Agentic Search...",
+    ProgressSteps.DATA_ANALYSIS: "Executing Data Analysis Tool...",
     ProgressSteps.RESPONSE_GENERATION: "Generating your response...",
 }
