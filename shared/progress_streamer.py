@@ -69,7 +69,7 @@ class ProgressSteps:
 
 STEP_MESSAGES = {
     ProgressSteps.INITIALIZATION: "Starting conversation...",
-    ProgressSteps.QUERY_REWRITE: "Analyzing and rewriting your question...",
+    ProgressSteps.QUERY_REWRITE: "Analyzing & rewriting your question...",
     ProgressSteps.QUERY_CATEGORIZATION: "Categorizing your request...",
     ProgressSteps.ROUTING: "Determining information sources needed...",
     ProgressSteps.TOOL_SELECTION: "Selecting appropriate tools...",
