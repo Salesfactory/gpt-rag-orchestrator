@@ -41,7 +41,7 @@ class SampleReportGenerator(ReportGeneratorBase):
     async def generate(self, job_id: str, organization_id: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """Generate a sample report"""
         import json
-        from datetime import datetime
+        from datetime import datetime, timezone
         from azure.storage.blob import BlobServiceClient
         import os
         
@@ -50,7 +50,7 @@ class SampleReportGenerator(ReportGeneratorBase):
             "report_type": "sample",
             "job_id": job_id,
             "organization_id": organization_id,
-            "generated_at": datetime.now(datetime.UTC).isoformat(),
+            "generated_at": datetime.now(timezone.utc).isoformat(),
             "parameters": parameters,
             "data": {
                 "message": "This is a sample report",
