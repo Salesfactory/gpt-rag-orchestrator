@@ -16,7 +16,7 @@ class ReportGeneratorBase(ABC):
     """Base class for all report generators"""
     
     @abstractmethod
-    async def generate(self, job_id: str, organization_id: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
+    def generate(self, job_id: str, organization_id: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """
         Generate a report and return metadata about the generated artifact.
         

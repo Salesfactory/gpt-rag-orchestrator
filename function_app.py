@@ -48,18 +48,17 @@ app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
     queue_name="report-jobs",
     connection="AzureWebJobsStorage"
 )
-async def report_worker(msg: func.QueueMessage) -> None:
+def report_worker(msg: func.QueueMessage) -> None:
     """
     Azure Function triggered by messages in the report-jobs queue.
     
     Processes report generation jobs with proper error handling and retry logic.
     """
     logging.info('[report-worker] Python Service Bus Queue trigger function processed a request.')
-    
+
     correlation_id = None
     job_id = None
     organization_id = None
-    
     try:
         # Extract message metadata
         dequeue_count = msg.dequeue_count or 1
@@ -72,10 +71,23 @@ async def report_worker(msg: func.QueueMessage) -> None:
         
         # Parse message body
         try:
-            message_body = msg.get_body().decode('utf-8')
+            # Handle both string and bytes message body
+            if hasattr(msg, 'get_body'):
+                raw_body = msg.get_body()
+                if isinstance(raw_body, bytes):
+                    message_body = raw_body.decode('utf-8')
+                else:
+                    message_body = str(raw_body)
+            else:
+                # Fallback for direct string access
+                message_body = str(msg)
+                
             payload = json.loads(message_body)
+            logging.info(f"[ReportWorker] Parsed message body: {message_body}")
+            
         except (UnicodeDecodeError, json.JSONDecodeError) as e:
             logging.error(f"[ReportWorker] Invalid message format: {str(e)}")
+            logging.error(f"[ReportWorker] Raw message: {repr(msg.get_body() if hasattr(msg, 'get_body') else msg)}")
             return
             
         # Extract required fields
@@ -142,7 +154,7 @@ async def report_worker(msg: func.QueueMessage) -> None:
         # Generate the report
         parameters = job.get('parameters', {})
         try:
-            result_metadata = await generator.generate(job_id, organization_id, parameters)
+            result_metadata = generator.generate(job_id, organization_id, parameters)
             logging.info(f"[ReportWorker] Successfully generated report for job {job_id}")
             
             # Update job status to SUCCEEDED
@@ -627,11 +639,11 @@ async def html2pdf_conversion(req: Request) -> Response:
         return Response(content=error_message, status_code=500)
 
 
-@app.blob_trigger(
-    arg_name="myblob",
-    path="documents/{name}",
-    connection="AZURE_STORAGE_CONNECTION_STRING",
-)
+#@app.blob_trigger(
+#    arg_name="myblob",
+#    path="documents/{name}",
+#    connection="AZURE_STORAGE_CONNECTION_STRING",
+#)
 def blob_trigger(myblob: func.InputStream):
     """
     Azure Blob Storage trigger that processes uploaded documents and triggers search index updates.
