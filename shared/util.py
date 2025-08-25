@@ -20,6 +20,7 @@ from tenacity import retry, wait_random_exponential, stop_after_attempt
 from .exceptions import MissingRequiredFieldError
 from azure.cosmos.exceptions import CosmosResourceNotFoundError
 from shared.blob_client_async import get_blob_service_client
+from shared.cosmos_client_async import get_client, get_db, get_container
 
 
 # logging level
@@ -1699,8 +1700,8 @@ async def update_report_job_status(
         True if update successful, False otherwise
     """
     try:
-        bsc = await get_blob_service_client()
-        container_client = bsc.get_container_client(container_name="reportJobs")
+        db = get_db("reportJobs")
+        container_client = get_container("reportJobs", "reportJobs")
         
         # Get the current job
         job = container_client.read_item(item=job_id, partition_key=organization_id)
