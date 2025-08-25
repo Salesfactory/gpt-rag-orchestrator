@@ -6,8 +6,11 @@ Each report type has a unique key and associated generator function.
 """
 
 import logging
-from typing import Dict, Callable, Any, Optional
+from typing import Dict, Any, Optional, Type
 from abc import ABC, abstractmethod
+from shared.blob_client_async import get_blob_service_client
+from azure.core.exceptions import ResourceNotFoundError, ResourceExistsError
+from azure.storage.blob import ContentSettings
 
 class ReportGeneratorBase(ABC):
     """Base class for all report generators"""
@@ -47,7 +50,7 @@ class SampleReportGenerator(ReportGeneratorBase):
             "report_type": "sample",
             "job_id": job_id,
             "organization_id": organization_id,
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(datetime.UTC).isoformat(),
             "parameters": parameters,
             "data": {
                 "message": "This is a sample report",
@@ -59,34 +62,29 @@ class SampleReportGenerator(ReportGeneratorBase):
         json_content = json.dumps(report_content, indent=2)
         file_name = f"sample_report_{job_id}.json"
         
-        # Upload to blob storage
-        connection_string = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
-        if not connection_string:
-            raise ValueError("AZURE_STORAGE_CONNECTION_STRING environment variable not set")
-            
-        blob_service_client = BlobServiceClient.from_connection_string(connection_string)
-        container_name = "reports"
+        bsc = await get_blob_service_client()
+        container_client = bsc.get_container_client(container_name="reports")
         blob_name = f"{organization_id}/{file_name}"
         
         # Ensure container exists
         try:
-            container_client = blob_service_client.get_container_client(container_name)
             container_client.get_container_properties()
-        except Exception:
-            container_client = blob_service_client.create_container(container_name)
+        except ResourceNotFoundError:
+            try:
+                container_client.create_container()
+            except ResourceExistsError:
+                pass  # another worker created it
+        except Exception as e:
+            logging.error(f"Error getting container properties: {e}")
+            raise e
             
         # Upload the report
-        blob_client = blob_service_client.get_blob_client(
-            container=container_name, 
-            blob=blob_name
-        )
+        blob_client = container_client.get_blob_client(blob=blob_name)
         
         blob_client.upload_blob(
             json_content.encode('utf-8'), 
             overwrite=True,
-            content_settings={
-                'content_type': 'application/json'
-            }
+            content_settings=ContentSettings(content_type='application/json')
         )
         
         return {
@@ -119,26 +117,15 @@ class UsageReportGenerator(ReportGeneratorBase):
         raise NotImplementedError("Usage report generator not yet implemented")
 
 # Registry of available report generators
-_REPORT_GENERATORS: Dict[str, ReportGeneratorBase] = {
-    "sample": SampleReportGenerator(),
-    "conversation_analytics": ConversationAnalyticsGenerator(),
-    "usage_report": UsageReportGenerator(),
+_REPORT_GENERATORS: Dict[str, Type[ReportGeneratorBase]] = {
+    "sample": SampleReportGenerator,
+    "conversation_analytics": ConversationAnalyticsGenerator,
+    "usage_report": UsageReportGenerator,
 }
 
 def get_generator(report_key: str) -> Optional[ReportGeneratorBase]:
-    """
-    Get a report generator by its key.
-    
-    Args:
-        report_key: The unique key identifying the report type
-        
-    Returns:
-        ReportGeneratorBase instance or None if not found
-    """
-    generator = _REPORT_GENERATORS.get(report_key)
-    if generator is None:
-        logging.warning(f"No generator found for report key: {report_key}")
-    return generator
+    cls = _REPORT_GENERATORS.get(report_key)
+    return cls() if cls else None
 
 def register_generator(report_key: str, generator: ReportGeneratorBase) -> None:
     """

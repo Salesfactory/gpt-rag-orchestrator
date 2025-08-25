@@ -19,6 +19,7 @@ from azure.identity import DefaultAzureCredential
 from tenacity import retry, wait_random_exponential, stop_after_attempt
 from .exceptions import MissingRequiredFieldError
 from azure.cosmos.exceptions import CosmosResourceNotFoundError
+from shared.blob_client_async import get_blob_service_client
 
 
 # logging level
@@ -1651,7 +1652,8 @@ def trigger_indexer_with_retry(indexer_name: str, blob_name: str) -> bool:
     finally:
         loop.close()
 
-def get_report_job(job_id: str, organization_id: str) -> Optional[Dict[str, Any]]:
+
+async def get_report_job(job_id: str, organization_id: str) -> Optional[Dict[str, Any]]:
     """
     Retrieve a report job from Cosmos DB.
     
@@ -1663,12 +1665,10 @@ def get_report_job(job_id: str, organization_id: str) -> Optional[Dict[str, Any]
         Job document or None if not found
     """
     try:
-        credential = DefaultAzureCredential()
-        db_client = CosmosClient(AZURE_DB_URI, credential, consistency_level="Session")
-        db = db_client.get_database_client(database=AZURE_DB_NAME)
-        container = db.get_container_client("reportJobs")
+        bsc = await get_blob_service_client()
+        container_client = bsc.get_container_client(container_name="reportJobs")
         
-        job = container.read_item(item=job_id, partition_key=organization_id)
+        job = container_client.read_item(item=job_id, partition_key=organization_id)
         return job
         
     except CosmosResourceNotFoundError:
@@ -1678,7 +1678,7 @@ def get_report_job(job_id: str, organization_id: str) -> Optional[Dict[str, Any]
         logging.error(f"Error retrieving report job {job_id}: {str(e)}")
         return None
 
-def update_report_job_status(
+async def update_report_job_status(
     job_id: str, 
     organization_id: str, 
     status: str, 
@@ -1699,13 +1699,11 @@ def update_report_job_status(
         True if update successful, False otherwise
     """
     try:
-        credential = DefaultAzureCredential()
-        db_client = CosmosClient(AZURE_DB_URI, credential, consistency_level="Session")
-        db = db_client.get_database_client(database=AZURE_DB_NAME)
-        container = db.get_container_client("reportJobs")
+        bsc = await get_blob_service_client()
+        container_client = bsc.get_container_client(container_name="reportJobs")
         
         # Get the current job
-        job = container.read_item(item=job_id, partition_key=organization_id)
+        job = container_client.read_item(item=job_id, partition_key=organization_id)
         
         # Update status and timestamp
         job["status"] = status
@@ -1726,7 +1724,7 @@ def update_report_job_status(
             job["started_at"] = datetime.now(timezone.utc).isoformat()
         
         # Save the updated job
-        container.replace_item(item=job_id, body=job)
+        container_client.replace_item(item=job_id, body=job)
         logging.info(f"Updated report job {job_id} to status {status}")
         return True
         
