@@ -1654,7 +1654,7 @@ def trigger_indexer_with_retry(indexer_name: str, blob_name: str) -> bool:
         loop.close()
 
 
-async def get_report_job(job_id: str, organization_id: str) -> Optional[Dict[str, Any]]:
+def get_report_job(job_id: str, organization_id: str) -> Optional[Dict[str, Any]]:
     """
     Retrieve a report job from Cosmos DB.
     
@@ -1666,8 +1666,8 @@ async def get_report_job(job_id: str, organization_id: str) -> Optional[Dict[str
         Job document or None if not found
     """
     try:
-        bsc = await get_blob_service_client()
-        container_client = bsc.get_container_client(container_name="reportJobs")
+        db = get_db(AZURE_DB_NAME)
+        container_client = get_container(db, "report_jobs")
         
         job = container_client.read_item(item=job_id, partition_key=organization_id)
         return job
@@ -1679,7 +1679,7 @@ async def get_report_job(job_id: str, organization_id: str) -> Optional[Dict[str
         logging.error(f"Error retrieving report job {job_id}: {str(e)}")
         return None
 
-async def update_report_job_status(
+def update_report_job_status(
     job_id: str, 
     organization_id: str, 
     status: str, 
@@ -1700,8 +1700,8 @@ async def update_report_job_status(
         True if update successful, False otherwise
     """
     try:
-        db = get_db("reportJobs")
-        container_client = get_container("reportJobs", "reportJobs")
+        db = get_db(AZURE_DB_NAME)
+        container_client = get_container(db, "report_jobs")
         
         # Get the current job
         job = container_client.read_item(item=job_id, partition_key=organization_id)

@@ -4,6 +4,8 @@ import json
 import os
 import stripe
 import platform
+import traceback
+from datetime import datetime, timezone
 
 from azurefunctions.extensions.http.fastapi import Request, StreamingResponse, Response
 from scheduler import main as scheduler_main
@@ -53,8 +55,6 @@ async def report_worker(msg: func.QueueMessage) -> None:
     Processes report generation jobs with proper error handling and retry logic.
     """
     logging.info('[report-worker] Python Service Bus Queue trigger function processed a request.')
-    import traceback
-    from datetime import datetime, timezone
     
     correlation_id = None
     job_id = None
@@ -93,7 +93,7 @@ async def report_worker(msg: func.QueueMessage) -> None:
         )
         
         # Fetch job from Cosmos DB
-        job = await get_report_job(job_id, organization_id)
+        job = get_report_job(job_id, organization_id)
         if not job:
             logging.error(f"[ReportWorker] Job {job_id} not found in database")
             return
@@ -109,7 +109,7 @@ async def report_worker(msg: func.QueueMessage) -> None:
             return
             
         # Update job status to RUNNING
-        success = await update_report_job_status(job_id, organization_id, 'RUNNING')
+        success = update_report_job_status(job_id, organization_id, 'RUNNING')
         if not success:
             logging.error(f"[ReportWorker] Failed to update job {job_id} status to RUNNING")
             raise Exception(f"Failed to update job {job_id} status to RUNNING")
@@ -120,7 +120,7 @@ async def report_worker(msg: func.QueueMessage) -> None:
         report_key = job.get('report_key')
         if not report_key:
             logging.error(f"[ReportWorker] Job {job_id} missing report_key")
-            await update_report_job_status(job_id, organization_id, 'FAILED', error_payload={
+            update_report_job_status(job_id, organization_id, 'FAILED', error_payload={
                 "error_type": "deterministic",
                 "error_message": "Missing report_key",
                 "timestamp": datetime.now(timezone.utc).isoformat()
@@ -130,7 +130,7 @@ async def report_worker(msg: func.QueueMessage) -> None:
         generator = get_generator(report_key)
         if not generator:
             logging.error(f"[ReportWorker] No generator found for report_key: {report_key}")
-            await update_report_job_status(job_id, organization_id, 'FAILED', error_payload={
+            update_report_job_status(job_id, organization_id, 'FAILED', error_payload={
                 "error_type": "deterministic",
                 "error_message": f"No generator found for report_key: {report_key}",
                 "timestamp": datetime.now(timezone.utc).isoformat()
@@ -146,7 +146,7 @@ async def report_worker(msg: func.QueueMessage) -> None:
             logging.info(f"[ReportWorker] Successfully generated report for job {job_id}")
             
             # Update job status to SUCCEEDED
-            success = await update_report_job_status(
+            success = update_report_job_status(
                 job_id, 
                 organization_id, 
                 'SUCCEEDED', 
@@ -164,7 +164,7 @@ async def report_worker(msg: func.QueueMessage) -> None:
             
         except NotImplementedError as e:
             logging.error(f"[ReportWorker] Report generator not implemented: {str(e)}")
-            await update_report_job_status(job_id, organization_id, 'FAILED', error_payload={
+            update_report_job_status(job_id, organization_id, 'FAILED', error_payload={
                 "error_type": "deterministic",
                 "error_message": f"Report generator not implemented: {str(e)}",
                 "timestamp": datetime.now(timezone.utc).isoformat()
@@ -173,7 +173,7 @@ async def report_worker(msg: func.QueueMessage) -> None:
             
         except Exception as e:
             logging.error(f"[ReportWorker] Error generating report: {str(e)}")
-            await update_report_job_status(job_id, organization_id, 'FAILED', error_payload={
+            update_report_job_status(job_id, organization_id, 'FAILED', error_payload={
                 "error_type": "transient",
                 "error_message": str(e),
                 "dequeue_count": dequeue_count,
@@ -198,7 +198,7 @@ async def report_worker(msg: func.QueueMessage) -> None:
                 "correlation_id": correlation_id,
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
-            await update_report_job_status(job_id, organization_id, 'FAILED', error_payload=error_payload)
+            update_report_job_status(job_id, organization_id, 'FAILED', error_payload=error_payload)
         
         # Don't re-raise - let message go to poison queue
 
