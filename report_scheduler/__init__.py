@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 # Environment variables
 WEB_APP_URL = os.getenv("WEB_APP_URL", None)
-TIMEOUT_SECONDS = 300
+TIMEOUT_SECONDS = 120
 MAX_RETRIES = 3
 
 def main(mytimer: func.TimerRequest) -> None:
