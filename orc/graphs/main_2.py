@@ -4,11 +4,12 @@ import json
 import logging
 import asyncio
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 from dotenv import load_dotenv
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from typing import Dict, Any
 from shared.util import get_secret
+from shared.progress_streamer import ProgressStreamer, ProgressSteps, STEP_MESSAGES
 
 # Load environment variables FIRST, before importing modules that read them
 load_dotenv()
@@ -30,7 +31,7 @@ from shared.prompts import (
 )
 from shared.cosmos_db import get_conversation_data
 from shared.util import get_organization
-from orc.graphs.utils import clean_chat_history_for_llm
+from orc.graphs.utils import clean_chat_history_for_llm, extract_thread_id_from_history, extract_last_mcp_tool_from_history
 from langgraph.checkpoint.memory import MemorySaver
 
 # Set up logging for Azure Functions - this needs to be done before creating loggers
@@ -99,6 +100,8 @@ class ConversationState:
     augmented_query: str = field(default_factory=str)
     mcp_tool_used: List[Dict[str, Any]] = field(default_factory=list)
     tool_results: List[Any] = field(default_factory=list)
+    code_thread_id: Optional[str] = field(default=None)
+    last_mcp_tool_used: str = field(default="")
 
 
 @dataclass
@@ -115,13 +118,17 @@ class GraphConfig:
         temperature (float): Sampling temperature for the language model. Default is 0.4.
         max_tokens (int): Maximum number of tokens for the model output. Default is 200000.
     """
-    azure_api_version: str = "2025-01-01-preview"
-    azure_deployment: str = "gpt-4.1"
+    azure_api_version: str = "2025-04-01-preview" #TODO: move to env, resuse the azure api version from mcp rag
+    azure_deployment: str = "gpt-4.1" #todo: move to env
+    support_model_deployment: str = 'gpt-5-nano' # TODO: move to env
+    support_model_reasoning_effort: str = 'low' # TODO: move to env
+
     retriever_top_k: int = 5
     reranker_threshold: float = 2
     web_search_results: int = 2
     temperature: float = 0.4
-    max_tokens: int = 200000
+    max_tokens: int = 20000
+
 
 class GraphBuilder:
     """Builds and manages the conversation flow graph."""
@@ -131,6 +138,8 @@ class GraphBuilder:
         organization_id: str = None,
         config: GraphConfig = GraphConfig(),
         conversation_id: str = None,
+        user_id: str = None,
+        progress_streamer: Optional[ProgressStreamer] = None,
     ):
         """Initialize with with configuration"""
         logger.info(
@@ -143,9 +152,12 @@ class GraphBuilder:
         self.organization_id = organization_id
         self.config = config
         self.conversation_id = conversation_id
+        self.user_id = user_id
+        self.progress_streamer = progress_streamer
         
         # Initialize LLM and retriever
         self.llm = self._init_llm()
+        self.support_llm = self._init_support_model()
         
         # Initialize organization data with error handling
         try:
@@ -158,6 +170,17 @@ class GraphBuilder:
                 "segmentSynonyms": "",
                 "brandInformation": "",
                 "industryInformation": "",
+            }
+
+        # Initialize conversation data with error handling - cache it to avoid multiple DB calls
+        try:
+            self.conversation_data = get_conversation_data(conversation_id)
+            logger.info(f"[GraphBuilder Init] Successfully retrieved conversation data for ID: {conversation_id}")
+        except Exception as e:
+            logger.exception(f"[GraphBuilder Init] Failed to retrieve conversation data")
+            logger.warning("[GraphBuilder Init] Using empty conversation data as fallback")
+            self.conversation_data = {
+                "history": []
             }
 
         logger.info("[GraphBuilder Init] Successfully initialized GraphBuilder")
@@ -190,6 +213,21 @@ class GraphBuilder:
                 f"[GraphBuilder LLM Init] Failed to initialize Azure OpenAI: {str(e)}"
             )
             raise RuntimeError(f"Failed to initialize Azure OpenAI: {str(e)}")
+            
+    def _init_support_model(self) -> AzureChatOpenAI:
+        """Configure Azure OpenAI instance."""
+        logger.info("[GraphBuilder Support Model Init] Initializing Azure OpenAI client")
+        config = self.config
+        return AzureChatOpenAI(
+            openai_api_version=config.azure_api_version,
+            azure_deployment=config.support_model_deployment,
+            reasoning_effort=config.support_model_reasoning_effort,
+            streaming=False,
+            timeout=30,
+            max_retries=3,
+            azure_endpoint=os.getenv("O1_ENDPOINT"),
+            api_key=os.getenv("O1_KEY"),
+        )
 
     def _get_organization_data(self, data_key: str, data_name: str) -> str:
         """
@@ -222,20 +260,13 @@ class GraphBuilder:
 
     def _get_conversation_data(self) -> dict:
         """
-        Retrieve conversation data.
+        Retrieve cached conversation data to avoid multiple DB calls.
 
         Returns:
             Dictionary containing conversation data with history
         """
-        logger.info(f"[Conversation] Fetching conversation data for ID: {self.conversation_id}")
-        try:
-            return get_conversation_data(self.conversation_id)
-        except Exception as e:
-            logger.error(f"[Conversation] Failed to retrieve conversation data: {str(e)}")
-            logger.warning("[Conversation] Using empty conversation history as fallback")
-            return {
-                "history": []
-            }
+        logger.info(f"[Conversation] Using cached conversation data for ID: {self.conversation_id}")
+        return self.conversation_data
 
     async def _llm_invoke(self, messages, **kwargs):
         """
@@ -249,6 +280,19 @@ class GraphBuilder:
             LLM response
         """
         return await self.llm.ainvoke(messages, **kwargs)
+    
+    async def _support_llm_invoke(self, messages, **kwargs):    
+        """
+        Support LLM invocation.
+
+        Args:
+            messages: List of messages to send to LLM
+            **kwargs: Additional arguments for LLM call
+
+        Returns:
+            LLM response
+        """
+        return await self.support_llm.ainvoke(messages, **kwargs)
     
     def _find_tool_by_name(self, tools: List[Any], tool_name: str):
         """
@@ -328,10 +372,33 @@ class GraphBuilder:
         <-------------------------------->
 
         """
+      
+    def _get_code_thread_id(self, state: ConversationState) -> Optional[str]:
+        """Extract thread id from the code interpreter tool result"""
+        if state.mcp_tool_used and state.tool_results:
+            for tool_call, tool_result in zip(state.mcp_tool_used, state.tool_results):
+                if tool_call["name"] == "data_analyst":
+                    if isinstance(tool_result, str):
+                        tool_result = json.loads(tool_result)
+                    if isinstance(tool_result, dict):
+                        thread_id = tool_result.get("thread_id")
+                        if thread_id:
+                            logger.info(f"Existing thread id found: {thread_id}")
+                            return thread_id
+        return None
+    
+    def _get_last_mcp_tool_used(self, state: ConversationState) -> str:
+        """Extract the name of the last MCP tool used"""
+        if state.mcp_tool_used:
+            last_tool_name = state.mcp_tool_used[-1]["name"] #[0] works just fine
+            logger.info(f"Last MCP tool used: {last_tool_name}")
+            return last_tool_name
+        return state.last_mcp_tool_used
 
-    def _return_state(self, state: ConversationState) -> dict:
+    def _get_context_docs_from_tool_results(self, state: ConversationState) -> List[Any]:
+        """Get context docs from the tool results, including blob paths for data_analyst with images"""
+        context_docs = []
 
-        # pass tool result to context_docs 
         if state.mcp_tool_used and state.tool_results:
             for i, tool_call in enumerate(state.mcp_tool_used):
                 if i < len(state.tool_results):
@@ -339,21 +406,40 @@ class GraphBuilder:
                     
                     if isinstance(tool_result, str):
                         tool_result = json.loads(tool_result)
-                        
+
                     if tool_call["name"] == "agentic_search" and isinstance(tool_result, dict):
-                        state.context_docs.append(tool_result.get("results", tool_result))
+                        context_docs.append(tool_result.get("results", tool_result))
                     elif tool_call["name"] == "data_analyst" and isinstance(tool_result, dict):
-                        state.context_docs.append(tool_result.get("last_agent_message", tool_result))
-                    else:
-                        state.context_docs.append(tool_result)
+                        context_docs.append(tool_result.get("last_agent_message", tool_result))
+                        
+                        # Add blob path if images exist for data_analyst tool
+                        if tool_result.get("blob_urls"):
+                            blob_urls = tool_result.get("blob_urls")
+                            if isinstance(blob_urls, list) and len(blob_urls) > 0 and isinstance(blob_urls[0], dict):
+                                blob_path = blob_urls[0].get("blob_path")
+                                if blob_path:
+                                    logger.info(f"[MCP] Adding blob path to context: {blob_path}")
+                                    blob_path_content = f"Here is the graph/visualization link: \n\n{blob_path}"
+                                    context_docs.append(blob_path_content)
+        return context_docs
+
+    def _return_state(self, state: ConversationState) -> dict:
+        # Get updated thread ID from tool results, fallback to existing thread ID
+        updated_thread_id = self._get_code_thread_id(state) or state.code_thread_id
         
+        # Get the the latest mcp tool used 
+        last_mcp_tool_used = self._get_last_mcp_tool_used(state)
+
+        context_docs = self._get_context_docs_from_tool_results(state)
         return {
             "messages": state.messages,
-            "context_docs": state.context_docs,
+            "context_docs": context_docs,
             "rewritten_query": state.rewritten_query,
             "query_category": state.query_category,
             "mcp_tool_used": state.mcp_tool_used,
             "tool_results": state.tool_results,
+            "code_thread_id": updated_thread_id,
+            "last_mcp_tool_used": last_mcp_tool_used
         }
 
     def build(self, memory) -> StateGraph:
@@ -392,6 +478,13 @@ class GraphBuilder:
         logger.info(
             f"[Query Rewrite] Starting async query rewrite for: '{state.question[:100]}...'"
         )
+        
+        if self.progress_streamer:
+            self.progress_streamer.emit_progress(
+                ProgressSteps.QUERY_REWRITE,
+                STEP_MESSAGES[ProgressSteps.QUERY_REWRITE],
+                20
+            )
         question = state.question
 
         system_prompt = QUERY_REWRITING_PROMPT
@@ -468,6 +561,14 @@ class GraphBuilder:
             )
             augmented_query = question
 
+        # Initialize code thread ID from conversation history (this is for the code interpreter tool)
+        existing_thread_id = extract_thread_id_from_history(history)
+        logger.info(f"[Query Rewrite] Initialized code thread_id from history if available: {existing_thread_id}")
+        
+        # Initialize last MCP tool used from conversation history
+        existing_last_mcp_tool = extract_last_mcp_tool_from_history(history)
+        logger.info(f"[Query Rewrite] Retrieved last_mcp_tool_used from history: {existing_last_mcp_tool}")
+
         return {
             "rewritten_query": rewritte_query.content,
             "augmented_query": (
@@ -476,6 +577,8 @@ class GraphBuilder:
                 else augmented_query
             ),
             "messages": state.messages + [HumanMessage(content=question)],
+            "code_thread_id": existing_thread_id,
+            "last_mcp_tool_used": existing_last_mcp_tool,
         }
 
     async def _categorize_query(self, state: ConversationState) -> dict:
@@ -487,7 +590,7 @@ class GraphBuilder:
         conversation_data = self._get_conversation_data()
         history = conversation_data.get("history", [])
         logger.info(
-            f"[Query Categorization] Using {len(history)} conversation history messages for context"
+            f"[Query Categorization] Retrieved {len(history)} conversation history messages for context"
         )
 
         category_prompt = f"""
@@ -530,8 +633,8 @@ class GraphBuilder:
             [
                 SystemMessage(content=category_prompt),
                 HumanMessage(content=state.question),
-            ],
-            temperature=0,
+            ]
+
         )
         logger.info(
             f"[Query Categorization] Categorized query as: '{response.content}'"
@@ -547,12 +650,19 @@ class GraphBuilder:
 
         system_prompt = MARKETING_ORC_PROMPT
 
+        human_prompt = f"""
+        How should I categorize this question:
+        - Original Question: {state.question}
+        - Rewritten Question: {state.rewritten_query}
+        
+        Answer yes/no.
+        """
         logger.info("[Query Routing] Sending routing decision request to LLM")
         response = await self._llm_invoke(
             [
                 SystemMessage(content=system_prompt),
                 HumanMessage(
-                    content=f"How should I categorize this question: \n\n{state.rewritten_query}\n\nAnswer yes/no."
+                    content= human_prompt
                 ),
             ]
         )
@@ -604,8 +714,14 @@ class GraphBuilder:
             tool_call["args"].update(
                 {
                     "organization_id": self.organization_id,
+                    "code_thread_id": state.code_thread_id,
+                    "user_id": self.user_id
                 }
             )
+    
+    def _is_local_environment(self) -> bool:
+        """Check if the current environment is local development."""
+        return os.getenv("ENVIRONMENT", "").lower() == "local"
     
     async def _init_mcp_client(self) -> MultiServerMCPClient:
         """Initialize the MCP client"""
@@ -616,10 +732,16 @@ class GraphBuilder:
             logger.error(f"Error getting MCP function variables: {str(e)}")
             raise RuntimeError(f"Error getting MCP function variables: {str(e)}")
         
+        # Use different endpoint for local environment
+        if self._is_local_environment():
+            mcp_url = f"http://localhost:7073/runtime/webhooks/mcp/sse"
+        else:
+            mcp_url = f"https://{mcp_function_name}.azurewebsites.net/runtime/webhooks/mcp/sse?code={mcp_function_secret}"
+        
         client = MultiServerMCPClient(
             {
                 "search": {
-                    "url": f"https://{mcp_function_name}.azurewebsites.net/runtime/webhooks/mcp/sse?code={mcp_function_secret}",
+                    "url": mcp_url,
                     "transport": "sse",
                 }
             }
@@ -628,33 +750,64 @@ class GraphBuilder:
     
     async def _get_tool_calls(self, state: ConversationState) -> dict:
         """Get tool calls from the MCP server"""
+
+        logger.info(f"[MCP] Initializing MCP client")
         client = await self._init_mcp_client()
 
+        logger.info(f"[MCP] Getting tools from MCP client")
         tools = await client.get_tools()
-        logger.info(f"Found {len(tools)} tools")
+        logger.info(f"[MCP] Found {len(tools)} tools")
+        
+        # get the conversation history
+        conversation_data = self._get_conversation_data()
+        history = conversation_data.get("history", [])
+        logger.info(f"[MCP] Retrieved {len(history)} conversation history messages for context")
 
+        clean_history = clean_chat_history_for_llm(history)
+        logger.info(f"[MCP] Cleaned conversation history: {clean_history[:200] if len(clean_history) > 200 else clean_history}")
+
+        # get the last mcp tool used
+        last_mcp_tool_used = state.last_mcp_tool_used
+        human_prompt = f"""
+        User's question:{state.question}
+
+        Previous tool used (if any):{last_mcp_tool_used}
+
+        Here is the conversation history to determine if the current question is a follow up question to a previous question:
+        {clean_history}
+        """
         # equip the llm with the tools
         llm_with_tools = self.llm.bind_tools(tools, tool_choice="any") # switch to auto in case we want to use no tool 
 
-        message = [SystemMessage(content=MCP_SYSTEM_PROMPT), HumanMessage(content=state.question)]
+        message = [SystemMessage(content=MCP_SYSTEM_PROMPT), HumanMessage(content=human_prompt)]
         try:
             response = await llm_with_tools.ainvoke(message)
+            logger.info(f"[MCP] Tool calls found: {len(response.tool_calls) if hasattr(response, 'tool_calls') and response.tool_calls else 0}")
+            if hasattr(response, 'tool_calls') and response.tool_calls:
+                logger.info(f"[MCP] Tool calls: {response.tool_calls}")
+            else:
+                logger.warning(f"[MCP] No tool calls returned by LLM. Response content: {response.content[:200] if hasattr(response, 'content') else 'No content'}...")
+                logger.info(f"[MCP] Available tools count: {len(tools)}")
+                logger.info(f"[MCP] Available tool names: {[tool.name for tool in tools] if tools else 'No tools'}")
+                logger.info(f"[MCP] Human prompt sent to LLM: {human_prompt[:300]}...")
         except Exception as e:
-            logger.error(f"Error getting tool calls from LLM: {str(e)}")
-            raise RuntimeError(f"Error getting tool calls from LLM: {str(e)}")
+            logger.error(f"[MCP] Error getting tool calls from LLM: {str(e)}")
+            raise RuntimeError(f"[MCP] Error getting tool calls from LLM: {str(e)}")
         return {
-            "mcp_tool_used": response.tool_calls,
+            "mcp_tool_used": response.tool_calls if hasattr(response, 'tool_calls') else [],
         }
         
-    async def _execute_mcp_tool_calls(self, state: ConversationState) -> List[Any]:
+    async def _execute_mcp_tool_calls(self, state: ConversationState) -> dict:
         """Execute tool calls."""
         mcp_tool_used = state.mcp_tool_used
         tool_results = []
         if not mcp_tool_used:
-            logger.info("No tool calls to execute")
-            return tool_results
+            logger.info("[MCP] No tool calls to execute")
+            return {
+                "tool_results": tool_results,
+            }
         
-        logger.info(f"Executing {len(mcp_tool_used)} tool(s)...")
+        logger.info(f"[MCP] Executing {len(mcp_tool_used)} tool(s)...")
         
         # gotta call it here again since langchain gives me too much trouble to store tool calls results in the state
         client = await self._init_mcp_client()
@@ -662,6 +815,21 @@ class GraphBuilder:
         
         for tool_call in mcp_tool_used:
             tool_name = tool_call["name"]
+            
+            if self.progress_streamer:
+                if tool_name == "agentic_search":
+                    self.progress_streamer.emit_progress(
+                        ProgressSteps.AGENTIC_SEARCH,
+                        STEP_MESSAGES[ProgressSteps.AGENTIC_SEARCH],
+                        40
+                    )
+                elif tool_name == "data_analyst":
+                    self.progress_streamer.emit_progress(
+                        ProgressSteps.DATA_ANALYSIS,
+                        STEP_MESSAGES[ProgressSteps.DATA_ANALYSIS],
+                        40
+                    )
+            
             if tool_name == "agentic_search":
                 self._configure_agentic_search_args(tool_call, state)
             elif tool_name == "data_analyst":
@@ -670,15 +838,15 @@ class GraphBuilder:
             tool = self._find_tool_by_name(mcp_available_tools, tool_name)
             if tool:
                 try:
-                    logger.info(f"Running {tool_name}...")
+                    logger.info(f"[MCP] Running {tool_name}...")
                     tool_result = await tool.ainvoke(tool_call["args"])
                     tool_results.append(tool_result)
-                    logger.info(f"{tool_name} completed successfully")
+                    logger.info(f"[MCP] {tool_name} completed successfully")
                 except Exception as e:
-                    logger.error(f"Error executing {tool_name}: {e}")
+                    logger.error(f"[MCP] Error executing {tool_name}: {e}")
                     tool_results.append(f"Error: {e}")
             else:
-                error_msg = f"Tool '{tool_name}' not found in available tools"
+                error_msg = f"[MCP] Tool '{tool_name}' not found in available tools"
                 logger.error(error_msg)
                 tool_results.append(error_msg)
         
@@ -686,19 +854,19 @@ class GraphBuilder:
             preview = str(tool_results[0])
             if len(preview) > 200:
                 preview = preview[:200] + "..."
-            logger.info(f"Tool results: {preview}")
+            logger.info(f"[MCP] Tool results: {preview}")
             return {
                 "tool_results": tool_results,
             }
             
         else:
-            logger.info("No tool results to return")
+            logger.info("[MCP] No tool results to return")
             return {
                 "tool_results": tool_results,
             }
 
 def create_conversation_graph(
-    memory, organization_id=None, conversation_id=None
+    memory, organization_id=None, conversation_id=None, user_id=None, progress_streamer=None
 ) -> StateGraph:
     """Create and return a configured conversation graph.
     Returns:
@@ -708,37 +876,6 @@ def create_conversation_graph(
         f"[Conversation Graph Creation] Creating conversation graph for conversation: {conversation_id}"
     )
     builder = GraphBuilder(
-        organization_id=organization_id, conversation_id=conversation_id
+        organization_id=organization_id, conversation_id=conversation_id, user_id=user_id, progress_streamer=progress_streamer
     )
     return builder.build(memory)
-
-
-# if __name__ == "__main__":
-
-#     config = GraphConfig()
-#     # Initialize memory saver
-#     memory = MemorySaver()
-
-#     graph_builder = GraphBuilder(
-#         organization_id="6c33b530-22f6-49ca-831b-25d587056237",
-#         config=config,
-#         conversation_id="123",
-#     )
-
-#     graph = graph_builder.build(memory=memory)
-    
-#     print(f"\nInvoking Graph with Sample Question...")
-    
-#     question = "How has total POS $ and POS Units evolved month-over-month from Jan 2024 through the latest month in 2025?"
-
-#     async def run_graph():
-#         try:
-#             config_dict = {"configurable": {"thread_id": "test-thread-123"}}
-#             result = await graph.ainvoke({"question": question}, config=config_dict)
-            
-#             print(result)
-                
-#         except Exception as e:
-#             print(f"Error invoking graph: {str(e)}")
-    
-#     asyncio.run(run_graph())
