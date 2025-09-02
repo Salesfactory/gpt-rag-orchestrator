@@ -152,8 +152,12 @@ def get_brands(organization_id: str):
 def create_brands_payload(brand_name: str, industry_description: str) -> dict:
     """Create the payload for the brands API request."""
     return {
-        "brand_focus": brand_name,
-        "industry_context": industry_description
+        "report_key": "brand_analysis",
+        "report_name": brand_name,
+        "params": {
+            "brand_focus": brand_name,
+            "industry_context": industry_description
+        }
     }
 
 def get_products(organization_id: str):
