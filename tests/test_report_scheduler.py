@@ -23,7 +23,14 @@ class TestReportScheduler(unittest.TestCase):
         self.industry_description = "IndustryDesc"
         self.sample_org = {"id": self.org_id, "industry_description": self.industry_description}
         self.sample_brand = {"name": self.brand_name}
-        self.sample_payload = {"brand_focus": self.brand_name, "industry_context": self.industry_description}
+        self.sample_payload = {
+            "report_key": "brand_analysis",
+            "report_name": self.brand_name,
+            "params": {
+                "brand_focus": self.brand_name,
+                "industry_context": self.industry_description
+            }
+        }
         os.environ["AZURE_DB_NAME"] = "testdb"
 
     @patch("report_scheduler.cosmos_client_async.get_container")
