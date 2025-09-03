@@ -41,8 +41,10 @@ def main(mytimer: func.TimerRequest) -> None:
 
         for org in organizations:
             org_id = org.get("id")
-            if not org_id:
-                logger.warning(f"Organization without id field: {org}")
+            industry_description = org.get("industry_description")
+
+            if not org_id or not industry_description:
+                logger.warning(f"Organization missing required fields (id or industry_description): {org}")
                 continue
             full_url = f"{WEB_APP_URL}/api/report-jobs?organization_id={org_id}"
             logger.info(f"Sending request to: {full_url}")
@@ -61,9 +63,8 @@ def main(mytimer: func.TimerRequest) -> None:
 
             for brand in organization_brands:
                 brand_name = brand.get("name")
-                industry_description = org.get("industry_description")
-
-                if not brand_name or not industry_description:
+                
+                if not brand_name:
                     logger.warning(f"Brand missing required fields: {brand}")
                     continue
 
