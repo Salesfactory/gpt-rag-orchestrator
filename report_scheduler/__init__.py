@@ -76,6 +76,7 @@ def main(mytimer: func.TimerRequest) -> None:
                 except Exception as e:
                     logger.error(f"Failed to send request to {full_url}: {str(e)}")
 
+            organization_products = []
             try:
                 organization_products = get_products(org_id)
             except Exception as e:
@@ -85,7 +86,7 @@ def main(mytimer: func.TimerRequest) -> None:
                 logger.warning(f"No products found for organization: {org_id}")
             else:
                 logger.info(f"Products found for organization: {org_id}. Proceeding with report generation.")
-                category_map = dict(list)
+                category_map = {}
                 for product in organization_products:
                     product_name = product.get("name")
                     product_category = product.get("category")

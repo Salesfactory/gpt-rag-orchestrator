@@ -150,7 +150,7 @@ class TestProductCategoryGrouping(unittest.TestCase):
             {"name": "ProductB", "category": "Cat1"},
             {"name": "ProductC", "category": "Cat2"},
         ]
-        # Manual Agrupation like the code
+        # Manual Grouping like the code
         category_map = {}
         for product in products:
             product_name = product.get("name")
