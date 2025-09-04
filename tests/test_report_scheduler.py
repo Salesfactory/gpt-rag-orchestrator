@@ -198,7 +198,6 @@ class TestCompetitorGrouping(unittest.TestCase):
             if competitor_category not in competitors_by_category:
                 competitors_by_category[competitor_category] = []
             competitors_by_category[competitor_category].append(competitor_name)
-        print("Competitors by category:", competitors_by_category)
         self.assertEqual(set(competitors_by_category.keys()), {"Cat1", "Cat2"})
         self.assertEqual(competitors_by_category["Cat1"], ["Competitor1", "Competitor2"])
         self.assertEqual(competitors_by_category["Cat2"], ["Competitor3"])
