@@ -3,7 +3,6 @@ import logging
 import json
 import os
 import stripe
-import platform
 import traceback
 from datetime import datetime, timezone
 
@@ -11,7 +10,7 @@ from azurefunctions.extensions.http.fastapi import Request, StreamingResponse, R
 from scheduler import main as scheduler_main
 from weekly_scheduler import main as weekly_scheduler_main
 from monthly_scheduler import main as monthly_scheduler_main
-from html_to_pdf_converter import html_to_pdf
+from report_scheduler import main as report_scheduler_main
 
 from shared.util import (
     get_user,
@@ -22,7 +21,6 @@ from shared.util import (
     enable_organization_subscription,
     update_subscription_logs,
     updateExpirationDate,
-    trigger_indexer_run,
     get_conversations,
     get_conversation,
     delete_conversation,
@@ -56,26 +54,25 @@ async def report_worker(msg: func.QueueMessage) -> None:
     """
     logging.info('[report-worker] Python Service Bus Queue trigger function processed a request.')
 
-    correlation_id = None
     job_id = None
     organization_id = None
     dequeue_count = 1
     
     try:
         # Extract message metadata and required fields
-        job_id, organization_id, correlation_id, dequeue_count, message_id = extract_message_metadata(msg)
+        job_id, organization_id, dequeue_count, message_id = extract_message_metadata(msg)
         
         # Return early if message parsing failed
-        if not all([job_id, organization_id, correlation_id]):
+        if not all([job_id, organization_id]):
             return
             
         # Process the report job
-        await process_report_job(job_id, organization_id, correlation_id, dequeue_count)
+        await process_report_job(job_id, organization_id, dequeue_count)
             
     except Exception as e:
         logging.error(
             f"[ReportWorker] Unexpected error for job {job_id} "
-            f"(correlation: {correlation_id}): {str(e)}\n"
+            f"(dequeue_count: {dequeue_count}): {str(e)}\n"
             f"Traceback: {traceback.format_exc()}"
         )
         
@@ -85,7 +82,6 @@ async def report_worker(msg: func.QueueMessage) -> None:
                 "error_type": "unexpected",
                 "error_message": str(e), 
                 "dequeue_count": dequeue_count,
-                "correlation_id": correlation_id,
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
             update_report_job_status(job_id, organization_id, 'FAILED', error_payload=error_payload)
@@ -100,6 +96,7 @@ async def stream_response(req: Request) -> StreamingResponse:
     req_body = await req.json()
     question = req_body.get("question")
     conversation_id = req_body.get("conversation_id")
+    user_timezone = req_body.get("user_timezone")
     client_principal_id = req_body.get("client_principal_id")
     client_principal_name = req_body.get("client_principal_name")
     client_principal_organization = req_body.get("client_principal_organization")
@@ -129,7 +126,7 @@ async def stream_response(req: Request) -> StreamingResponse:
     # validate settings
     temp_setting = settings.get("temperature")
     settings["temperature"] = float(temp_setting) if temp_setting is not None else 0.3
-    settings["model"] = settings.get("model") or "DeepSeek-V3-0324"
+    settings["model"] = settings.get("model") or "gpt-4.1"
     logging.info(f"[function_app] Validated settings: {settings}")
     if question:
         orchestrator = new_orchestrator.ConversationOrchestrator(
@@ -143,6 +140,7 @@ async def stream_response(req: Request) -> StreamingResponse:
                     question=question,
                     user_info=client_principal,
                     user_settings=settings,
+                    user_timezone=user_timezone,
                 ),
                 media_type="text/event-stream",
             )
@@ -459,63 +457,6 @@ async def webhook(req: Request) -> Response:
     return Response(
         content=json.dumps({"success": True}), media_type="application/json"
     )
-
-
-@app.function_name(name="html_to_pdf_converter")
-@app.route(route="html_to_pdf_converter", methods=[func.HttpMethod.POST])
-async def html2pdf_conversion(req: Request) -> Response:
-    logging.info("Python HTTP trigger function processed a request.")
-
-    try:
-        # Get request body
-        req_body = await req.json()
-        html_content = req_body.get("html")
-
-        if not html_content:
-            return Response(
-                content="Please provide 'html' in the request body", status_code=400
-            )
-
-        # Add size validation
-        if len(html_content) > 10 * 1024 * 1024:  # 10MB limit
-            return Response(
-                content="HTML content too large. Maximum size is 10MB", status_code=400
-            )
-
-        # Basic HTML validation
-        if not html_content.strip().startswith("<"):
-            return Response(content="Invalid HTML content", status_code=400)
-
-        # Log request (sanitized)
-        logging.info(f"Processing HTML content of length: {len(html_content)}")
-
-        # Convert HTML to PDF bytes
-        pdf_bytes = html_to_pdf(html_content)
-
-        return Response(
-            content=pdf_bytes, media_type="application/pdf", status_code=200
-        )
-
-    except ValueError as ve:
-        return Response(content=f"Invalid request body: {str(ve)}", status_code=400)
-    except Exception as e:
-        error_message = str(e)
-
-        # windows error handling
-        if platform.system() == "Windows":
-            error_message = f"""Error converting HTML to PDF: {str(e)}
-            
-            If you're experiencing WeasyPrint installation issues on Windows,
-            please check the solution here: https://github.com/assafelovic/gpt-researcher/issues/166
-            Common issues include GTK3 installation, missing dependencies, and path configuration."""
-
-        else:
-            error_message = f"Error converting HTML to PDF: {str(e)}"
-
-        logging.error(error_message)
-
-        return Response(content=error_message, status_code=500)
-
 
 @app.blob_trigger(
     arg_name="myblob",
@@ -1084,3 +1025,25 @@ async def multipage_scrape(req: Request) -> Response:
             media_type="application/json",
             status_code=500,
         )
+
+
+@app.timer_trigger(schedule="0 0 2 * * 0", arg_name="mytimer", run_on_startup=False)
+def report_scheduler_timer(mytimer: func.TimerRequest) -> None:
+    """
+    Timer trigger function that runs every Sunday at 2:00 AM UTC.
+    Cron expression: "0 0 2 * * 0" means:
+    - 0 seconds
+    - 0 minutes
+    - 2 hours (2 AM)
+    - * any day of month
+    - * any month
+    - 0 = Sunday (day of week)
+    """
+    logging.info("Report scheduler timer trigger started")
+    
+    try:
+        report_scheduler_main(mytimer)
+        logging.info("Report scheduler completed successfully")
+    except Exception as e:
+        logging.error(f"Report scheduler failed: {str(e)}")
+        raise
