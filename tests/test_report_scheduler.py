@@ -220,7 +220,6 @@ class TestCompetitorGrouping(unittest.TestCase):
         self.assertEqual(payload["params"]["categories"]["brands"], self.brand_names)
         self.assertEqual(payload["params"]["categories"]["competitors"], [competitor_name])
         self.assertEqual(payload["params"]["industry_context"], self.industry_description)
-        self.assertEqual(payload["params"]["industry_context"], self.industry_description)
 
 if __name__ == "__main__":
     unittest.main()
