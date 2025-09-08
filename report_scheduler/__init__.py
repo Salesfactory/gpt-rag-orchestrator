@@ -46,8 +46,8 @@ def main(mytimer: func.TimerRequest) -> None:
             if not org_id or not industry_description:
                 logger.warning(f"Organization missing required fields (id or industry_description): {org}")
                 continue
-            full_url = f"{WEB_APP_URL}/api/report-jobs?organization_id={org_id}"
-            logger.info(f"Sending request to: {full_url}")
+            REPORT_JOBS_API_ENDPOINT = f"{WEB_APP_URL}/api/report-jobs?organization_id={org_id}"
+            logger.info(f"Sending request to: {REPORT_JOBS_API_ENDPOINT}")
 
             logger.info(f"Fetching brands for organization: {org_id}")
             try:
@@ -71,10 +71,10 @@ def main(mytimer: func.TimerRequest) -> None:
                 payload = create_brands_payload(brand_name, industry_description)
 
                 try:
-                    response = send_http_request(full_url, payload)
-                    log_response_result(full_url, response)
+                    response = send_http_request(REPORT_JOBS_API_ENDPOINT, payload)
+                    log_response_result(REPORT_JOBS_API_ENDPOINT, response)
                 except Exception as e:
-                    logger.error(f"Failed to send request to {full_url}: {str(e)}")
+                    logger.error(f"Failed to send request to {REPORT_JOBS_API_ENDPOINT}: {str(e)}")
 
             organization_products = []
             try:
@@ -101,10 +101,10 @@ def main(mytimer: func.TimerRequest) -> None:
                 for product_category, product_names in category_map.items():
                     payload = create_products_payload(product_names, product_category)
                     try:
-                        response = send_http_request(full_url, payload)
-                        log_response_result(full_url, response)
+                        response = send_http_request(REPORT_JOBS_API_ENDPOINT, payload)
+                        log_response_result(REPORT_JOBS_API_ENDPOINT, response)
                     except Exception as e:
-                        logger.error(f"Failed to send request to {full_url}: {str(e)}")
+                        logger.error(f"Failed to send request to {REPORT_JOBS_API_ENDPOINT}: {str(e)}")
 
             organization_competitors = []
             try:
@@ -128,10 +128,10 @@ def main(mytimer: func.TimerRequest) -> None:
                         continue
                     payload = create_competitors_payload([competitor_name], brand_names, industry_description)
                     try:
-                        response = send_http_request(full_url, payload)
-                        log_response_result(full_url, response)
+                        response = send_http_request(REPORT_JOBS_API_ENDPOINT, payload)
+                        log_response_result(REPORT_JOBS_API_ENDPOINT, response)
                     except Exception as e:
-                        logger.error(f"Failed to send request to {full_url}: {str(e)}")
+                        logger.error(f"Failed to send request to {REPORT_JOBS_API_ENDPOINT}: {str(e)}")
 
     except Exception as e:
         logger.error(f"Unexpected error in report scheduler: {str(e)}")
