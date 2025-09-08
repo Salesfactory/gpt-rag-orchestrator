@@ -116,25 +116,17 @@ def main(mytimer: func.TimerRequest) -> None:
                 logger.warning(f"No competitors found for organization: {org_id}")
             else:
                 logger.info(f"Competitors found for organization: {org_id}. Proceeding with report generation.")
-                competitors_by_category = {}
-                for competitor in organization_competitors:
-                    competitor_name = competitor.get("name")
-                    competitor_category = competitor.get("category")
-                    if not competitor_name or not competitor_category:
-                        logger.warning(f"Competitor missing required fields: {competitor}")
-                        continue
-                    
-                    if competitor_category not in competitors_by_category:
-                        competitors_by_category[competitor_category] = []
-                    competitors_by_category[competitor_category].append(competitor_name)
-
                 brand_names = [brand.get("name") for brand in organization_brands if brand.get("name")]
                 if not brand_names:
                     logger.warning(f"No valid brand names found for organization: {org_id}")
                     continue
 
-                for competitor_category, competitor_names in competitors_by_category.items():
-                    payload = create_competitors_payload(competitor_category, competitor_names, brand_names, industry_description)
+                for competitor in organization_competitors:
+                    competitor_name = competitor.get("name")
+                    if not competitor_name:
+                        logger.warning(f"Competitor missing required fields: {competitor}")
+                        continue
+                    payload = create_competitors_payload([competitor_name], brand_names, industry_description)
                     try:
                         response = send_http_request(full_url, payload)
                         log_response_result(full_url, response)
@@ -240,14 +232,13 @@ def create_products_payload(product_names: list[str], category: str) -> dict:
         }
     }
 
-def create_competitors_payload(category_name: str, competitor_name: list[str], brands: list[str], industry_description: str) -> dict:
+def create_competitors_payload(competitor_name: list[str], brands: list[str], industry_description: str) -> dict:
     """Create the payload for the competitors API request."""
     return {
         "report_key": "competitor_analysis",
         "report_name": competitor_name,
         "params": {
             "categories": {
-                "category": category_name,
                 "brands": brands,
                 "competitors": competitor_name,
             },
