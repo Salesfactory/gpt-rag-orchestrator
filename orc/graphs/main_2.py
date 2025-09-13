@@ -5,8 +5,8 @@ import logging
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any
 from dotenv import load_dotenv
+load_dotenv()
 from shared.progress_streamer import ProgressStreamer, ProgressSteps, STEP_MESSAGES
-
 from langchain_core.messages import (
     AIMessage,
     HumanMessage,
@@ -25,8 +25,6 @@ from orc.graphs.context_builder import ContextBuilder
 from orc.graphs.mcp_executor import MCPExecutor
 from orc.graphs.query_planner import QueryPlanner
 from orc.graphs.constants import ENV_O1_ENDPOINT, ENV_O1_KEY
-
-load_dotenv()
 
 logging.basicConfig(
     level=logging.INFO,
