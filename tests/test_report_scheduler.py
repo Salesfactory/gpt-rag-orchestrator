@@ -169,7 +169,6 @@ class TestProductCategoryGrouping(unittest.TestCase):
         product_names = ["ProductA", "ProductB"]
         category = "Cat1"
         payload = report_scheduler.create_products_payload(product_names, category)
-        print("Payload product field:", payload["params"]["categories"][0]["product"])
         self.assertIn("report_key", payload)
         self.assertIn("report_name", payload)
         self.assertIn("categories", payload["params"])
