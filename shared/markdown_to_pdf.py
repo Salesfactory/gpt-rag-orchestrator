@@ -113,10 +113,36 @@ def markdown_to_html(markdown_content: str) -> str:
             }}
             ul, ol {{
                 margin-bottom: 15px;
-                padding-left: 30px;
+                margin-top: 10px;
+                padding-left: 25px;
             }}
             li {{
+                margin-bottom: 3px;
+                margin-top: 2px;
+                line-height: 1.4;
+            }}
+            /* Reduce spacing for nested lists */
+            ul ul, ol ol, ul ol, ol ul {{
+                margin-top: 5px;
                 margin-bottom: 5px;
+                padding-left: 20px;
+            }}
+            /* First and last list items */
+            li:first-child {{
+                margin-top: 0;
+            }}
+            li:last-child {{
+                margin-bottom: 0;
+            }}
+            /* Nested list items */
+            li li {{
+                margin-bottom: 2px;
+                margin-top: 1px;
+            }}
+            /* Remove extra spacing from paragraphs inside list items */
+            li p {{
+                margin-bottom: 5px;
+                margin-top: 0;
             }}
             code {{
                 background-color: #f8f9fa;
