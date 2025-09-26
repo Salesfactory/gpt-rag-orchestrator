@@ -111,7 +111,7 @@ class MCPExecutor:
 
             # Always send question and blob names
             args = {
-                "question": state.rewritten_query,
+                "question": state.question,
                 "document_names": state.blob_names,
             }
 
@@ -147,6 +147,20 @@ class MCPExecutor:
         logger.info("[MCP] Getting tools from MCP client")
         tools = await client.get_tools()
         logger.info(f"[MCP] Found {len(tools)} tools")
+
+        # Defensive: Exclude document_chat from LLM tool-planning when no documents are provided.
+        # Rationale: The document_chat tool's schema requires document_names (array) and may be
+        # rejected by Azure when bound as a selectable function. We never want LLM to pick it
+        # without explicit documents anyway.
+        # I don't like this approach but it's the best I can come up with atm
+        if not getattr(state, "blob_names", []):
+            before = len(tools)
+            tools = [t for t in tools if getattr(t, "name", "") != TOOL_DOCUMENT_CHAT]
+            after = len(tools)
+            if after != before:
+                logger.info(
+                    f"[MCP] Filtered out '{TOOL_DOCUMENT_CHAT}' for planning (no documents provided). {before}->{after} tools"
+                )
 
         history = conversation_data.get("history", [])
         logger.info(
@@ -224,6 +238,7 @@ class MCPExecutor:
                 self._configure_web_fetch_args(tool_call, state)
             elif tool_name == TOOL_DOCUMENT_CHAT:
                 self._configure_document_chat_args(tool_call, state)
+                logger.info(f"Configuration for document chat tool: {tool_call}")
 
             tool = tools_by_name.get(tool_name)
             if tool:
