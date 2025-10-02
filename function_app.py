@@ -35,68 +35,70 @@ DEFAULT_MAX_BREADTH = 15
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
 
+ENABLE_LEGACY = os.getenv("ENABLE_LEGACY_QUEUE_WORKER") == "1"
 
-@app.function_name(name="report_worker")
-@app.queue_trigger(
-    arg_name="msg",
-    queue_name="report-jobs",
-    connection="AZURE_STORAGE_CONNECTION_STRING",
-)
-async def report_worker(msg: func.QueueMessage) -> None:
-    """
-    Azure Function triggered by messages in the report-jobs queue.
-
-    Processes report generation jobs with proper error handling and retry logic.
-    """
-    logging.info(
-        "[report-worker] Python Service Bus Queue trigger function processed a request."
+if ENABLE_LEGACY:
+    @app.function_name(name="report_worker")
+    @app.queue_trigger(
+        arg_name="msg",
+        queue_name="report-jobs",
+        connection="AZURE_STORAGE_CONNECTION_STRING",
     )
+    async def report_worker(msg: func.QueueMessage) -> None:
+        """
+        Azure Function triggered by messages in the report-jobs queue.
 
-    job_id = None
-    organization_id = None
-    dequeue_count = 1
-
-    try:
-        # Extract message metadata and required fields
-        job_id, organization_id, dequeue_count, message_id = extract_message_metadata(
-            msg
+        Processes report generation jobs with proper error handling and retry logic.
+        """
+        logging.info(
+            "[report-worker] Python Service Bus Queue trigger function processed a request."
         )
 
-        # Return early if message parsing failed
-        if not all([job_id, organization_id]):
-            return
+        job_id = None
+        organization_id = None
+        dequeue_count = 1
 
-        # Log processing start with dequeue count for monitoring
-        logging.info(f"[ReportWorker] Starting job {job_id} for organization {organization_id} (attempt {dequeue_count})")
-        
-        # Check if this is a retry and log warning
-        if dequeue_count > 1:
-            logging.warning(f"[ReportWorker] Job {job_id} is being retried (attempt {dequeue_count})")
-
-        # Process the report job
-        await process_report_job(job_id, organization_id, dequeue_count)
-        logging.info(f"[ReportWorker] Successfully completed job {job_id} for organization {organization_id}")
-
-    except Exception as e:
-        logging.error(
-            f"[ReportWorker] Unexpected error for job {job_id} "
-            f"(dequeue_count: {dequeue_count}): {str(e)}\n"
-            f"Traceback: {traceback.format_exc()}"
-        )
-
-        # Update job status if we have the info
-        if job_id and organization_id:
-            error_payload = {
-                "error_type": "unexpected",
-                "error_message": str(e),
-                "dequeue_count": dequeue_count,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
-            update_report_job_status(
-                job_id, organization_id, "FAILED", error_payload=error_payload
+        try:
+            # Extract message metadata and required fields
+            job_id, organization_id, dequeue_count, message_id = extract_message_metadata(
+                msg
             )
 
-        # Don't re-raise - let message go to poison queue
+            # Return early if message parsing failed
+            if not all([job_id, organization_id]):
+                return
+
+            # Log processing start with dequeue count for monitoring
+            logging.info(f"[ReportWorker] Starting job {job_id} for organization {organization_id} (attempt {dequeue_count})")
+
+            # Check if this is a retry and log warning
+            if dequeue_count > 1:
+                logging.warning(f"[ReportWorker] Job {job_id} is being retried (attempt {dequeue_count})")
+
+            # Process the report job
+            await process_report_job(job_id, organization_id, dequeue_count)
+            logging.info(f"[ReportWorker] Successfully completed job {job_id} for organization {organization_id}")
+
+        except Exception as e:
+            logging.error(
+                f"[ReportWorker] Unexpected error for job {job_id} "
+                f"(dequeue_count: {dequeue_count}): {str(e)}\n"
+                f"Traceback: {traceback.format_exc()}"
+            )
+
+            # Update job status if we have the info
+            if job_id and organization_id:
+                error_payload = {
+                    "error_type": "unexpected",
+                    "error_message": str(e),
+                    "dequeue_count": dequeue_count,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+                update_report_job_status(
+                    job_id, organization_id, "FAILED", error_payload=error_payload
+                )
+
+            # Don't re-raise - let message go to poison queue
 
 
 @app.route(route="orc", methods=[func.HttpMethod.POST])

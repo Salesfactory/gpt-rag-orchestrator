@@ -12,6 +12,16 @@
     "id": "Microsoft.Azure.Functions.ExtensionBundle",
     "version": "[4.0.0, 5.0.0)"
   },
+  "extensions": {
+    "durableTask": {
+      "hubName": "DurableFunctionsHub",
+      "storageProvider": {
+        "type": "azureStorage"
+      },
+      "maxConcurrentActivityFunctions": 10,
+      "maxConcurrentOrchestratorFunctions": 50
+    }
+  },
   "http": {
     "routePrefix": "api",
     "maxConcurrentRequests": 100,
