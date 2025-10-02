@@ -1675,7 +1675,12 @@ def get_verbosity_instruction(
     """
     verbosity_value = user_settings.get("detail_level")
 
+    logging.info(f"[Util] User verbosity setting: {verbosity_value}")
+
     if not verbosity_value:
+        logging.info(
+            f"[Util] No verbosity setting found, using default: {default.value}"
+        )
         return VERBOSITY_PROMPTS[default]
 
     try:

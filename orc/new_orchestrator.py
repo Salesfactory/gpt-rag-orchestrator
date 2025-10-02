@@ -481,9 +481,11 @@ def get_settings(client_principal):
     data = get_setting(client_principal)
     temperature = None if "temperature" not in data else data["temperature"]
     model = None if "model" not in data else data["model"]
+    detail_level = None if "detail_level" not in data else data["detail_level"]
     settings = {
         "temperature": temperature,
         "model": model,
+        "detail_level": detail_level,
     }
     logging.info(f"[orchestrator] settings: {settings}")
     return settings
