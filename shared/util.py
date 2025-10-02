@@ -1683,7 +1683,7 @@ def get_verbosity_instruction(
         return VERBOSITY_PROMPTS[verbosity_level]
     except ValueError:
         logging.warning(
-            f"Invalid verbosity level '{verbosity_value}', using {default.value} instead."
+            f"Invalid verbosity level '{verbosity_value}', using {default.value} instead. "
             f"Valid levels: {[level.value for level in VerbosityLevel]}"
         )
         return VERBOSITY_PROMPTS[default]
