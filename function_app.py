@@ -34,7 +34,15 @@ DEFAULT_LIMIT = 30
 DEFAULT_MAX_DEPTH = 4
 DEFAULT_MAX_BREADTH = 15
 
-app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
+# Use DFApp for Durable Functions support
+app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
+
+# Must import AFTER app is created to avoid circular imports
+import report_worker.activities  # GenerateReportActivity, LoadScheduledJobsActivity
+import orchestrators.main_orchestrator  # MainOrchestrator
+import orchestrators.tenant_orchestrator  # TenantOrchestrator
+import orchestrators.oneshot_orchestrator  # OneShotOrchestrator
+import entities.rate_limiter_entity  # RateLimiter entity
 
 ENABLE_LEGACY = os.getenv("ENABLE_LEGACY_QUEUE_WORKER") == "1"
 

@@ -28,8 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 @app.activity_trigger(input_name="job")
-@app.function_name("GenerateReportActivity")
-async def generate_report_activity(job: dict) -> dict:
+async def GenerateReportActivity(job: dict) -> dict:
     """
     Durable Activity: Process a single report generation job.
 
@@ -139,8 +138,7 @@ async def generate_report_activity(job: dict) -> dict:
 
 
 @app.activity_trigger(input_name="batch_date")
-@app.function_name("LoadScheduledJobsActivity")
-async def load_scheduled_jobs_activity(batch_date: str) -> List[Dict[str, Any]]:
+async def LoadScheduledJobsActivity(batch_date: str) -> List[Dict[str, Any]]:
     """
     Durable Activity: Load all scheduled jobs for a batch run.
 
