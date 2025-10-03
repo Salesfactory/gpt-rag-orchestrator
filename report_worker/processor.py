@@ -10,7 +10,7 @@ import json
 import asyncio
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, Tuple
-from azure.storage.blob import BlobLeaseClient
+from azure.storage.blob.aio import BlobLeaseClient
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
 
 from shared.util import get_report_job, update_report_job_status
@@ -68,8 +68,8 @@ async def acquire_job_lock(job_id: str, max_wait: int = 1800) -> Tuple[bool, Opt
             await lease_client.acquire(lease_duration=60)
             logging.info(f"[LockManager] Acquired lock for job {job_id}")
             return True, lease_client
-        except Exception:
-            # Lock is held by another worker
+        except Exception as e:
+            logging.warning(f"[LockManager] Lock acquisition failed for job {job_id}: {type(e).__name__}: {str(e)}")
             logging.debug(f"[LockManager] Lock unavailable for job {job_id}, waiting... ({waited}s elapsed)")
             await asyncio.sleep(poll_interval)
             waited += poll_interval
