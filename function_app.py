@@ -39,10 +39,10 @@ app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
 
 # Must import AFTER app is created to avoid circular imports
 import report_worker.activities  # GenerateReportActivity, LoadScheduledJobsActivity
-import orchestrators.main_orchestrator  # MainOrchestrator
-import orchestrators.tenant_orchestrator  # TenantOrchestrator
-import orchestrators.oneshot_orchestrator  # OneShotOrchestrator
-import entities.rate_limiter_entity  # RateLimiter entity
+import orchestrators.main_orchestrator 
+import orchestrators.tenant_orchestrator  
+import orchestrators.oneshot_orchestrator  
+import entities.rate_limiter_entity  
 
 ENABLE_LEGACY = os.getenv("ENABLE_LEGACY_QUEUE_WORKER") == "1"
 
