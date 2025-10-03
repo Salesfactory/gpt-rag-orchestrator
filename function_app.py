@@ -1,4 +1,5 @@
 import azure.functions as func
+import azure.durable_functions as df
 import logging
 import json
 import os
@@ -100,6 +101,14 @@ if ENABLE_LEGACY:
 
             # Don't re-raise - let message go to poison queue
 
+@app.route(route="start-orch", methods=[func.HttpMethod.POST])
+@app.durable_client_input(client_name="client")
+async def start_orch(req: Request, client: df.DurableOrchestrationClient):
+    body = await req.json()
+    orch = body.get("orchestrator", "OneShotOrchestrator")
+    payload = body.get("input", {})
+    instance_id = await client.start_new(orch, client_input=payload)
+    return Response(content=json.dumps({"instanceId": instance_id}), media_type="application/json")
 
 @app.route(route="orc", methods=[func.HttpMethod.POST])
 async def stream_response(req: Request) -> StreamingResponse:
