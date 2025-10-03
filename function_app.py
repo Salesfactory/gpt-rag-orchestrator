@@ -181,59 +181,6 @@ async def stream_response(req: Request) -> StreamingResponse:
         )
 
 
-@app.route(route="financial-orc", methods=[func.HttpMethod.POST])
-async def financial_orc(req: Request) -> StreamingResponse:
-    """Endpoint to stream LLM responses to the client
-    input body should look like this:
-    {
-        "question": "string",
-        "conversation_id": "string",
-        "documentName": "string",
-        "client_principal_id": "string",
-        "client_principal_name": "string",
-    }
-    """
-    logging.info("[financial-orc] Python HTTP trigger function processed a request.")
-
-    req_body = await req.json()
-    conversation_id = req_body.get("conversation_id")
-    question = req_body.get("question")
-
-    client_principal_id = req_body.get("client_principal_id")
-    client_principal_name = req_body.get("client_principal_name")
-
-    # User is anonymous if no client_principal_id is provided
-    if not client_principal_id or client_principal_id == "":
-        client_principal_id = "00000000-0000-0000-0000-000000000000"
-        client_principal_name = "anonymous"
-
-    client_principal = {"id": client_principal_id, "name": client_principal_name}
-
-    # we did not rename this to document_id in order to avoid breaking changes, it is sent like this from the client
-    documentName = req_body.get("documentName", "")
-
-    if question:
-        financial_orc = financial_orchestrator.FinancialOrchestrator()
-        document_type = financial_orc.categorize_query(question)
-
-        return StreamingResponse(
-            financial_orc.generate_response(
-                conversation_id=conversation_id,
-                question=question,
-                user_info=client_principal,
-                document_id=documentName,
-                document_type=document_type,
-            ),
-            media_type="text/event-stream",
-        )
-    else:
-        logging.error("[financial-orchestrator] no question found in json input")
-        return StreamingResponse(
-            '{"error": "no question found in json input"}',
-            media_type="application/json",
-        )
-
-
 @app.function_name(name="webhook")
 @app.route(route="webhook", methods=[func.HttpMethod.POST, func.HttpMethod.GET])
 async def webhook(req: Request) -> Response:

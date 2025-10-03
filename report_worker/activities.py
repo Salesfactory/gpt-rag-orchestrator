@@ -18,6 +18,11 @@ from shared.util import update_report_job_status, get_report_job
 from report_scheduler import get_all_organizations, get_brands, get_products, get_competitors
 from report_scheduler import create_brands_payload, create_products_payload, create_competitors_payload
 
+from shared.cosmos_jobs import (
+    cosmos_container,
+    try_mark_job_running,
+    mark_job_result
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,29 +43,45 @@ async def generate_report_activity(job: dict) -> dict:
         job: Dictionary containing:
             - job_id: Unique job identifier
             - organization_id: Organization/tenant ID
+            - tenant_id: Tenant identifier (optional)
+            - etag: Cosmos DB _etag for idempotency (optional)
             - attempt: Attempt number (for retries)
 
     Returns:
         Dictionary with job result:
             - job_id: Job identifier
             - organization_id: Organization ID
-            - status: "SUCCEEDED" or "FAILED"
+            - status: "SUCCEEDED", "FAILED", or "SKIPPED"
             - completed_at: ISO timestamp (if succeeded)
             - error: Error message (if failed)
+            - reason: Skip reason (if skipped)
     """
     job_id = job["job_id"]
     organization_id = job["organization_id"]
+    tenant_id = job.get("tenant_id")
+    etag = job.get("etag")
     attempt = job.get("attempt", 1)
 
     logger.info(f"[GenerateReportActivity] Starting job {job_id} for org {organization_id} (attempt {attempt})")
 
     try:
+        if etag:
+            container = cosmos_container()
+            if not try_mark_job_running(container, job_id, etag):
+                logger.info(f"[GenerateReportActivity] Skip {job_id}, another worker took it.")
+                return {"job_id": job_id,
+                        "organization_id": organization_id,
+                        "status": "SKIPPED",
+                        "reason": "Job already taken by another worker"}
         # Add timeout protection (30 minutes max per job)
         async with asyncio.timeout(1800):  # 1800 seconds = 30 minutes
             await process_report_job(job_id, organization_id, attempt)
 
         completion_time = datetime.now(timezone.utc).isoformat()
         logger.info(f"[GenerateReportActivity] Successfully completed job {job_id}")
+
+        # mark success
+        mark_job_result(cosmos_container(), job_id, status="SUCCEEDED")
 
         return {
             "job_id": job_id,
@@ -81,6 +102,7 @@ async def generate_report_activity(job: dict) -> dict:
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
         update_report_job_status(job_id, organization_id, "FAILED", error_payload=error_payload)
+        mark_job_result(cosmos_container(), job_id, status="FAILED", error=error_msg)
 
         return {
             "job_id": job_id,
@@ -105,6 +127,7 @@ async def generate_report_activity(job: dict) -> dict:
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
         update_report_job_status(job_id, organization_id, "FAILED", error_payload=error_payload)
+        mark_job_result(cosmos_container(), job_id, status="FAILED", error=error_msg)
 
         return {
             "job_id": job_id,
