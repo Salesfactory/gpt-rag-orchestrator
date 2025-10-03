@@ -66,7 +66,7 @@ async def GenerateReportActivity(job: dict) -> dict:
     try:
         if etag:
             container = cosmos_container()
-            if not try_mark_job_running(container, job_id, etag):
+            if not try_mark_job_running(container, job_id, organization_id, etag):
                 logger.info(f"[GenerateReportActivity] Skip {job_id}, another worker took it.")
                 return {"job_id": job_id,
                         "organization_id": organization_id,
@@ -80,7 +80,7 @@ async def GenerateReportActivity(job: dict) -> dict:
         logger.info(f"[GenerateReportActivity] Successfully completed job {job_id}")
 
         # mark success
-        mark_job_result(cosmos_container(), job_id, status="SUCCEEDED")
+        mark_job_result(cosmos_container(), job_id, organization_id, status="SUCCEEDED")
 
         return {
             "job_id": job_id,
@@ -101,7 +101,7 @@ async def GenerateReportActivity(job: dict) -> dict:
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
         update_report_job_status(job_id, organization_id, "FAILED", error_payload=error_payload)
-        mark_job_result(cosmos_container(), job_id, status="FAILED", error=error_msg)
+        mark_job_result(cosmos_container(), job_id, organization_id, status="FAILED", error=error_msg)
 
         return {
             "job_id": job_id,
@@ -126,7 +126,7 @@ async def GenerateReportActivity(job: dict) -> dict:
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
         update_report_job_status(job_id, organization_id, "FAILED", error_payload=error_payload)
-        mark_job_result(cosmos_container(), job_id, status="FAILED", error=error_msg)
+        mark_job_result(cosmos_container(), job_id, organization_id, status="FAILED", error=error_msg)
 
         return {
             "job_id": job_id,

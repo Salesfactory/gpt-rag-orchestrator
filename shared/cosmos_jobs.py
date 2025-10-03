@@ -46,13 +46,13 @@ async def load_scheduled_jobs() -> List[Dict[str, Any]]:
     return jobs
 
 
-def try_mark_job_running(container, job_id: str, etag: str) -> bool:
+def try_mark_job_running(container, job_id: str, organization_id: str, etag: str) -> bool:
     """
     Optimistic transition QUEUED -> RUNNING using ETag to avoid duplicates.
     """
     try:
         # Load existing doc to preserve its body (replace only status)
-        existing = container.read_item(item=job_id, partition_key=job_id)
+        existing = container.read_item(item=job_id, partition_key=organization_id)
         existing["status"] = "RUNNING"
         container.replace_item(item=job_id, body=existing, etag=etag, match_condition="IfMatch")
         return True
@@ -60,16 +60,24 @@ def try_mark_job_running(container, job_id: str, etag: str) -> bool:
         if e.status_code == 412:
             logging.info(f"[Idempotency] Job {job_id} already taken (etag mismatch).")
             return False
+        elif e.status_code == 404:
+            logging.error(f"[Cosmos] Job {job_id} not found for organization {organization_id}")
+            raise ValueError(f"Job {job_id} not found in database")
         raise
 
 
-def mark_job_result(container, job_id: str, status: str, error: str = None):
+def mark_job_result(container, job_id: str, organization_id: str, status: str, error: str = None):
     try:
-        existing = container.read_item(item=job_id, partition_key=job_id)
+        existing = container.read_item(item=job_id, partition_key=organization_id)
         existing["status"] = status
         existing["completed_at"] = datetime.now(UTC).isoformat()
         if error:
             existing["error"] = error
         container.replace_item(item=job_id, body=existing)
+    except exceptions.CosmosHttpResponseError as e:
+        if e.status_code == 404:
+            logging.warning(f"[Cosmos] Job {job_id} not found for organization {organization_id}, skipping mark_job_result")
+        else:
+            raise
     except Exception as e:
         logging.error(f"[Cosmos] mark_job_result failed for {job_id}: {e}")

@@ -160,8 +160,9 @@ async def process_report_job(
     # Fetch job from Cosmos DB
     job = get_report_job(job_id, organization_id)
     if not job:
-        logging.error(f"[ReportWorker] Job {job_id} not found in database")
-        return
+        error_msg = f"Job {job_id} not found in database for organization {organization_id}"
+        logging.error(f"[ReportWorker] {error_msg}")
+        raise ValueError(error_msg)
         
     logging.info(f"[ReportWorker] Retrieved job {job_id}: {job.get('report_key', 'unknown')}")
     
