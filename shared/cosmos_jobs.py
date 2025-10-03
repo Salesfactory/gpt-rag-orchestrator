@@ -1,17 +1,26 @@
 import os
 import logging
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import List, Dict, Any
 from azure.cosmos import CosmosClient, exceptions
+from azure.identity import DefaultAzureCredential
 
 
 def _client():
-    return CosmosClient(url=os.getenv("COSMOS_URL"), credential=os.getenv("COSMOS_KEY"))
+    db_id = os.getenv("AZURE_DB_ID")
+    if not db_id:
+        raise ValueError("AZURE_DB_ID environment variable not set")
+    return CosmosClient(
+        url=f"https://{db_id}.documents.azure.com:443/",
+        credential=DefaultAzureCredential()
+    )
 
 
 def cosmos_container():
-    db = os.getenv("COSMOS_DB", "reports")
-    cont = os.getenv("COSMOS_CONTAINER", "jobs")
+    db = os.getenv("AZURE_DB_NAME")
+    if not db:
+        raise ValueError("AZURE_DB_NAME environment variable not set")
+    cont = os.getenv("COSMOS_CONTAINER", "reportJobs")
     return _client().get_database_client(db).get_container_client(cont)
 
 
@@ -22,7 +31,7 @@ async def load_scheduled_jobs() -> List[Dict[str, Any]]:
     """
     c = cosmos_container()
     query = "SELECT c.id, c.job_id, c.organization_id, c.tenant_id, c.schedule_time, c.status, c._etag FROM c WHERE c.status = 'QUEUED' AND c.schedule_time <= @now"
-    params = [{"name": "@now", "value": datetime.utcnow().isoformat()}]
+    params = [{"name": "@now", "value": datetime.now(UTC).isoformat()}]
     items = list(c.query_items(query=query, parameters=params, enable_cross_partition_query=True))
 
     # Normalize fields the orchestrators/activities expect
@@ -58,7 +67,7 @@ def mark_job_result(container, job_id: str, status: str, error: str = None):
     try:
         existing = container.read_item(item=job_id, partition_key=job_id)
         existing["status"] = status
-        existing["completed_at"] = datetime.utcnow().isoformat()
+        existing["completed_at"] = datetime.now(UTC).isoformat()
         if error:
             existing["error"] = error
         container.replace_item(item=job_id, body=existing)
