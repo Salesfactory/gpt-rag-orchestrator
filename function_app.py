@@ -1,4 +1,5 @@
 import azure.functions as func
+import azure.durable_functions as df
 import logging
 import json
 import os
@@ -33,71 +34,89 @@ DEFAULT_LIMIT = 30
 DEFAULT_MAX_DEPTH = 4
 DEFAULT_MAX_BREADTH = 15
 
-app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
+# Use DFApp for Durable Functions support
+app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
 
+# Must import AFTER app is created to avoid circular imports
+import report_worker.activities  # GenerateReportActivity, LoadScheduledJobsActivity
+import orchestrators.main_orchestrator 
+import orchestrators.tenant_orchestrator  
+import orchestrators.oneshot_orchestrator  
+import entities.rate_limiter_entity  
 
-@app.function_name(name="report_worker")
-@app.queue_trigger(
-    arg_name="msg",
-    queue_name="report-jobs",
-    connection="AZURE_STORAGE_CONNECTION_STRING",
-)
-async def report_worker(msg: func.QueueMessage) -> None:
-    """
-    Azure Function triggered by messages in the report-jobs queue.
+ENABLE_LEGACY = os.getenv("ENABLE_LEGACY_QUEUE_WORKER") == "1"
 
-    Processes report generation jobs with proper error handling and retry logic.
-    """
-    logging.info(
-        "[report-worker] Python Service Bus Queue trigger function processed a request."
+if ENABLE_LEGACY:
+    @app.function_name(name="report_worker")
+    @app.queue_trigger(
+        arg_name="msg",
+        queue_name="report-jobs",
+        connection="AZURE_STORAGE_CONNECTION_STRING",
     )
+    async def report_worker(msg: func.QueueMessage) -> None:
+        """
+        Azure Function triggered by messages in the report-jobs queue.
 
-    job_id = None
-    organization_id = None
-    dequeue_count = 1
-
-    try:
-        # Extract message metadata and required fields
-        job_id, organization_id, dequeue_count, message_id = extract_message_metadata(
-            msg
+        Processes report generation jobs with proper error handling and retry logic.
+        """
+        logging.info(
+            "[report-worker] Python Service Bus Queue trigger function processed a request."
         )
 
-        # Return early if message parsing failed
-        if not all([job_id, organization_id]):
-            return
+        job_id = None
+        organization_id = None
+        dequeue_count = 1
 
-        # Log processing start with dequeue count for monitoring
-        logging.info(f"[ReportWorker] Starting job {job_id} for organization {organization_id} (attempt {dequeue_count})")
-        
-        # Check if this is a retry and log warning
-        if dequeue_count > 1:
-            logging.warning(f"[ReportWorker] Job {job_id} is being retried (attempt {dequeue_count})")
-
-        # Process the report job
-        await process_report_job(job_id, organization_id, dequeue_count)
-        logging.info(f"[ReportWorker] Successfully completed job {job_id} for organization {organization_id}")
-
-    except Exception as e:
-        logging.error(
-            f"[ReportWorker] Unexpected error for job {job_id} "
-            f"(dequeue_count: {dequeue_count}): {str(e)}\n"
-            f"Traceback: {traceback.format_exc()}"
-        )
-
-        # Update job status if we have the info
-        if job_id and organization_id:
-            error_payload = {
-                "error_type": "unexpected",
-                "error_message": str(e),
-                "dequeue_count": dequeue_count,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-            }
-            update_report_job_status(
-                job_id, organization_id, "FAILED", error_payload=error_payload
+        try:
+            # Extract message metadata and required fields
+            job_id, organization_id, dequeue_count, message_id = extract_message_metadata(
+                msg
             )
 
-        # Don't re-raise - let message go to poison queue
+            # Return early if message parsing failed
+            if not all([job_id, organization_id]):
+                return
 
+            # Log processing start with dequeue count for monitoring
+            logging.info(f"[ReportWorker] Starting job {job_id} for organization {organization_id} (attempt {dequeue_count})")
+
+            # Check if this is a retry and log warning
+            if dequeue_count > 1:
+                logging.warning(f"[ReportWorker] Job {job_id} is being retried (attempt {dequeue_count})")
+
+            # Process the report job
+            await process_report_job(job_id, organization_id, dequeue_count)
+            logging.info(f"[ReportWorker] Successfully completed job {job_id} for organization {organization_id}")
+
+        except Exception as e:
+            logging.error(
+                f"[ReportWorker] Unexpected error for job {job_id} "
+                f"(dequeue_count: {dequeue_count}): {str(e)}\n"
+                f"Traceback: {traceback.format_exc()}"
+            )
+
+            # Update job status if we have the info
+            if job_id and organization_id:
+                error_payload = {
+                    "error_type": "unexpected",
+                    "error_message": str(e),
+                    "dequeue_count": dequeue_count,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+                update_report_job_status(
+                    job_id, organization_id, "FAILED", error_payload=error_payload
+                )
+
+            # Don't re-raise - let message go to poison queue
+
+@app.route(route="start-orch", methods=[func.HttpMethod.POST])
+@app.durable_client_input(client_name="client")
+async def start_orch(req: Request, client: df.DurableOrchestrationClient):
+    body = await req.json()
+    orch = body.get("orchestrator", "OneShotOrchestrator")
+    payload = body.get("input", {})
+    instance_id = await client.start_new(orch, client_input=payload)
+    return Response(content=json.dumps({"instanceId": instance_id}), media_type="application/json")
 
 @app.route(route="orc", methods=[func.HttpMethod.POST])
 async def stream_response(req: Request) -> StreamingResponse:
@@ -164,59 +183,6 @@ async def stream_response(req: Request) -> StreamingResponse:
                 media_type="application/json",
             )
     else:
-        return StreamingResponse(
-            '{"error": "no question found in json input"}',
-            media_type="application/json",
-        )
-
-
-@app.route(route="financial-orc", methods=[func.HttpMethod.POST])
-async def financial_orc(req: Request) -> StreamingResponse:
-    """Endpoint to stream LLM responses to the client
-    input body should look like this:
-    {
-        "question": "string",
-        "conversation_id": "string",
-        "documentName": "string",
-        "client_principal_id": "string",
-        "client_principal_name": "string",
-    }
-    """
-    logging.info("[financial-orc] Python HTTP trigger function processed a request.")
-
-    req_body = await req.json()
-    conversation_id = req_body.get("conversation_id")
-    question = req_body.get("question")
-
-    client_principal_id = req_body.get("client_principal_id")
-    client_principal_name = req_body.get("client_principal_name")
-
-    # User is anonymous if no client_principal_id is provided
-    if not client_principal_id or client_principal_id == "":
-        client_principal_id = "00000000-0000-0000-0000-000000000000"
-        client_principal_name = "anonymous"
-
-    client_principal = {"id": client_principal_id, "name": client_principal_name}
-
-    # we did not rename this to document_id in order to avoid breaking changes, it is sent like this from the client
-    documentName = req_body.get("documentName", "")
-
-    if question:
-        financial_orc = financial_orchestrator.FinancialOrchestrator()
-        document_type = financial_orc.categorize_query(question)
-
-        return StreamingResponse(
-            financial_orc.generate_response(
-                conversation_id=conversation_id,
-                question=question,
-                user_info=client_principal,
-                document_id=documentName,
-                document_type=document_type,
-            ),
-            media_type="text/event-stream",
-        )
-    else:
-        logging.error("[financial-orchestrator] no question found in json input")
         return StreamingResponse(
             '{"error": "no question found in json input"}',
             media_type="application/json",
