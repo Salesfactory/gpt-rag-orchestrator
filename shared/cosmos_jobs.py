@@ -4,7 +4,8 @@ from datetime import datetime, UTC
 from typing import List, Dict, Any
 from azure.cosmos import CosmosClient, exceptions
 from azure.identity import DefaultAzureCredential
-
+from dotenv import load_dotenv
+load_dotenv()
 
 def _client():
     db_id = os.getenv("AZURE_DB_ID")
