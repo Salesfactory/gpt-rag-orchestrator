@@ -173,7 +173,7 @@ Cosmos container: default `reportJobs` (configurable via env vars).
 Representative fields:
 - `job_id` (or `id`), `organization_id` (partition key), `tenant_id`
 - `report_key`, `params`, `status` ∈ {`QUEUED`, `RUNNING`, `SUCCEEDED`, `FAILED`}
-- `schedule_time`, `_etag` (for optimistic concurrency)
+- `schedule_time`, `_etag` (for optimistic concurrency) # IMPORTANT
 - Worker-managed timestamps: `started_at`, `updated_at`, `completed_at`/`failed_at`
 - On success: `result` metadata (Blob info)
 - On failure: `error` payload (`error_type`, message, attempt/timestamps)
