@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, UTC
 from typing import List, Dict, Any
 from azure.cosmos import CosmosClient, exceptions
+from azure.core import MatchConditions
 from azure.identity import DefaultAzureCredential
 from dotenv import load_dotenv
 load_dotenv()
@@ -55,7 +56,7 @@ def try_mark_job_running(container, job_id: str, organization_id: str, etag: str
         # Load existing doc to preserve its body (replace only status)
         existing = container.read_item(item=job_id, partition_key=organization_id)
         existing["status"] = "RUNNING"
-        container.replace_item(item=job_id, body=existing, etag=etag, match_condition="IfMatch")
+        container.replace_item(item=job_id, body=existing, etag=etag, match_condition=MatchConditions.IfNotModified)
         return True
     except exceptions.CosmosHttpResponseError as e:
         if e.status_code == 412:

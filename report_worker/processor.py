@@ -168,19 +168,20 @@ async def process_report_job(
     
     # Check job status for idempotency
     current_status = job.get('status', '').upper()
-    if current_status != 'QUEUED':
+    if current_status in ['SUCCEEDED', 'FAILED']:
         logging.info(
-            f"[ReportWorker] Job {job_id} status is {current_status}, skipping processing"
+            f"[ReportWorker] Job {job_id} already completed with status {current_status}, skipping processing"
         )
         return
-        
     # Update job status to RUNNING
-    success = update_report_job_status(job_id, organization_id, 'RUNNING')
-    if not success:
-        logging.error(f"[ReportWorker] Failed to update job {job_id} status to RUNNING")
-        raise Exception(f"Failed to update job {job_id} status to RUNNING")
-        
-    logging.info(f"[ReportWorker] Updated job {job_id} status to RUNNING")
+    if current_status == 'QUEUED':
+        success = update_report_job_status(job_id, organization_id, 'RUNNING')
+        if not success:
+            logging.error(f"[ReportWorker] Failed to update job {job_id} status to RUNNING")
+            raise Exception(f"Failed to update job {job_id} status to RUNNING")
+        logging.info(f"[ReportWorker] Updated job {job_id} status to RUNNING")
+    else:
+        logging.info(f"[ReportWorker] Job {job_id} is already RUNNING, proceeding with processing")
     
     # Get report generator
     report_key = job.get('report_key')

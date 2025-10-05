@@ -10,7 +10,7 @@ def RateLimiter(context: df.DurableOrchestrationContext):
     - per_tenant_limit: dict with default=1 (VIP tenants can be increased)
     """
     state = context.get_state(lambda: {
-        "global_limit": 8,
+        "global_limit": 1,
         "global_inflight": 0,
         "inflight_by_tenant": {},
         "per_tenant_limit": {"default": 1}

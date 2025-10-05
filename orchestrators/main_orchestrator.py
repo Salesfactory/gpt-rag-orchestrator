@@ -2,7 +2,7 @@ from function_app import app
 import azure.durable_functions as df
 from collections import defaultdict
 
-WAVE_SIZE = 5  # tune to your comfort level
+WAVE_SIZE = 1  # Set to 1 to match global_limit=1 for sequential execution
 
 
 @app.orchestration_trigger(context_name="context")
