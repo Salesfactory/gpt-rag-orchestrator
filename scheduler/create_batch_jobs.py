@@ -19,6 +19,7 @@ import os
 AZURE_DB_ID = os.getenv("AZURE_DB_ID")
 AZURE_DB_NAME = os.getenv("AZURE_DB_NAME")
 
+
 def get_cosmos_client():
     """Get Cosmos DB client using Managed Identity"""
     return CosmosClient(f"https://{AZURE_DB_ID}.documents.azure.com:443/", credential=DefaultAzureCredential())
