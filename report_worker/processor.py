@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 from typing import Dict, Any, Optional, Tuple
 from azure.storage.blob.aio import BlobLeaseClient
 from azure.core.exceptions import ResourceExistsError, ResourceNotFoundError
+from azure.storage.blob import ContentSettings
+import re 
 
 from shared.util import get_report_job, update_report_job_status
 from shared.markdown_to_pdf import dict_to_pdf
@@ -33,7 +35,7 @@ def build_report_display_name(job: Dict[str, Any]) -> str:
       - Product Analysis – {Category}
       - Brand Analysis – {BrandName}
     """
-    report_key = (job.get("report_key") or job.get("type") or "").strip().lower().replace(" ", "_")
+    report_key = (job.get("report_key") or job.get("type")).strip().lower()
     params = job.get("params") or {}
 
     base = TYPE_TITLES.get(report_key)
@@ -57,6 +59,19 @@ def build_report_display_name(job: Dict[str, Any]) -> str:
             contextual_detail = "Unknown Brand"
 
     return f"{base} – {contextual_detail}"
+
+def make_physical_filename(display_name: Optional[str], timestamp: str) -> str:
+    """
+    Convert the display_name into a safe filename (without problematic characters) and add a timestamp for uniqueness.
+    """
+    base = display_name if isinstance(display_name, str) and display_name.strip() else "Report"
+    safe = re.sub(r"[^\w\s\.\u2013\-]", "", base, flags=re.UNICODE)
+    safe = re.sub(r"\s+", "_", safe)
+    safe = re.sub(r"_+", "_", safe).strip("_")
+    if not safe:
+        safe = "Report"
+    safe = safe[:100]
+    return f"{safe}_{timestamp}.pdf"
 
 async def acquire_job_lock(job_id: str, max_wait: int = 1800) -> Tuple[bool, Optional[BlobLeaseClient]]:
     """
@@ -361,7 +376,7 @@ async def _store_pdf_in_blob(
     
     # Create blob name with organization structure
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    file_name = f"report_{job_id}_{timestamp}.pdf"
+    file_name = make_physical_filename(display_name, timestamp)
     blob_name = f"organization_files/{organization_id}/{file_name}"
     
     # Prepare metadata
@@ -370,7 +385,7 @@ async def _store_pdf_in_blob(
         "report_id": job_id,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "report_key": report_key,
-        "display_name": display_name or "",
+        "display_name": display_name,
     }
     
     logging.info(f"[ReportWorker] Storing PDF in blob: {blob_name}")
@@ -393,6 +408,10 @@ async def _store_pdf_in_blob(
         pdf_bytes,
         overwrite=True,
         metadata=blob_metadata,
+        content_settings=ContentSettings(
+            content_type="application/pdf",
+            content_disposition=f'attachment; filename="{file_name}"'
+        ),
     )
     
     blob_url = blob_client.url
