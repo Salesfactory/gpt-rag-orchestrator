@@ -2196,27 +2196,43 @@ MODE: Brief
 """
 
 VERBOSITY_MODE_BALANCED = """
-** VERBOSITY LEVEL INSTRUCTIONS:**
+VERBOSITY LEVEL INSTRUCTIONS:
 MODE: Balanced
-**Objective:** To deliver a helpful, comprehensive answer in a structured and concise format.
-**Key Constraints:**
-* **Length:** Strictly limit your response to a maximum of three (3) paragraphs. No matter how much information you have, you must condense all the important points to fit within this constraint.
-* **Structure:** Each paragraph must begin with a clear topic sentence that states its main point. Focus on a single, distinct idea within each paragraph. Utilize bullet points or numbered lists to organize complex information for clarity.
-* **Content:** Provide essential context to ensure understanding, but avoid unnecessary tangents or overly elaborate details.
-* **Formatting:** Use **bold** or *italics* to emphasize key terms and concepts, enhancing readability.
 
+Objective: Deliver a helpful, accurate, and well-structured answer that provides complete information without unnecessary elaboration or speculation.
 
+Key Constraints:
+
+Length: Limit your response to a maximum of three (3) paragraphs. Regardless of topic complexity, condense all essential facts and reasoning within this boundary.
+
+Structure: Each paragraph must begin with a clear topic sentence summarizing its main point. Focus on one distinct idea per paragraph. Use bullet points or numbered lists only when needed to improve clarity or summarize key details.
+
+Content:
+
+Include only verifiable, evidence-based information.
+
+If data or context is uncertain, explicitly state so instead of assuming or inventing details.
+
+Avoid tangents, speculative reasoning, or filler language.
+
+Formatting: Use **bold** or *italics* to emphasize key concepts, terms, or contrasts for better readability.
 """
 
 VERBOSITY_MODE_DETAILED = """
-** VERBOSITY LEVEL INSTRUCTIONS:**
+VERBOSITY LEVEL INSTRUCTIONS:
 MODE: Detailed
 
-**Objective:** Deliver a thorough, nuanced, and deeply informative response that leaves no stone unturned.
-**Key Constraints:**
-* **Depth of Content:** Go far beyond a surface-level answer. Cover foundational principles, historical context, and all relevant background information.
-* **Nuance and Perspective:** Explore nuances, edge cases, alternative methods, differing viewpoints, and potential counterarguments to provide a multi-faceted view.
-* **Clarity of Explanation:** Define all key terminology. Use detailed examples, analogies, comparisons, and step-by-step instructions to demystify complex topics.
-* **Structure:** Organize the response logically for the reader. Use **headings**, subheadings, and lists to make the comprehensive information easy to navigate and digest.
-* **Length:** There is no strict length limit, but ensure the response is as long as necessary to cover the topic exhaustively without unnecessary repetition or filler.
+Objective: Deliver a comprehensive, deeply reasoned, and fully factual explanation that minimizes speculation and includes all relevant perspectives.
+
+Key Constraints:
+
+Depth of Content: Go beyond surface-level explanations. Cover core principles, context, mechanisms, and implications comprehensively while avoiding unverifiable claims.
+
+Nuance and Perspective: Explore edge cases, limitations, counterexamples, and alternative methods using only reliable or well-documented sources. If uncertainty exists, clearly indicate it rather than inferring or fabricating.
+
+Clarity of Explanation: Define all critical terms and provide step-by-step reasoning, analogies, and examples that ensure full understanding.
+
+Structure: Organize information logically and hierarchically with headings, subheadings, and lists to make complex details easy to follow.
+
+Length: No strict limit, but ensure the response remains concise, cohesive, and free of redundancy—long enough to be complete, but never padded.
 """
