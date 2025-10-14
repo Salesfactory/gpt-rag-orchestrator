@@ -18,6 +18,45 @@ from shared.markdown_to_pdf import dict_to_pdf
 from shared.blob_client_async import get_blob_service_client
 from .registry import get_generator
 
+TYPE_TITLES = {
+    "competitor_analysis": "Competitor Analysis",
+    "product_analysis": "Product Analysis",
+    "brand_analysis": "Brand Analysis",
+}
+
+def _clean(value: Any) -> str:
+    return value.strip() if isinstance(value, str) else ""
+
+def build_report_display_name(job: Dict[str, Any]) -> str:
+    """
+      - Competitor Analysis – {CompetitorName}
+      - Product Analysis – {Category}
+      - Brand Analysis – {BrandName}
+    """
+    report_key = (job.get("report_key") or job.get("type") or "").strip().lower().replace(" ", "_")
+    params = job.get("params") or {}
+
+    base = TYPE_TITLES.get(report_key)
+    if not base:
+        return (job.get("name") or job.get("report_key") or "Report").strip()
+
+    if base == "Competitor Analysis":
+        contextual_detail = _clean(params.get("competitor_name"))
+        if not contextual_detail:
+            logging.warning("[ReportWorker] Missing canonical param 'competitor_name' for job %s", job.get("id", "unknown"))
+            contextual_detail = "Unknown Competitor"
+    elif base == "Product Analysis":
+        contextual_detail = _clean(params.get("category"))
+        if not contextual_detail:
+            logging.warning("[ReportWorker] Missing canonical param 'category' for job %s", job.get("id", "unknown"))
+            contextual_detail = "Unknown Category"
+    else:
+        contextual_detail = _clean(params.get("brand_name"))
+        if not contextual_detail:
+            logging.warning("[ReportWorker] Missing canonical param 'brand_name' for job %s", job.get("id", "unknown"))
+            contextual_detail = "Unknown Brand"
+
+    return f"{base} – {contextual_detail}"
 
 async def acquire_job_lock(job_id: str, max_wait: int = 1800) -> Tuple[bool, Optional[BlobLeaseClient]]:
     """
@@ -236,6 +275,8 @@ async def process_report_job(
         logging.info(f"[ReportWorker] Generating markdown content for job {job_id}")
         markdown_content = generator.generate(job_id, organization_id, parameters)
         logging.info(f"[ReportWorker] Generated markdown content ({len(markdown_content)} chars) for job {job_id}")
+
+        display_name = build_report_display_name(job)
         
         markdown_content = markdown_content.replace("---", "")
         # Convert markdown to PDF
@@ -249,7 +290,8 @@ async def process_report_job(
             pdf_bytes=pdf_bytes,
             job_id=job_id,
             organization_id=organization_id,
-            report_key=report_key
+            report_key=report_key,
+            display_name=display_name
         )
         
         logging.info(f"[ReportWorker] Successfully generated report for job {job_id}")
@@ -299,7 +341,8 @@ async def _store_pdf_in_blob(
     pdf_bytes: bytes,
     job_id: str,
     organization_id: str,
-    report_key: str
+    report_key: str,
+    display_name: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Store PDF in Azure Blob Storage and return metadata.
@@ -327,6 +370,7 @@ async def _store_pdf_in_blob(
         "report_id": job_id,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "report_key": report_key,
+        "display_name": display_name or "",
     }
     
     logging.info(f"[ReportWorker] Storing PDF in blob: {blob_name}")
@@ -362,7 +406,8 @@ async def _store_pdf_in_blob(
         "content_type": "application/pdf",
         "blob_name": blob_name,
         "container_name": container_name,
-        "metadata": blob_metadata
+        "metadata": blob_metadata,
+        "display_name": display_name or None,
     }
     
     return result_metadata
