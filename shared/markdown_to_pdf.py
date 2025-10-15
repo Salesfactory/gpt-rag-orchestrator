@@ -36,20 +36,6 @@ def break_long_urls(text: str, max_length: int = 130) -> str:
     # Pattern to match URLs (http/https, ftp, and www)
     url_pattern = r'(https?://[^\s<>"{}|\\^`\[\]]+|ftp://[^\s<>"{}|\\^`\[\]]+|www\.[^\s<>"{}|\\^`\[\]]+)'
 
-    def get_adaptive_break_percent(url_length: int) -> float:
-        """
-        Calculate adaptive break percentage based on URL length.
-        Longer URLs get more aggressive breaking (lower percentages).
-        """
-        if url_length <= 130:
-            return 0.90  # Very conservative for slightly long URLs
-        elif url_length <= 150:
-            return 0.75  # Moderate breaking
-        elif url_length <= 170:
-            return 0.60  # More aggressive breaking
-        else:
-            return 0.50  # Most aggressive for very long URLs
-
     def break_url(match):
         url = match.group(1)
 
@@ -58,7 +44,7 @@ def break_long_urls(text: str, max_length: int = 130) -> str:
             return url
 
         # Get adaptive break percentage based on URL length
-        adaptive_percent = get_adaptive_break_percent(len(url))
+        adaptive_percent = 1/(len(url)/ max_length)
         break_point = int(len(url) * adaptive_percent)
 
         # Log the adaptive breaking decision
