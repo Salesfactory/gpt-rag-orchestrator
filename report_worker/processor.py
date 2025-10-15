@@ -300,20 +300,16 @@ async def process_report_job(
 def generate_file_name(report_name: str, parameters: Dict[str, Any]) -> str:
     report_key = parameters.get("report_key", "")
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    
-    #MODIFY THIS AFTER CLARIFICATION
-    
-    #if report_key == "competitor_analysis":
-    #    competitor_name = parameters.get("categories", []).map(lambda x: x.get("competitors", []))
-    #    return f"Competitor_Analysis_{report_name}.pdf"
-    #elif report_key == "product_analysis":
-    #    category_name = parameters.get("categories", []).map(lambda x: x.get("category", "")).join("_")
-    #    return f"Product_Analysis_{report_name}_{category_name}.pdf"
-    #elif report_key == "brand_analysis":
-    #    brand_name = parameters.get("brand_focus", "")
-    #    return f"Brand_Analysis_{report_name}_{brand_name}.pdf"
-    
-    return f"{report_name}_{timestamp}.pdf"
+    if report_key == "brand_analysis":
+        brand_name = parameters.get("brand_focus", "")
+        return f"Brand_Analysis_{brand_name}_{timestamp}.pdf"
+    elif report_key == "competitor_analysis":
+        category_name = "_".join([x.get("category", "").replace(" ", "_") for x in parameters.get("categories", [])])
+        return f"Competitor_Analysis_{category_name}_{timestamp}.pdf"
+    elif report_key == "product_analysis":
+        category_name = "_".join([x.get("category", "").replace(" ", "_") for x in parameters.get("categories", [])])
+        return f"Product_Analysis_{category_name}_{timestamp}.pdf"
+    return f"Report_{report_key}_{timestamp}.pdf"
 
 async def _store_pdf_in_blob(
     pdf_bytes: bytes,
@@ -348,7 +344,7 @@ async def _store_pdf_in_blob(
         "organization_id": organization_id,
         "report_id": job_id,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "report_key": report_key,
+        "report_key": report_key
     }
     
     logging.info(f"[ReportWorker] Storing PDF in blob: {blob_name}")
