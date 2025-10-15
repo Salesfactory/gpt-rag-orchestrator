@@ -8,132 +8,157 @@ using xhtml2pdf for PDF generation without native dependencies.
 import io
 import logging
 import markdown
-import html
-from typing import Dict, Any, Union
+from typing import Dict, Any
 from xhtml2pdf import pisa
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
 
-def break_long_urls(text: str, max_length: int = 130, break_at_percent: float = 0.75) -> str:
+def break_long_urls(text: str, max_length: int = 130) -> str:
     """
     Break long URLs by inserting line breaks at strategic points.
-    
+    Uses adaptive break percentages based on URL length:
+    - URLs 100-130 chars: 90% break point (minimal breaking)
+    - URLs 130-150 chars: 75% break point (moderate breaking) 
+    - URLs 150-170 chars: 60% break point (more aggressive)
+    - URLs 170+ chars: 50% break point (most aggressive)
+
     Args:
         text (str): Text content that may contain long URLs
         max_length (int): Maximum URL length before breaking (default: 130)
-        break_at_percent (float): Where to insert break as percentage of URL length (default: 0.75)
-        
+
     Returns:
         str: Text with long URLs broken into multiple lines
     """
     import re
-    
+
     # Pattern to match URLs (http/https, ftp, and www)
     url_pattern = r'(https?://[^\s<>"{}|\\^`\[\]]+|ftp://[^\s<>"{}|\\^`\[\]]+|www\.[^\s<>"{}|\\^`\[\]]+)'
-    
+
+    def get_adaptive_break_percent(url_length: int) -> float:
+        """
+        Calculate adaptive break percentage based on URL length.
+        Longer URLs get more aggressive breaking (lower percentages).
+        """
+        if url_length <= 130:
+            return 0.90  # Very conservative for slightly long URLs
+        elif url_length <= 150:
+            return 0.75  # Moderate breaking
+        elif url_length <= 170:
+            return 0.60  # More aggressive breaking
+        else:
+            return 0.50  # Most aggressive for very long URLs
+
     def break_url(match):
         url = match.group(1)
-        
+
         # Only break URLs longer than max_length
         if len(url) <= max_length:
             return url
-            
-        # Calculate break point (75% of the way through)
-        break_point = int(len(url) * break_at_percent)
-        
+
+        # Get adaptive break percentage based on URL length
+        adaptive_percent = get_adaptive_break_percent(len(url))
+        break_point = int(len(url) * adaptive_percent)
+
+        # Log the adaptive breaking decision
+        logger.debug(
+            f"Breaking URL of length {len(url)} at {adaptive_percent*100:.0f}% (position {break_point})")
+
         # Try to break at a natural point (after / or ? or &)
         natural_breaks = ['/', '?', '&', '=', '-', '_']
         best_break = break_point
-        
+
         # Look for natural break points within 10 characters of the calculated break point
         for i in range(max(0, break_point - 10), min(len(url), break_point + 10)):
             if url[i] in natural_breaks:
                 best_break = i + 1  # Break after the character
                 break
-        
+
         # Insert line break
         broken_url = url[:best_break] + '\n' + url[best_break:]
-        
+
         # If the remaining part is still too long, break it again
         remaining = url[best_break:]
         if len(remaining) > max_length:
             # For the second break, just break at max_length
             second_break = max_length
-            broken_url = url[:best_break] + '\n' + remaining[:second_break] + '\n' + remaining[second_break:]
-        
+            broken_url = url[:best_break] + '\n' + \
+                remaining[:second_break] + '\n' + remaining[second_break:]
+
         return broken_url
-    
+
     # Apply URL breaking to all URLs in the text
     return re.sub(url_pattern, break_url, text)
+
 
 def html_to_pdf_xhtml2pdf(html_content: str) -> bytes:
     """
     Convert HTML content to PDF bytes using xhtml2pdf.
-    
+
     Args:
         html_content (str): The HTML content to convert
-        
+
     Returns:
         bytes: PDF document as bytes
-        
+
     Raises:
         Exception: If PDF generation fails
     """
     try:
         # Create a bytes buffer for the PDF output
         pdf_buffer = io.BytesIO()
-        
+
         # Convert HTML to PDF using xhtml2pdf
         pisa_status = pisa.CreatePDF(html_content, dest=pdf_buffer)
-        
+
         if pisa_status.err:
-            raise Exception(f"xhtml2pdf conversion failed with {pisa_status.err} errors")
-        
+            raise Exception(
+                f"xhtml2pdf conversion failed with {pisa_status.err} errors")
+
         # Get the PDF bytes
         pdf_bytes = pdf_buffer.getvalue()
         pdf_buffer.close()
-        
+
         return pdf_bytes
-        
+
     except Exception as e:
-        logger.error(f"Failed to convert HTML to PDF using xhtml2pdf: {str(e)}")
+        logger.error(
+            f"Failed to convert HTML to PDF using xhtml2pdf: {str(e)}")
         raise Exception(f"HTML to PDF conversion failed: {str(e)}") from e
 
 
 def markdown_to_html(markdown_content: str) -> str:
     """
     Convert markdown content to HTML with proper formatting.
-    
+
     Args:
         markdown_content (str): The markdown content to convert
-        
+
     Returns:
         str: HTML formatted content
-        
+
     Raises:
         ValueError: If markdown_content is empty or None
     """
     if not markdown_content:
         raise ValueError("Markdown content cannot be empty or None")
-    
-    # Pre-process the markdown content to break long URLs and words
-    logger.info("Breaking long URLs and words in markdown content...")
-    processed_content = break_long_urls(markdown_content, max_length=100, break_at_percent=0.75)
-    
+
+    # Pre-process the markdown content to break long URLs with adaptive breaking
+    processed_content = break_long_urls(markdown_content, max_length=100)
+
     # Use markdown library with extensions for better formatting
     md = markdown.Markdown(extensions=[
         'fenced_code',
-        'tables', 
+        'tables',
         'toc',
         'nl2br',  # Convert newlines to <br>
         'sane_lists',
         'codehilite'  # Code highlighting
     ])
-    
+
     html_content = md.convert(processed_content)
-    
+
     # Wrap in a complete HTML document with basic styling
     full_html = f"""
     <!DOCTYPE html>
@@ -142,14 +167,6 @@ def markdown_to_html(markdown_content: str) -> str:
         <meta charset="utf-8">
         <title>Generated Report</title>
         <style>
-            root {{
-                max-width: 100%;
-                box-sizing: border-box;
-                word-wrap: break-word;
-                white-space: normal;
-                overflow-wrap: break-word;
-                hyphens: auto;
-            }}
             body {{
                 font-family: Arial, sans-serif;
                 line-height: 1.6;
@@ -290,56 +307,57 @@ def markdown_to_html(markdown_content: str) -> str:
     </body>
     </html>
     """
-    
+
     return full_html
 
 
 def dict_to_pdf(input_dict: Dict[str, Any]) -> bytes:
     """
     Convert a dictionary containing markdown content to a PDF document.
-    
+
     Expected dictionary format:
     {
         'content': 'markdown content here',
         'question.txt': 'optional question or description',  # ignored
         # other fields are ignored
     }
-    
+
     Args:
         input_dict (Dict[str, Any]): Dictionary containing 'content' field with markdown
-        
+
     Returns:
         bytes: PDF document as bytes
-        
+
     Raises:
         ValueError: If input_dict is invalid or missing required fields
         KeyError: If 'content' field is missing
         Exception: If PDF generation fails
     """
-    
+
     if 'content' not in input_dict:
         raise KeyError("Dictionary must contain a 'content' field")
-    
+
     markdown_content = input_dict['content']
-    
+
     if not isinstance(markdown_content, str):
         raise ValueError("Content field must be a string")
-    
+
     if not markdown_content.strip():
         raise ValueError("Content field cannot be empty")
-    
+
     try:
-        logger.info(f"Converting markdown content to PDF (length: {len(markdown_content)} chars)")
-        
+        logger.info(
+            f"Converting markdown content to PDF (length: {len(markdown_content)} chars)")
+
         # Convert markdown to HTML
         html_content = markdown_to_html(markdown_content)
-        
+
         # Convert HTML to PDF using xhtml2pdf
         pdf_bytes = html_to_pdf_xhtml2pdf(html_content)
-        
+
         logger.info(f"Successfully generated PDF ({len(pdf_bytes)} bytes)")
         return pdf_bytes
-        
+
     except Exception as e:
         logger.error(f"Failed to convert markdown to PDF: {str(e)}")
         raise Exception(f"PDF generation failed: {str(e)}") from e
@@ -348,14 +366,14 @@ def dict_to_pdf(input_dict: Dict[str, Any]) -> bytes:
 def save_dict_to_pdf_file(input_dict: Dict[str, Any], output_path: str) -> str:
     """
     Convert a dictionary containing markdown content to a PDF file.
-    
+
     Args:
         input_dict (Dict[str, Any]): Dictionary containing 'content' field with markdown
         output_path (str): Path where the PDF file should be saved
-        
+
     Returns:
         str: Path to the saved PDF file
-        
+
     Raises:
         ValueError: If input_dict is invalid or missing required fields
         KeyError: If 'content' field is missing
@@ -364,21 +382,21 @@ def save_dict_to_pdf_file(input_dict: Dict[str, Any], output_path: str) -> str:
     try:
         # Generate PDF bytes
         pdf_bytes = dict_to_pdf(input_dict)
-        
+
         # Write to file
         with open(output_path, 'wb') as f:
             f.write(pdf_bytes)
-        
+
         logger.info(f"PDF saved to: {output_path}")
         return output_path
-        
+
     except Exception as e:
         logger.error(f"Failed to save PDF to file: {str(e)}")
         raise Exception(f"Failed to save PDF file: {str(e)}") from e
-    
-    
+
+
 if __name__ == "__main__":
-    input_dict_1 = {
+    input_dict = {
         'content': '''# Comprehensive Markdown Style Test
 
 This document contains various markdown elements to test PDF conversion styling.
@@ -561,22 +579,7 @@ Below this line there should be another horizontal rule.
    }
    ```
 
-4. **Testing Results**
-   
-   > All tests passed successfully. The application is ready for deployment.
-
----
-
-*This concludes the comprehensive markdown style test document.*
-
-**Note:** This document should render with proper formatting including headers, lists, tables, code blocks, quotes, and various text styles.
-        ''',
-        'question.txt': 'Please provide an analysis of the construction adhesive market in the US'
-    }
-    input_dict_2 = {
-        'content': '''# Long Text Overflow Handling Test
-
-This document specifically tests the overflow handling improvements for various types of long content.
+4. **Long URLs and Links Test**
 
 ## 🔗 Long URLs and Links Test
 
@@ -597,15 +600,6 @@ This paragraph contains supercalifragilisticexpialidocious and pneumonoultramicr
 - `VeryLongClassNameThatExceedsNormalLengthLimitsAndMightCauseOverflowIssuesInPDFGeneration`
 - `extremely_long_variable_name_that_follows_snake_case_convention_but_is_unreasonably_long_for_demonstration_purposes`
 - `AnotherExtremelyLongMethodNameThatFollowsCamelCaseButIsWayTooLongForPracticalUse()`
-
-## 📊 Table with Long Content Test
-
-| Column with Very Long Header Name | Another Extremely Long Column Header | URL Column |
-|-----------------------------------|-------------------------------------|------------|
-| This is a very long cell content that should wrap properly without causing overflow issues in the PDF generation process. It contains multiple sentences and should demonstrate proper text wrapping within table cells. | Another long cell with lots of text that needs to be handled gracefully. This cell also contains technical terms like supercalifragilisticexpialidocious and should break appropriately. | https://www.verylongurl.com/path/that/might/overflow/and/cause/issues/in/table/cells/if/not/handled/properly |
-| Short content | Medium length content that spans a few words | https://short.url |
-| VeryLongWordWithoutSpacesThatMightCauseIssuesInTableCells | `very_long_code_snippet_that_should_wrap_properly_in_table_cells` | https://another.very.long.url.com/with/many/path/segments/that/should/wrap/nicely |
-| This cell contains a mix of **bold text**, *italic text*, and `inline code` along with very long content that should wrap properly. It also includes special characters like © ® ™ and should handle them correctly. | Final test cell with comprehensive content including numbers 1234567890, symbols !@#$%^&*(), and a very long sentence that goes on and on to test the wrapping capabilities of the table cell formatting system. | https://final.test.url.com/very/long/path/with/query/parameters?param1=value1&param2=value2&param3=value3 |
 
 ## 💻 Long Code Blocks Test
 
@@ -685,10 +679,17 @@ If this PDF renders correctly with all the long content properly wrapped and no 
 
 ---
 
-*End of Long Text Overflow Test Document*
+5. **Testing Results**
+   
+   > All tests passed successfully. The application is ready for deployment.
+
+---
+
+*This concludes the comprehensive markdown style test document.*
+
+**Note:** This document should render with proper formatting including headers, lists, tables, code blocks, quotes, and various text styles.
         ''',
-        'question.txt': 'Long text overflow handling test'
+        'question.txt': 'Please provide an analysis of the construction adhesive market in the US'
     }
-    
-    save_dict_to_pdf_file(input_dict_1, 'test_comprehensive.pdf')
-    save_dict_to_pdf_file(input_dict_2, 'test_long_text_overflow.pdf')
+
+    save_dict_to_pdf_file(input_dict, 'test_comprehensive.pdf')
