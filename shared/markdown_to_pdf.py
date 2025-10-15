@@ -94,11 +94,18 @@ def markdown_to_html(markdown_content: str) -> str:
                 line-height: 1.6;
                 margin: 40px;
                 color: #333;
+                word-wrap: break-word;
+                overflow-wrap: break-word;
+                hyphens: auto;
+                max-width: 100%;
             }}
             h1, h2, h3, h4, h5, h6 {{
                 color: #2c3e50;
                 margin-top: 30px;
                 margin-bottom: 15px;
+                word-wrap: break-word;
+                overflow-wrap: break-word;
+                hyphens: auto;
             }}
             h1 {{
                 border-bottom: 2px solid #3498db;
@@ -110,6 +117,9 @@ def markdown_to_html(markdown_content: str) -> str:
             }}
             p {{
                 margin-bottom: 15px;
+                word-wrap: break-word;
+                overflow-wrap: break-word;
+                hyphens: auto;
             }}
             ul, ol {{
                 margin-bottom: 15px;
@@ -120,6 +130,9 @@ def markdown_to_html(markdown_content: str) -> str:
                 margin-bottom: 3px;
                 margin-top: 2px;
                 line-height: 1.4;
+                word-wrap: break-word;
+                overflow-wrap: break-word;
+                hyphens: auto;
             }}
             /* Reduce spacing for nested lists */
             ul ul, ol ol, ul ol, ol ul {{
@@ -149,6 +162,8 @@ def markdown_to_html(markdown_content: str) -> str:
                 padding: 2px 4px;
                 border-radius: 3px;
                 font-family: 'Courier New', monospace;
+                word-wrap: break-word;
+                overflow-wrap: break-word;
             }}
             pre {{
                 background-color: #f8f9fa;
@@ -156,22 +171,36 @@ def markdown_to_html(markdown_content: str) -> str:
                 border-radius: 5px;
                 overflow-x: auto;
                 margin-bottom: 15px;
+                white-space: pre-wrap;
+                word-wrap: break-word;
+                overflow-wrap: break-word;
+                max-width: 100%;
             }}
             blockquote {{
                 border-left: 4px solid #3498db;
                 margin: 20px 0;
                 padding-left: 20px;
                 color: #666;
+                word-wrap: break-word;
+                overflow-wrap: break-word;
+                hyphens: auto;
             }}
             table {{
                 border-collapse: collapse;
                 width: 100%;
                 margin-bottom: 20px;
+                table-layout: fixed;
+                word-wrap: break-word;
             }}
             th, td {{
                 border: 1px solid #ddd;
                 padding: 12px;
                 text-align: left;
+                word-wrap: break-word;
+                overflow-wrap: break-word;
+                hyphens: auto;
+                max-width: 200px;
+                vertical-align: top;
             }}
             th {{
                 background-color: #f2f2f2;
@@ -183,6 +212,26 @@ def markdown_to_html(markdown_content: str) -> str:
             }}
             a:hover {{
                 text-decoration: underline;
+            }}
+            /* Universal overflow prevention */
+            * {{
+                max-width: 100%;
+                box-sizing: border-box;
+            }}
+            /* Specific handling for very long words or URLs */
+            a, span, div {{
+                word-break: break-all;
+                overflow-wrap: break-word;
+            }}
+            /* Ensure images don't overflow */
+            img {{
+                max-width: 100%;
+                height: auto;
+            }}
+            /* Handle horizontal scrolling for very wide content */
+            .overflow-container {{
+                overflow-x: auto;
+                max-width: 100%;
             }}
         </style>
     </head>
@@ -281,7 +330,7 @@ def save_dict_to_pdf_file(input_dict: Dict[str, Any], output_path: str) -> str:
     
     
 if __name__ == "__main__":
-    input_dict = {
+    input_dict_1 = {
         'content': '''# Comprehensive Markdown Style Test
 
 This document contains various markdown elements to test PDF conversion styling.
@@ -476,4 +525,122 @@ Below this line there should be another horizontal rule.
         ''',
         'question.txt': 'Please provide an analysis of the construction adhesive market in the US'
     }
-    save_dict_to_pdf_file(input_dict, 'test.pdf')
+    input_dict_2 = {
+        'content': '''# Long Text Overflow Handling Test
+
+This document specifically tests the overflow handling improvements for various types of long content.
+
+## 🔗 Long URLs and Links Test
+
+### Very Long URLs
+This paragraph contains a very long URL that should wrap properly: https://www.example.com/very/long/path/that/might/cause/overflow/issues/in/pdf/generation/with/many/parameters?param1=verylongvalue1&param2=anotherlongvalue2&param3=yetanotherlongvalue3&param4=extremelylongvalue4&param5=superlongvalue5&param6=incrediblylong
+
+### Multiple Long URLs in List
+- First URL: https://api.example.com/v1/users/12345/documents/reports/financial/quarterly/2023/q4/detailed-analysis-with-charts-and-graphs
+- Second URL: https://dashboard.analytics.company.com/reports/user-engagement/monthly/2023/december/detailed-breakdown-by-demographics-and-regions
+- Third URL: https://storage.cloudprovider.com/buckets/company-data/backups/database-dumps/postgresql/production/2023-12-31-full-backup-with-indexes
+
+## 📝 Very Long Words Test
+
+### Scientific and Technical Terms
+This paragraph contains supercalifragilisticexpialidocious and pneumonoultramicroscopicsilicovolcanoconiosiswhichisaverylongwordthatmightcauseoverflowissues in the same sentence.
+
+### Programming-Related Long Names
+- `VeryLongClassNameThatExceedsNormalLengthLimitsAndMightCauseOverflowIssuesInPDFGeneration`
+- `extremely_long_variable_name_that_follows_snake_case_convention_but_is_unreasonably_long_for_demonstration_purposes`
+- `AnotherExtremelyLongMethodNameThatFollowsCamelCaseButIsWayTooLongForPracticalUse()`
+
+## 📊 Table with Long Content Test
+
+| Column with Very Long Header Name | Another Extremely Long Column Header | URL Column |
+|-----------------------------------|-------------------------------------|------------|
+| This is a very long cell content that should wrap properly without causing overflow issues in the PDF generation process. It contains multiple sentences and should demonstrate proper text wrapping within table cells. | Another long cell with lots of text that needs to be handled gracefully. This cell also contains technical terms like supercalifragilisticexpialidocious and should break appropriately. | https://www.verylongurl.com/path/that/might/overflow/and/cause/issues/in/table/cells/if/not/handled/properly |
+| Short content | Medium length content that spans a few words | https://short.url |
+| VeryLongWordWithoutSpacesThatMightCauseIssuesInTableCells | `very_long_code_snippet_that_should_wrap_properly_in_table_cells` | https://another.very.long.url.com/with/many/path/segments/that/should/wrap/nicely |
+| This cell contains a mix of **bold text**, *italic text*, and `inline code` along with very long content that should wrap properly. It also includes special characters like © ® ™ and should handle them correctly. | Final test cell with comprehensive content including numbers 1234567890, symbols !@#$%^&*(), and a very long sentence that goes on and on to test the wrapping capabilities of the table cell formatting system. | https://final.test.url.com/very/long/path/with/query/parameters?param1=value1&param2=value2&param3=value3 |
+
+## 💻 Long Code Blocks Test
+
+### Python Code with Long Lines
+```python
+def very_long_function_name_that_might_cause_overflow_issues_in_pdf_generation_when_displayed_in_code_blocks():
+    """
+    This is a very long docstring that explains what this function does in great detail.
+    It spans multiple lines and contains very long sentences that should wrap properly
+    without causing any overflow issues in the PDF generation process.
+    """
+    very_long_variable_name_that_exceeds_normal_line_length_limits = "This is a very long string that might cause overflow issues in PDF generation when displayed in code blocks and should be handled gracefully by the text wrapping system"
+    
+    another_extremely_long_variable_name_for_demonstration_purposes = {
+        "very_long_key_name_that_might_cause_issues": "very_long_value_that_should_wrap_properly",
+        "another_long_key_for_testing_purposes": "another_long_value_with_lots_of_text_content",
+        "url_key": "https://www.example.com/very/long/url/that/might/cause/overflow/issues/in/code/blocks"
+    }
+    
+    return very_long_variable_name_that_exceeds_normal_line_length_limits, another_extremely_long_variable_name_for_demonstration_purposes
+```
+
+### SQL with Long Queries
+```sql
+-- This is a very long SQL comment that explains the query in great detail and might cause overflow issues if not handled properly
+SELECT 
+    very_long_column_name_that_exceeds_normal_limits,
+    another_extremely_long_column_name_for_testing,
+    yet_another_long_column_name_that_should_wrap_properly,
+    CASE 
+        WHEN very_long_condition_that_might_cause_overflow_issues_in_pdf_generation = 'very_long_value_that_should_wrap_properly' 
+        THEN 'very_long_result_value_that_demonstrates_text_wrapping_capabilities'
+        ELSE 'another_long_default_value_for_comprehensive_testing_purposes'
+    END as very_long_alias_name_that_tests_wrapping
+FROM very_long_table_name_that_might_cause_overflow_issues_in_code_blocks
+WHERE very_long_column_name_that_exceeds_normal_limits LIKE '%very_long_search_pattern_that_should_wrap_properly%'
+    AND another_extremely_long_column_name_for_testing IN ('value1_that_is_very_long', 'value2_that_is_also_very_long', 'value3_for_comprehensive_testing')
+ORDER BY very_long_column_name_that_exceeds_normal_limits DESC, another_extremely_long_column_name_for_testing ASC;
+```
+
+## 📋 Long List Items Test
+
+### Unordered Lists with Long Content
+- This is a very long list item that contains extensive text content which should be properly wrapped and formatted without causing any overflow issues in the PDF generation process. It includes various types of content and should demonstrate proper text wrapping capabilities.
+- Another long item with a URL: https://www.example.com/very/long/path/that/should/wrap/properly/in/list/items/without/causing/overflow/issues
+- VeryLongWordWithoutSpacesThatShouldBreakProperlyInListItemsWithoutCausingOverflowIssues
+- List item with `very_long_inline_code_that_should_wrap_properly_without_causing_issues` and regular text
+- **Bold text with very long content that should wrap properly** and *italic text with equally long content for comprehensive testing purposes*
+
+### Ordered Lists with Long Content
+1. First numbered item with very long content that spans multiple lines and should wrap properly without causing any overflow issues in the PDF generation process
+2. Second item with technical terms like supercalifragilisticexpialidocious and pneumonoultramicroscopicsilicovolcanoconiosiswhichisaverylongword
+3. Third item with a very long URL: https://api.example.com/v1/users/12345/documents/reports/financial/quarterly/2023/q4/detailed-analysis-with-charts-and-graphs-and-comprehensive-data
+4. Fourth item with mixed content including **bold very long text that should wrap properly**, *italic long text*, and `long_code_snippets_that_should_also_wrap_nicely`
+
+## 💬 Long Blockquotes Test
+
+> This is a very long blockquote that contains extensive text content which should be properly wrapped and formatted without causing any overflow issues in the PDF generation process. It includes various types of content like URLs (https://www.example.com/very/long/path/for/testing/purposes), long words (supercalifragilisticexpialidocious), and technical terms that should all be handled gracefully by the text wrapping system.
+
+> Another blockquote with even more comprehensive content including code snippets like `very_long_function_name_that_might_cause_overflow_issues()`, mathematical symbols like ∑∏√∂∫, and special characters like © ® ™ that should all be properly formatted and wrapped without causing any layout issues in the PDF generation process.
+
+## 📄 Long Paragraph Test
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum. Sed ut perspiciatis unde omnis iste natus error sit voluptatem accusantium doloremque laudantium, totam rem aperiam, eaque ipsa quae ab illo inventore veritatis et quasi architecto beatae vitae dicta sunt explicabo. Nemo enim ipsam voluptatem quia voluptas sit aspernatur aut odit aut fugit, sed quia consequuntur magni dolores eos qui ratione voluptatem sequi nesciunt. Neque porro quisquam est, qui dolorem ipsum quia dolor sit amet, consectetur, adipisci velit, sed quia non numquam eius modi tempora incidunt ut labore et dolore magnam aliquam quaerat voluptatem. This paragraph also includes a very long URL: https://www.example.com/very/long/path/that/should/wrap/properly/within/paragraph/text/without/causing/overflow/issues/in/pdf/generation/process and continues with more text to test comprehensive wrapping capabilities.
+
+## ✅ Test Results Summary
+
+If this PDF renders correctly with all the long content properly wrapped and no overflow issues, then the text overflow handling improvements are working as expected. The key features being tested include:
+
+- **Long URL wrapping** in paragraphs, lists, tables, and code blocks
+- **Very long word breaking** for technical terms and compound words
+- **Table cell content wrapping** with fixed layout and proper text breaking
+- **Code block wrapping** while preserving formatting
+- **List item wrapping** for both ordered and unordered lists
+- **Blockquote wrapping** with proper indentation
+- **Mixed content handling** with various formatting elements
+
+---
+
+*End of Long Text Overflow Test Document*
+        ''',
+        'question.txt': 'Long text overflow handling test'
+    }
+    
+    save_dict_to_pdf_file(input_dict_1, 'test_comprehensive.pdf')
+    save_dict_to_pdf_file(input_dict_2, 'test_long_text_overflow.pdf')
