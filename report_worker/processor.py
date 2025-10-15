@@ -304,8 +304,7 @@ def generate_file_name(report_name: str, parameters: Dict[str, Any]) -> str:
         brand_name = parameters.get("brand_focus", "")
         return f"Brand_Analysis_{brand_name}_{timestamp}.pdf"
     elif report_key == "competitor_analysis":
-        category_name = "_".join([x.get("category", "").replace(" ", "_") for x in parameters.get("categories", [])])
-        return f"Competitor_Analysis_{category_name}_{timestamp}.pdf"
+        return f"Competitor_Analysis_{timestamp}.pdf"
     elif report_key == "product_analysis":
         category_name = "_".join([x.get("category", "").replace(" ", "_") for x in parameters.get("categories", [])])
         return f"Product_Analysis_{category_name}_{timestamp}.pdf"
