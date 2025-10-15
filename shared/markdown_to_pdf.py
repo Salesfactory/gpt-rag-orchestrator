@@ -19,10 +19,8 @@ def break_long_urls(text: str, max_length: int = 130) -> str:
     """
     Break long URLs by inserting line breaks at strategic points.
     Uses adaptive break percentages based on URL length:
-    - URLs 100-130 chars: 90% break point (minimal breaking)
-    - URLs 130-150 chars: 75% break point (moderate breaking) 
-    - URLs 150-170 chars: 60% break point (more aggressive)
-    - URLs 170+ chars: 50% break point (most aggressive)
+    the adaptative break generates a percentage based on the URL length and the max_length
+    getting the inverse of the percentage gives us the break point
 
     Args:
         text (str): Text content that may contain long URLs
