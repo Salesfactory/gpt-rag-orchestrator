@@ -129,7 +129,7 @@ def markdown_to_html(markdown_content: str) -> str:
         raise ValueError("Markdown content cannot be empty or None")
 
     # Pre-process the markdown content to break long URLs with adaptive breaking
-    processed_content = break_long_urls(markdown_content, max_length=100)
+    processed_content = break_long_urls(markdown_content, max_length=130)
 
     # Use markdown library with extensions for better formatting
     md = markdown.Markdown(extensions=[
@@ -569,6 +569,12 @@ Below this line there should be another horizontal rule.
 
 ### Very Long URLs
 This paragraph contains a very long URL that should wrap properly: https://www.example.com/very/long/path/that/might/cause/overflow/issues/in/pdf/generation/with/many/parameters?param1=verylongvalue1&param2=anotherlongvalue2&param3=yetanotherlongvalue3&param4=extremelylongvalue4&param5=superlongvalue5&param6=incrediblylong
+
+[1]https://www.example.com/very/long/path/that/might/cause/overflow/issues/in/pdf/generation/with/many/parameters?param1=verylongvalue1&param2=anotherlongvalue2&param3=yetanotherlongvalue3&param4=extremelylongvalue4&param5=superlongvalue5&param6=incrediblylong
+
+[2]https://www.example.com/very/long/path/that/might/cause/overflow/issues/in/pdf/generation/with/many/parameters?param1=verylongvalue1&param2=anotherlongvalue2&param3=yetanotherlongvalue3&param4=extremelylongvalue4&param5=superlongvalue5&param6=incrediblylong
+
+[3]https://www.example.com/very/long/path/that/might/cause/overflow/issues/in/pdf/generation/with/many/parameters?param1=verylongvalue1&param2=anotherlongvalue2&param3=yetanotherlongvalue3&param4=extremelylongvalue4&param5=superlongvalue5&param6=incrediblylong
 
 ### Multiple Long URLs in List
 - First URL: https://api.example.com/v1/users/12345/documents/reports/financial/quarterly/2023/q4/detailed-analysis-with-charts-and-graphs
