@@ -16,6 +16,58 @@ from xhtml2pdf import pisa
 logger = logging.getLogger(__name__)
 
 
+def break_long_urls(text: str, max_length: int = 130, break_at_percent: float = 0.75) -> str:
+    """
+    Break long URLs by inserting line breaks at strategic points.
+    
+    Args:
+        text (str): Text content that may contain long URLs
+        max_length (int): Maximum URL length before breaking (default: 130)
+        break_at_percent (float): Where to insert break as percentage of URL length (default: 0.75)
+        
+    Returns:
+        str: Text with long URLs broken into multiple lines
+    """
+    import re
+    
+    # Pattern to match URLs (http/https, ftp, and www)
+    url_pattern = r'(https?://[^\s<>"{}|\\^`\[\]]+|ftp://[^\s<>"{}|\\^`\[\]]+|www\.[^\s<>"{}|\\^`\[\]]+)'
+    
+    def break_url(match):
+        url = match.group(1)
+        
+        # Only break URLs longer than max_length
+        if len(url) <= max_length:
+            return url
+            
+        # Calculate break point (75% of the way through)
+        break_point = int(len(url) * break_at_percent)
+        
+        # Try to break at a natural point (after / or ? or &)
+        natural_breaks = ['/', '?', '&', '=', '-', '_']
+        best_break = break_point
+        
+        # Look for natural break points within 10 characters of the calculated break point
+        for i in range(max(0, break_point - 10), min(len(url), break_point + 10)):
+            if url[i] in natural_breaks:
+                best_break = i + 1  # Break after the character
+                break
+        
+        # Insert line break
+        broken_url = url[:best_break] + '\n' + url[best_break:]
+        
+        # If the remaining part is still too long, break it again
+        remaining = url[best_break:]
+        if len(remaining) > max_length:
+            # For the second break, just break at max_length
+            second_break = max_length
+            broken_url = url[:best_break] + '\n' + remaining[:second_break] + '\n' + remaining[second_break:]
+        
+        return broken_url
+    
+    # Apply URL breaking to all URLs in the text
+    return re.sub(url_pattern, break_url, text)
+
 def html_to_pdf_xhtml2pdf(html_content: str) -> bytes:
     """
     Convert HTML content to PDF bytes using xhtml2pdf.
@@ -66,8 +118,9 @@ def markdown_to_html(markdown_content: str) -> str:
     if not markdown_content:
         raise ValueError("Markdown content cannot be empty or None")
     
-    # Escape HTML first to prevent XSS (but allow markdown to work)
-    # Note: We don't escape here since markdown needs to process special characters
+    # Pre-process the markdown content to break long URLs and words
+    logger.info("Breaking long URLs and words in markdown content...")
+    processed_content = break_long_urls(markdown_content, max_length=100, break_at_percent=0.75)
     
     # Use markdown library with extensions for better formatting
     md = markdown.Markdown(extensions=[
@@ -79,7 +132,7 @@ def markdown_to_html(markdown_content: str) -> str:
         'codehilite'  # Code highlighting
     ])
     
-    html_content = md.convert(markdown_content)
+    html_content = md.convert(processed_content)
     
     # Wrap in a complete HTML document with basic styling
     full_html = f"""
@@ -89,23 +142,28 @@ def markdown_to_html(markdown_content: str) -> str:
         <meta charset="utf-8">
         <title>Generated Report</title>
         <style>
+            root {{
+                max-width: 100%;
+                box-sizing: border-box;
+                word-wrap: break-word;
+                white-space: normal;
+                overflow-wrap: break-word;
+                hyphens: auto;
+            }}
             body {{
                 font-family: Arial, sans-serif;
                 line-height: 1.6;
                 margin: 40px;
                 color: #333;
                 word-wrap: break-word;
-                overflow-wrap: break-word;
-                hyphens: auto;
-                max-width: 100%;
+                width: 100%;
             }}
             h1, h2, h3, h4, h5, h6 {{
                 color: #2c3e50;
                 margin-top: 30px;
                 margin-bottom: 15px;
                 word-wrap: break-word;
-                overflow-wrap: break-word;
-                hyphens: auto;
+                white-space: normal;
             }}
             h1 {{
                 border-bottom: 2px solid #3498db;
@@ -118,8 +176,7 @@ def markdown_to_html(markdown_content: str) -> str:
             p {{
                 margin-bottom: 15px;
                 word-wrap: break-word;
-                overflow-wrap: break-word;
-                hyphens: auto;
+                white-space: normal;
             }}
             ul, ol {{
                 margin-bottom: 15px;
@@ -131,8 +188,7 @@ def markdown_to_html(markdown_content: str) -> str:
                 margin-top: 2px;
                 line-height: 1.4;
                 word-wrap: break-word;
-                overflow-wrap: break-word;
-                hyphens: auto;
+                white-space: normal;
             }}
             /* Reduce spacing for nested lists */
             ul ul, ol ol, ul ol, ol ul {{
@@ -163,18 +219,19 @@ def markdown_to_html(markdown_content: str) -> str:
                 border-radius: 3px;
                 font-family: 'Courier New', monospace;
                 word-wrap: break-word;
-                overflow-wrap: break-word;
+                white-space: normal;
+                font-size: 90%;
             }}
             pre {{
                 background-color: #f8f9fa;
-                padding: 15px;
+                padding: 10px;
                 border-radius: 5px;
-                overflow-x: auto;
                 margin-bottom: 15px;
                 white-space: pre-wrap;
                 word-wrap: break-word;
-                overflow-wrap: break-word;
-                max-width: 100%;
+                font-size: 85%;
+                font-family: 'Courier New', monospace;
+                width: 100%;
             }}
             blockquote {{
                 border-left: 4px solid #3498db;
@@ -182,25 +239,22 @@ def markdown_to_html(markdown_content: str) -> str:
                 padding-left: 20px;
                 color: #666;
                 word-wrap: break-word;
-                overflow-wrap: break-word;
-                hyphens: auto;
+                white-space: normal;
             }}
             table {{
                 border-collapse: collapse;
                 width: 100%;
                 margin-bottom: 20px;
-                table-layout: fixed;
                 word-wrap: break-word;
             }}
             th, td {{
                 border: 1px solid #ddd;
-                padding: 12px;
+                padding: 8px;
                 text-align: left;
                 word-wrap: break-word;
-                overflow-wrap: break-word;
-                hyphens: auto;
-                max-width: 200px;
+                white-space: normal;
                 vertical-align: top;
+                width: 33%;
             }}
             th {{
                 background-color: #f2f2f2;
@@ -209,29 +263,25 @@ def markdown_to_html(markdown_content: str) -> str:
             a {{
                 color: #3498db;
                 text-decoration: none;
+                word-wrap: break-word;
+                white-space: normal;
             }}
             a:hover {{
                 text-decoration: underline;
             }}
-            /* Universal overflow prevention */
-            * {{
-                max-width: 100%;
-                box-sizing: border-box;
-            }}
-            /* Specific handling for very long words or URLs */
-            a, span, div {{
-                word-break: break-all;
-                overflow-wrap: break-word;
-            }}
-            /* Ensure images don't overflow */
+            /* Images */
             img {{
-                max-width: 100%;
+                width: 100%;
                 height: auto;
             }}
-            /* Handle horizontal scrolling for very wide content */
-            .overflow-container {{
-                overflow-x: auto;
-                max-width: 100%;
+            /* Divs and spans */
+            div, span {{
+                word-wrap: break-word;
+                white-space: normal;
+            }}
+            /* Force break very long words */
+            p, li, td, th, blockquote, div {{
+                word-break: break-word;
             }}
         </style>
     </head>
@@ -266,8 +316,6 @@ def dict_to_pdf(input_dict: Dict[str, Any]) -> bytes:
         KeyError: If 'content' field is missing
         Exception: If PDF generation fails
     """
-    if not isinstance(input_dict, dict):
-        raise ValueError("Input must be a dictionary")
     
     if 'content' not in input_dict:
         raise KeyError("Dictionary must contain a 'content' field")
