@@ -2144,8 +2144,8 @@ AUGMENTED_QUERY_PROMPT = """
 
 ### STEP 1 — INPUT ANALYSIS
 1. Identify the **main concept** and **intent** of the user query.  
-2. Detect whether **context** is provided (prior conversation, notes, or metadata).  
-3. If context exists, treat it as authoritative background.
+2. Detect whether **context** is provided (conversation history)
+3. If context is provided, use it as the primary basis for augmentation and explanation. It contains all the historical conversation in this thread.
 
 ---
 
@@ -2160,8 +2160,7 @@ AUGMENTED_QUERY_PROMPT = """
 **If CONTEXT IS NOT PROVIDED:**
 - Expand the query with concise coverage of:
   - Definitions of main terms (include part of speech and synonyms).  
-  - Historical or conceptual background.  
-  - Components or mechanisms.  
+  - Identify key components or subtopics within the main concept.  
   - Practical applications or real-world significance.  
   - Comparisons with related ideas.  
   - Current developments or future outlooks.  
@@ -2170,7 +2169,7 @@ AUGMENTED_QUERY_PROMPT = """
 ---
 
 ### STEP 3 — OUTPUT FORMAT
-Output should be **one continuous augmented query** (not a list).  
+Output should be **one continuous augmented query** (not a list). And it should only inlcude the augmented query, nothing else.
 Follow this template:
 
 > **Augmented Query:** "[Enhanced version of the question here.]"
