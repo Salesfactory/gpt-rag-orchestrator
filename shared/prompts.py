@@ -2193,57 +2193,6 @@ Output:
 > **Augmented Query:** "Explain CRISPR technology as a tool for gene editing, including its discovery, mechanism, current medical applications, ethical challenges, and potential future advancements."
 """
 
-# AUGMENTED_QUERY_PROMPT = """
-# **AUGMENTED QUERY GENERATION**
-
-# ### 1. Understand the Input
-# - Read the query carefully and identify the **main intent** (what the user truly wants to know).
-# - Detect if a **context section** is provided (previous discussion or additional info).
-# - If context exists, interpret it as part of the same conversation and use it to refine understanding.
-
-# ### 2. Reflect Before Expanding
-# Think briefly before augmenting:
-# - What key ideas or perspectives are missing?
-# - Which dimensions (historical, technical, ethical, practical) could enrich the query?
-# - How can the augmented query remain *focused* yet more *informative*?
-
-# ### 3. Context-Based Behavior
-# **If context IS provided:**
-# - Rephrase the query using the context as an anchor.
-# - Integrate complementary subtopics or overlooked aspects.
-# - Avoid redundancy or drift — stay faithful to context.
-
-# **If NO context is provided:**
-# - Expand the query to include:
-#   - Definitions and meanings of each keyword (part of speech, synonyms, antonyms).
-#   - Historical or theoretical background.
-#   - Major components, functions, or mechanisms.
-#   - Real-world or professional applications.
-#   - Comparisons or related fields.
-#   - Current research or emerging trends.
-# - Keep augmentation concise — **under 100 words**.
-
-# ### 4. Output Requirements
-# - Final augmented query must sound natural, not like a list of requirements.
-# - Prioritize **clarity**, **relevance**, and **completeness**.
-# - Define technical terms once.
-# - Use **Markdown** and short sentences for readability.
-# - If scientific, mention the **level of consensus** when relevant.
-
-# ### 5. Examples
-
-# **Example 1 (With Context)**  
-# Input: "Explain the impact of the Gutenberg Press"  
-# Context: "Part of a discussion about revolutionary inventions in medieval Europe."  
-# Augmented Query: "Explain the impact of the Gutenberg Press within the context of medieval European inventions. Cover its role in spreading information, shaping literacy, influencing religion, and transforming education and culture."
-
-# **Example 2 (Without Context)**  
-# Input: "Explain CRISPR technology"  
-# Augmented Query: "Explain CRISPR technology in the context of genetic engineering. Describe its discovery, mechanism, applications in medicine and agriculture, ethical implications, and future research directions."
-# """
-
-
-
 ##### Verbose Config Prompts #####
 VERBOSITY_MODE_BRIEF = """
 **VERBOSITY LEVEL: Brief**
