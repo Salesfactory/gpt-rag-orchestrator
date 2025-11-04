@@ -1,4 +1,9 @@
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+UTC_NOW = datetime.now(timezone.utc)
+UTC_TODAY = UTC_NOW.date()
+UTC_TODAY_STR = UTC_NOW.strftime('%Y-%m-%d')
+UTC_TIME_STR = UTC_NOW.strftime('%H:%M:%S')
 # [START: custom product analysis prompt]
 product_analysis_intro = f"""
 You are an Expert Product Manager and Market Analyst. Your job is to conduct a thorough, monthly product performance analysis for a list of products from your own brand, based on user-provided information.
@@ -41,8 +46,8 @@ custom_product_analysis_instructions = f"""
 """
 product_analysis_report_template = f"""
 # Monthly Product Performance Report
-**Report Date:** {date.today().strftime('%Y-%m-%d')}
-**Analysis Period:** For the 30-Day Period Ending {date.today().strftime('%Y-%m-%d')}
+**Report Date:** {UTC_TODAY_STR}
+**Analysis Period:** For the 30-Day Period Ending {UTC_TODAY_STR}
 
 ## Products Covered in this Report
 [Category 1]
@@ -223,8 +228,8 @@ custom_competitor_analysis_instructions = f"""
 
 competitor_analysis_report_template = f"""
 # Monthly Competitor Analysis: [Industry Name]
-**Report Date:** {date.today().strftime('%Y-%m-%d')}
-**Analysis Period:** For the 30-Day Period Ending {date.today().strftime('%Y-%m-%d')}
+**Report Date:** {UTC_TODAY_STR}
+**Analysis Period:** For the 30-Day Period Ending {UTC_TODAY_STR}
 
 ## 1. Executive Summary
 ---
@@ -259,7 +264,7 @@ competitor_analysis_prompt = f"""
 
 {competitor_analysis_intro}
 
-The date of the report is {date.today().strftime('%Y-%m-%d')}.
+The date of the report is {UTC_TODAY_STR}.
 
 Gather only verifiable items that happened or were first published within the defined 30-day window. Use clear, concise notes, preserve evidence, and avoid speculation.
 
@@ -295,7 +300,7 @@ Gather only verifiable items that happened or were first published within the de
 product_analysis_prompt = f"""
 {product_analysis_intro}
 
-The date of the report is {date.today().strftime('%Y-%m-%d')}.
+The date of the report is {UTC_TODAY_STR}.
 
 Gather only verifiable items that happened or were first published in the past 30 days. Use clear, concise notes, preserve evidence, and avoid speculation.
 
@@ -327,7 +332,7 @@ Gather only verifiable items that happened or were first published in the past 3
 # [END: combined product analysis prompt]
 
 # [START: brand analysis prompt]
-report_date = date.today()
+report_date = UTC_TODAY
 start_date = report_date - timedelta(days=7)
 
 brand_analysis_intro = f"""
@@ -420,7 +425,7 @@ henkel_brand_analysis_prompt = f"""
 
 You are an Expert Brand Strategist and Researcher. Your job is to conduct thorough, weekly research on **Henkel's construction adhesives and sealants business**, and then write a polished, actionable intelligence report.
 
-The date of the report is {date.today().strftime('%Y-%m-%d')}.
+The date of the report is {UTC_TODAY_STR}.
 
 The first thing you should do is to write the original user question to `question.txt` so you have a record of it.
 
@@ -1042,7 +1047,7 @@ MARKETING_ANSWER_PROMPT = f"""
 
 You are a data-driven marketing assistant called **FreddAid**, built by Sales Factory AI. You are the brain, strategies, and the heart behind Sales Factory AI. 
 
-Today's date is {date.today().strftime('%Y-%m-%d')}. The current time is {datetime.now().strftime('%H:%M:%S')}.
+Today's date is {UTC_TODAY_STR}. The current time is {UTC_TIME_STR} UTC.
 
 
 ## 1. FreddAid's Persona
