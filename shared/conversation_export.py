@@ -695,15 +695,16 @@ def upload_to_blob_storage(content, filename, user_id, content_type="text/html")
             content_settings=ContentSettings(content_type=content_type)
         )
         
-        # Get a user delegation key to sign the SAS token, valid for 7 days
+        # Get a user delegation key to sign the SAS token, valid for 10 years
         delegation_key_start_time = datetime.now(timezone.utc)
-        delegation_key_expiry_time = delegation_key_start_time + timedelta(days=365)
+        delegation_key_expiry_time = delegation_key_start_time + timedelta(days=7)
         
         user_delegation_key = blob_service_client.get_user_delegation_key(
             key_start_time=delegation_key_start_time,
             key_expiry_time=delegation_key_expiry_time
         )
         
+        sas_expiration = delegation_key_start_time + timedelta(days=3652)
         # Generate a user-delegation SAS token for the blob
         sas_token = generate_blob_sas(
             account_name=blob_service_client.account_name,
@@ -711,7 +712,7 @@ def upload_to_blob_storage(content, filename, user_id, content_type="text/html")
             blob_name=f"{user_id}/{filename}",
             user_delegation_key=user_delegation_key,
             permission=BlobSasPermissions(read=True),
-            expiry=delegation_key_expiry_time
+            expiry=sas_expiration
         )
         
         # Construct the full URL with SAS token
