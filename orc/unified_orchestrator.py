@@ -284,7 +284,7 @@ class StateManager:
         user_info: Dict[str, Any],
         response_time: float,
         response_text: str,
-        thoughts: List[str],
+        thoughts: Dict[str, Any],
     ) -> None:
         """
         Save conversation data to Cosmos DB.
@@ -340,7 +340,7 @@ class StateManager:
 
             history.append(assistant_message)
             logger.debug(
-                f"[StateManager] Added assistant message with {len(thoughts)} thoughts"
+                f"[StateManager] Added assistant message with thoughts: {list(thoughts.keys())}"
             )
 
             conversation_data["history"] = history
@@ -2394,20 +2394,24 @@ Consider this when deciding which tool to use for follow-up questions. Most of t
 
         try:
             # Build thoughts for debugging
-            thoughts = [
-                f"Model used: {self.config.response_model}",
-                f"Query category: {state.query_category}",
-                f"Original query: {state.question}",
-                f"Rewritten query: {state.rewritten_query}",
-            ]
+            thoughts = {
+                "model_used": self.config.response_model,
+                "query_category": state.query_category,
+                "original_query": state.question,
+                "rewritten_query": state.rewritten_query,
+            }
 
             if state.last_mcp_tool_used:
-                thoughts.append(f"MCP tool used: {state.last_mcp_tool_used}")
+                thoughts["mcp_tool_used"] = state.last_mcp_tool_used
 
             if state.context_docs:
-                thoughts.append(
-                    f"Context documents retrieved: {len(state.context_docs)}"
-                )
+                flattened_docs = []
+                for item in state.context_docs:
+                    if isinstance(item, list):
+                        flattened_docs.extend(item)
+                    else:
+                        flattened_docs.append(item)
+                thoughts["context_docs"] = flattened_docs if flattened_docs else state.context_docs
 
             # Emit metadata
             metadata = {
@@ -2422,7 +2426,7 @@ Consider this when deciding which tool to use for follow-up questions. Most of t
                 "[Save Node] Emitted metadata with thoughts",
                 extra={
                     "conversation_id": self.current_conversation_id,
-                    "thoughts_count": len(thoughts),
+                    "thoughts_keys": list(thoughts.keys()),
                     "blob_urls_count": len(self.current_blob_urls),
                 },
             )
