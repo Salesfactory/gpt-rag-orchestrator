@@ -13,26 +13,13 @@ from azure.storage.blob import (
 )
 from azure.identity import DefaultAzureCredential
 from shared.util import get_conversation
+from shared.clients import get_blob_service_client
 import markdown
 from docx import Document
 from docx.shared import Inches, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.style import WD_STYLE_TYPE
 import io
-
-def get_blob_service_client():
-    """
-    Create and return a BlobServiceClient instance.
-    
-    Returns:
-        BlobServiceClient: Authenticated blob service client
-    """
-    storage_account_url = os.environ.get("AZURE_STORAGE_ACCOUNT_URL")
-    if not storage_account_url:
-        raise ValueError("AZURE_STORAGE_ACCOUNT_URL environment variable not set")
-    
-    credential = DefaultAzureCredential()
-    return BlobServiceClient(account_url=storage_account_url, credential=credential)
 
 def extract_image_urls_from_markdown(text):
     """
