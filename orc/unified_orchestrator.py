@@ -23,7 +23,7 @@ import json
 import asyncio
 import traceback
 from dataclasses import dataclass, field
-from typing import List, Optional, Dict, Any, Generator, Annotated
+from typing import List, Optional, Dict, Any, Annotated
 from dotenv import load_dotenv
 
 from langsmith import traceable
@@ -61,6 +61,7 @@ from shared.prompts import (
     CREATIVE_COPYWRITER_PROMPT,
     QUERY_REWRITING_PROMPT,
     AUGMENTED_QUERY_PROMPT,
+    MCP_SYSTEM_PROMPT
 )
 
 load_dotenv()
@@ -253,26 +254,26 @@ class StateManager:
                 f"cached_files: {len(uploaded_file_refs)}"
             )
 
-            return {
-                "history": history,
-                "code_thread_id": code_thread_id,
-                "last_mcp_tool_used": last_mcp_tool_used,
-                "uploaded_file_refs": uploaded_file_refs,
-                "interaction": conversation_data.get(
-                    "interaction", {}
-                ),  # not used in graph processing, just user information and response time
-            }
+            conversation_data["history"] = history
+            conversation_data["code_thread_id"] = code_thread_id
+            conversation_data["last_mcp_tool_used"] = last_mcp_tool_used
+            conversation_data["uploaded_file_refs"] = uploaded_file_refs
+
+            return conversation_data
 
         except Exception as e:
             logger.error(
                 f"[StateManager] Error loading conversation {conversation_id}: {e}"
             )
             return {
+                "start_date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
                 "history": [],
+                "memory_data": "",
+                "interaction": {},
+                "type": "default",
                 "code_thread_id": None,
                 "last_mcp_tool_used": "",
                 "uploaded_file_refs": [],
-                "interaction": {},
             }
 
     def save_conversation(
@@ -1399,7 +1400,7 @@ class ResponseGenerator:
     @traceable(run_type="llm", name="claude_generate_response")
     async def generate_streaming_response(
         self, system_prompt: str, user_prompt: str
-    ) -> Generator[str, None, None]:
+    ):
         """
         Generate streaming response from Claude with extended thinking.
 
@@ -1774,7 +1775,16 @@ class ConversationOrchestrator:
                 f"__PROGRESS__{json.dumps(error_data)}__PROGRESS__\n"
             )
 
-            self.current_conversation_data = {"history": []}
+            self.current_conversation_data = {
+                "start_date": time.strftime("%Y-%m-%d %H:%M:%S"),
+                "history": [],
+                "memory_data": "",
+                "interaction": {},
+                "type": "default",
+                "code_thread_id": None,
+                "last_mcp_tool_used": "",
+                "uploaded_file_refs": [],
+            }
             return {
                 "code_thread_id": None,
                 "last_mcp_tool_used": "",
@@ -2056,6 +2066,7 @@ class ConversationOrchestrator:
 
         Creates system and user messages for the tool execution loop.
         Adds instructions to force document_chat if documents are uploaded.
+        Includes formatted conversation history and last tool used in system prompt.
 
         Args:
             state: Current conversation state
@@ -2067,8 +2078,38 @@ class ConversationOrchestrator:
             "[Prepare Messages Node] Building initial messages for tool calling"
         )
 
-        # Build system message - todo: improve prompt for tool picking here
-        system_msg = "You are a helpful AI assistant. Use the available tools to help answer the user's question."
+        history = self.current_conversation_data.get("history", [])
+        formatted_history = self.context_builder.format_conversation_history(history)
+        
+        last_tool_used = state.last_mcp_tool_used or ""
+
+        system_msg = MCP_SYSTEM_PROMPT
+        
+        if formatted_history:
+            system_msg += f"""
+
+<----------- CONVERSATION HISTORY ------------>
+Here is the conversation history to help you understand the context of the current question and frame a good query for the tool use.
+
+{formatted_history}
+<----------- END OF CONVERSATION HISTORY ------------>
+"""
+            logger.info(
+                f"[Prepare Messages Node] Added conversation history ({len(history)} messages) to system prompt"
+            )
+
+        if last_tool_used:
+            system_msg += f"""
+
+<----------- PREVIOUS TOOL USED ------------>
+The last tool used in this conversation (if available) was: {last_tool_used}
+
+Consider this when deciding which tool to use for follow-up questions. Most of the time, user would like to continue to use the same tool throughout the session, but it also depends on the query's nuances. 
+<----------- END OF PREVIOUS TOOL USED ------------>
+"""
+            logger.info(
+                f"[Prepare Messages Node] Added last tool used ({last_tool_used}) to system prompt"
+            )
 
         messages = [
             SystemMessage(content=system_msg),
@@ -2634,7 +2675,7 @@ class ConversationOrchestrator:
             raise
 
     @traceable(run_type="llm")
-    def generate_response_with_progress(
+    async def generate_response_with_progress(
         self,
         conversation_id: str,
         question: str,
@@ -2642,7 +2683,7 @@ class ConversationOrchestrator:
         user_settings: Optional[Dict[str, Any]] = None,
         user_timezone: Optional[str] = None,
         blob_names: Optional[List[str]] = None,
-    ) -> Generator[str, None, None]:
+    ):
         """
         Main entry point for generating responses with progress streaming.
 
@@ -2739,32 +2780,11 @@ class ConversationOrchestrator:
                 },
             )
 
-            # Execute graph with async/sync bridge
-            # Since Azure Functions HTTP triggers are synchronous, we need to bridge to async
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+            async for item in self._stream_graph_execution(graph, initial_state, config):
+                for handler in logging.root.handlers:
+                    handler.flush()
 
-            try:
-                # Create async generator for graph execution
-                async_gen = self._stream_graph_execution(graph, initial_state, config)
-
-                # Bridge async generator to sync generator
-                while True:
-                    try:
-                        # Get next item from async generator
-                        item = loop.run_until_complete(async_gen.__anext__())
-
-                        # Force log flush to ensure visibility
-                        for handler in logging.root.handlers:
-                            handler.flush()
-
-                        yield item
-
-                    except StopAsyncIteration:
-                        break
-
-            finally:
-                loop.close()
+                yield item
 
             logger.info(
                 f"[ConversationOrchestrator] Conversation completed successfully "
