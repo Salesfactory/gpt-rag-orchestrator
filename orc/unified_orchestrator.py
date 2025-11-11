@@ -20,7 +20,6 @@ import uuid
 import re
 import time
 import json
-import asyncio
 import traceback
 from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any, Annotated
@@ -50,7 +49,6 @@ from shared.cosmos_db import (
 )
 from shared.util import (
     get_organization,
-    get_setting,
     get_verbosity_instruction,
     get_secret,
 )
@@ -62,7 +60,7 @@ from shared.prompts import (
     CREATIVE_COPYWRITER_PROMPT,
     QUERY_REWRITING_PROMPT,
     AUGMENTED_QUERY_PROMPT,
-    MCP_SYSTEM_PROMPT
+    MCP_SYSTEM_PROMPT,
 )
 
 load_dotenv()
@@ -1092,9 +1090,7 @@ class MCPClient:
 
         async def wrapped_func(**kwargs: Any) -> Any:
             """Execute tool with auto-injected context."""
-            logger.info(
-                f"[MCPClient] Executing {tool_name} with context injection"
-            )
+            logger.info(f"[MCPClient] Executing {tool_name} with context injection")
 
             if tool_name == self.TOOL_AGENTIC_SEARCH:
                 kwargs.update(
@@ -1154,9 +1150,7 @@ class MCPClient:
                 )
 
             elif tool_name == self.TOOL_WEB_FETCH:
-                logger.debug(
-                    "[MCPClient] web_fetch will use query provided by Claude"
-                )
+                logger.debug("[MCPClient] web_fetch will use query provided by Claude")
 
             else:
                 logger.warning(
@@ -1400,7 +1394,7 @@ class ResponseGenerator:
 
     @traceable(run_type="llm", name="claude_generate_response")
     async def generate_streaming_response(
-        self, system_prompt: str, user_prompt: str
+        self, system_prompt: str, user_prompt: str, temperature: Optional[float] = None
     ):
         """
         Generate streaming response from Claude with extended thinking.
@@ -1414,6 +1408,7 @@ class ResponseGenerator:
         Args:
             system_prompt: System prompt
             user_prompt: User prompt
+            temperature: Optional temperature override from user settings
 
         Yields:
             Response tokens (thinking and answer)
@@ -1428,7 +1423,9 @@ class ResponseGenerator:
 
             logger.debug("[ResponseGenerator] Invoking Claude with streaming enabled")
 
-            async for chunk in self.claude_llm.astream(messages):
+            async for chunk in self.claude_llm.astream(
+                messages, temperature=temperature
+            ):
                 if hasattr(chunk, "content") and chunk.content:
                     # Check if this is a thinking token
                     # Claude's extended thinking tokens are typically marked differently
@@ -2008,10 +2005,15 @@ class ConversationOrchestrator:
         """
         log_info("[Prepare Tools Node] Connecting to MCP and building wrapped tools")
 
+        if state.blob_names:
+            message = "Preparing document analysis tools..."
+        else:
+            message = "Preparing tools..."
+
         progress_data = {
             "type": "progress",
             "step": "tool_preparation",
-            "message": "Preparing search tools...",
+            "message": message,
             "progress": 35,
             "timestamp": time.time(),
         }
@@ -2081,16 +2083,16 @@ class ConversationOrchestrator:
 
         history = self.current_conversation_data.get("history", [])
         formatted_history = self.context_builder.format_conversation_history(history)
-        
+
         last_tool_used = state.last_mcp_tool_used or ""
 
         system_msg = MCP_SYSTEM_PROMPT
-        
+
         if formatted_history:
             system_msg += f"""
 
 <----------- CONVERSATION HISTORY ------------>
-Here is the conversation history to help you understand the context of the current question and frame a good query for the tool use.
+Here is the conversation history to help you understand the context of the current question and frame a a relevant query for the tool use.
 
 {formatted_history}
 <----------- END OF CONVERSATION HISTORY ------------>
@@ -2105,7 +2107,8 @@ Here is the conversation history to help you understand the context of the curre
 <----------- PREVIOUS TOOL USED ------------>
 The last tool used in this conversation (if available) was: {last_tool_used}
 
-Consider this when deciding which tool to use for follow-up questions. Most of the time, user would like to continue to use the same tool throughout the session, but it also depends on the query's nuances. 
+Consider this when deciding which tool to use for follow-up questions. Most of the time, user would like to continue to use the same tool throughout the session. 
+If user requests a chart after using the data_analyst tool, always trigger the data_analyst tool again to perform the visualization. Don't ask user for the chart requirements. They don't even know. Just make sure the chart looks clear, accurate, and reflect user's intention.
 <----------- END OF PREVIOUS TOOL USED ------------>
 """
             logger.info(
@@ -2120,6 +2123,40 @@ Consider this when deciding which tool to use for follow-up questions. Most of t
         logger.info(f"[Prepare Messages Node] Created {len(messages)} initial messages")
 
         return {"messages": messages}
+
+    def _get_tool_progress_message(self, tool_name: str, stage: str) -> str:
+        """
+        Get tool-specific progress message for UI.
+
+        Args:
+            tool_name: Name of the MCP tool
+            stage: Stage of execution ('planning' or 'executing')
+
+        Returns:
+            User-friendly progress message
+        """
+        tool_messages = {
+            "agentic_search": {
+                "planning": "Planning knowledge base search...",
+                "executing": "Searching your knowledge base...",
+            },
+            "data_analyst": {
+                "planning": "Planning data analysis...",
+                "executing": "Analyzing your data...",
+            },
+            "web_fetch": {
+                "planning": "Planning web content fetch...",
+                "executing": "Fetching web content...",
+            },
+            "document_chat": {
+                "planning": "Preparing document analysis...",
+                "executing": "Reading your documents...",
+            },
+        }
+
+        return tool_messages.get(tool_name, {}).get(
+            stage, f"{stage.capitalize()} tools..."
+        )
 
     async def _plan_tools_node(self, state: ConversationState) -> Dict[str, Any]:
         """
@@ -2142,7 +2179,7 @@ Consider this when deciding which tool to use for follow-up questions. Most of t
         progress_data = {
             "type": "progress",
             "step": "tool_planning",
-            "message": "Planning search strategy...",
+            "message": "Planning tool strategy...",
             "progress": 45,
             "timestamp": time.time(),
         }
@@ -2176,10 +2213,28 @@ Consider this when deciding which tool to use for follow-up questions. Most of t
             response = await model_with_tools.ainvoke(state.messages)
 
             if hasattr(response, "tool_calls") and response.tool_calls:
+                selected_tools = [
+                    tc.get("name", "unknown") for tc in response.tool_calls
+                ]
                 logger.info(
-                    f"[Plan Tools Node] Claude requested {len(response.tool_calls)} tool calls: "
-                    f"{[tc.get('name', 'unknown') for tc in response.tool_calls]}"
+                    f"[Plan Tools Node] Claude requested {len(response.tool_calls)} tool calls: {selected_tools}"
                 )
+                if selected_tools:
+                    tool_name = selected_tools[0]  # Use first tool for progress message
+                    tool_message = self._get_tool_progress_message(
+                        tool_name, "planning"
+                    )
+                    planning_progress = {
+                        "type": "progress",
+                        "step": "tool_selected",
+                        "message": tool_message,
+                        "progress": 50,
+                        "timestamp": time.time(),
+                        "tool": tool_name,
+                    }
+                    self._progress_queue.append(
+                        f"__PROGRESS__{json.dumps(planning_progress)}__PROGRESS__\n"
+                    )
             else:
                 logger.warning(
                     "[Plan Tools Node] Claude did not request any tools despite available tools. "
@@ -2207,13 +2262,33 @@ Consider this when deciding which tool to use for follow-up questions. Most of t
         """
         log_info("[Execute Tools Node] Executing requested tools")
 
-        progress_data = {
-            "type": "progress",
-            "step": "tool_execution",
-            "message": "Executing search tools...",
-            "progress": 55,
-            "timestamp": time.time(),
-        }
+        # Detect which tool is being executed from the last message
+        tool_name = None
+        if state.messages and len(state.messages) > 0:
+            last_message = state.messages[-1]
+            if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+                tool_name = last_message.tool_calls[0].get("name")
+
+        # Emit tool-specific execution message
+        if tool_name:
+            tool_message = self._get_tool_progress_message(tool_name, "executing")
+            progress_data = {
+                "type": "progress",
+                "step": "tool_execution",
+                "message": tool_message,
+                "progress": 55,
+                "timestamp": time.time(),
+                "tool": tool_name,
+            }
+        else:
+            progress_data = {
+                "type": "progress",
+                "step": "tool_execution",
+                "message": "Executing tools...",
+                "progress": 55,
+                "timestamp": time.time(),
+            }
+
         self._progress_queue.append(
             f"__PROGRESS__{json.dumps(progress_data)}__PROGRESS__\n"
         )
@@ -2248,13 +2323,36 @@ Consider this when deciding which tool to use for follow-up questions. Most of t
         """
         log_info("[Extract Context Node] Extracting context from tool result messages")
 
+        # Detect which tool was executed to show tool-specific processing message
+        tool_name = None
+        for msg in state.messages:
+            if hasattr(msg, "name"):
+                tool_name = msg.name
+                break
+
+        tool_processing_messages = {
+            "agentic_search": "Processing search results...",
+            "data_analyst": "Processing data analysis results...",
+            "web_fetch": "Processing web content...",
+            "document_chat": "Processing document content...",
+        }
+
+        message = (
+            tool_processing_messages.get(tool_name, "Processing results...")
+            if tool_name
+            else "Processing results..."
+        )
+
         progress_data = {
             "type": "progress",
             "step": "context_extraction",
-            "message": "Processing search results...",
+            "message": message,
             "progress": 60,
             "timestamp": time.time(),
         }
+        if tool_name:
+            progress_data["tool"] = tool_name
+
         self._progress_queue.append(
             f"__PROGRESS__{json.dumps(progress_data)}__PROGRESS__\n"
         )
@@ -2354,10 +2452,16 @@ Consider this when deciding which tool to use for follow-up questions. Most of t
             state=state, user_settings=self.current_user_settings
         )
 
+        logger.info(
+            f"[Generate Response Node] Using temperature: {self.config.response_temperature}"
+        )
+
         response_text = ""
         try:
             async for token in self.response_generator.generate_streaming_response(
-                system_prompt=system_prompt, user_prompt=user_prompt
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=self.config.response_temperature,
             ):
                 response_text += token
                 self._progress_queue.append(token)
@@ -2412,7 +2516,9 @@ Consider this when deciding which tool to use for follow-up questions. Most of t
                         flattened_docs.extend(item)
                     else:
                         flattened_docs.append(item)
-                thoughts["context_docs"] = flattened_docs if flattened_docs else state.context_docs
+                thoughts["context_docs"] = (
+                    flattened_docs if flattened_docs else state.context_docs
+                )
 
             # Emit metadata
             metadata = {
@@ -2731,6 +2837,13 @@ Consider this when deciding which tool to use for follow-up questions. Most of t
         self._progress_queue = []
         self.current_question = question  # Store for error handling
 
+        # Override config temperature with user setting if provided
+        if "temperature" in user_settings:
+            self.config.response_temperature = user_settings["temperature"]
+            logger.info(
+                f"[ConversationOrchestrator] Using user temperature: {self.config.response_temperature}"
+            )
+
         try:
             user_id = user_info.get("id")
 
@@ -2785,7 +2898,9 @@ Consider this when deciding which tool to use for follow-up questions. Most of t
                 },
             )
 
-            async for item in self._stream_graph_execution(graph, initial_state, config):
+            async for item in self._stream_graph_execution(
+                graph, initial_state, config
+            ):
                 for handler in logging.root.handlers:
                     handler.flush()
 
@@ -2819,5 +2934,3 @@ Consider this when deciding which tool to use for follow-up questions. Most of t
                 "timestamp": time.time(),
             }
             yield f"__PROGRESS__{json.dumps(error_data)}__PROGRESS__\n"
-
-

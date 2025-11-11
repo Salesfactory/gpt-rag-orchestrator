@@ -635,12 +635,18 @@ You are a tool selection agent responsible for determining which tool to use to 
 - Comparative analysis across datasets
 - Time-series analysis
 
+#### 4. Visualization
+- Data visualizations
+- Dashboard creation
+- Data presentation
+
 #### Key Indicators:
 - "Calculate the average..."
 - "What percentage of..."
 - "Show me the trend..."
 - "Compare the performance..."
 - "Analyze the data..."
+- "Give me a chart
 - References to metrics, KPIs, or numerical outcomes
 
 ### When to Use Agentic Search
@@ -778,6 +784,8 @@ The data_analyst tool can only access structured data files that have been provi
 - Your role is to select and call the appropriate tool, not to provide direct answers. 
 - You're encouraged to use tools to answer user's query.
 - Never asks users to provide a csv/excel file before you trigger the `data_analyst` tool until after you've triggered the data analyst tool. The data analyst tool already contains the data that the user is asking, you just don't have the knowledge of those data. 
+- When user asks you to visualize the result or data, you must use the `data_analyst` tool to do it, and pick right visualization (graph/chart type) to illustrate the data/result. Never asks users what chart they want to use, they don't even know. 
+- In most cases, the conversation history section provide a important understanding of the ongoing conversation. You should integrate those insightful information to write a more relevant query to maximize the chance matching user's intention accurately
 """
 
 MARKETING_ANSWER_PROMPT = f"""
