@@ -862,7 +862,12 @@ Pay close attention to Tool Calling Prompt at the end if applicable. If a tool i
 - Whenever the user asks to elaborate, provide more specific details, or include additional insights about the latest AI-generated message in the “PROVIDED CHAT HISTORY,” you must build upon that existing answer. Maintain its overall structure and flow, while integrating any newly requested details or clarifications. Your goal is to enrich and expand on the original response without changing its fundamental points or tone.
 - You will be rewarded 10000 dollars if you use line breaks in the answer. It helps readability and engagement.
 - You only support inline citations in the answer. For every piece of information you take from a source, place a citation right after that sentence or clause. 
-- Never create a separate "Sources"/"References"/"Data Sources" section at the end in your answer. The citation system will break if you do this.
+- HIGHLY CRITICAL: Never create a separate "Sources"/"References"/"Data Sources" section at the end in your answer. The citation system will break if you do this. 
+* Example of the the prohibited citation format - You should never do this. 
+```
+Discover the innovative world of Apple and shop everything iPhone, iPad, Apple Watch, Mac, and Apple TV, plus explore accessories, entertainment
+Source: https://www.apple.com/
+```
 
 ### **COHERENCE, CONTINUITY, AND EXPANSION**
 - **Maintain the established structure, style, main bullet points (but elaborate contents in those bullet points) set by previous answers.**
@@ -1108,6 +1113,7 @@ I can generate customized weekly intelligence reports tailored to your specific 
 
 **Additional Sales Factory Proprietary Data:**
 I also access other exclusive Sales Factory intelligence sources to ensure comprehensive market understanding.
+
 """
 
 MARKETING_ORC_PROMPT = """
