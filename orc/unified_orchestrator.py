@@ -101,6 +101,7 @@ class ConversationState:
     # Input
     question: str
     blob_names: List[str] = field(default_factory=list)
+    is_data_analyst_mode: bool = False
 
     # Query Processing
     rewritten_query: str = ""
@@ -2052,6 +2053,14 @@ class ConversationOrchestrator:
                 logger.info(
                     f"[Prepare Tools Node] Forced document_chat for {len(state.blob_names)} documents"
                 )
+            # Force data_analyst if data analyst mode is active
+            elif state.is_data_analyst_mode:
+                self.wrapped_tools = [
+                    t for t in self.wrapped_tools if t.name == "data_analyst"
+                ]
+                logger.info(
+                    "[Prepare Tools Node] Forced data_analyst tool (data analyst mode active)"
+                )
 
             logger.info(
                 f"[Prepare Tools Node] Prepared {len(self.wrapped_tools)} tools"
@@ -2206,6 +2215,15 @@ If user requests a chart after using the data_analyst tool, always trigger the d
                 model_with_tools = self.tool_calling_llm.bind_tools(
                     self.wrapped_tools,
                     tool_choice={"type": "tool", "name": "document_chat"},
+                )
+            elif (
+                len(self.wrapped_tools) == 1
+                and self.wrapped_tools[0].name == "data_analyst"
+            ):
+                logger.info("[Plan Tools Node] Forcing data_analyst tool usage")
+                model_with_tools = self.tool_calling_llm.bind_tools(
+                    self.wrapped_tools,
+                    tool_choice={"type": "tool", "name": "data_analyst"},
                 )
             else:
                 model_with_tools = self.tool_calling_llm.bind_tools(self.wrapped_tools)
@@ -2794,6 +2812,7 @@ If user requests a chart after using the data_analyst tool, always trigger the d
         user_settings: Optional[Dict[str, Any]] = None,
         user_timezone: Optional[str] = None,
         blob_names: Optional[List[str]] = None,
+        is_data_analyst_mode: Optional[bool] = None,
     ):
         """
         Main entry point for generating responses with progress streaming.
@@ -2812,6 +2831,7 @@ If user requests a chart after using the data_analyst tool, always trigger the d
             user_settings: User preferences (temperature, model, detail_level)
             user_timezone: User's timezone
             blob_names: List of uploaded file names
+            is_data_analyst_mode: Whether data analyst mode is active
 
         Yields:
             Progress updates (__PROGRESS__), metadata (__METADATA__), and response tokens
@@ -2820,6 +2840,7 @@ If user requests a chart after using the data_analyst tool, always trigger the d
         conversation_id = conversation_id or str(uuid.uuid4())
         blob_names = blob_names or []
         user_settings = user_settings or {}
+        is_data_analyst_mode = is_data_analyst_mode or False
 
         log_info(f"[ConversationOrchestrator] Starting conversation: {conversation_id}")
         log_info(f"[ConversationOrchestrator] Question: {question[:100]}...")
@@ -2880,7 +2901,11 @@ If user requests a chart after using the data_analyst tool, always trigger the d
                 },
             )
 
-            initial_state = ConversationState(question=question, blob_names=blob_names)
+            initial_state = ConversationState(
+                question=question,
+                blob_names=blob_names,
+                is_data_analyst_mode=is_data_analyst_mode
+            )
 
             # Create memory saver for checkpointing
             memory = MemorySaver()
