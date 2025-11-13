@@ -64,6 +64,7 @@ from shared.prompts import (
     CREATIVE_COPYWRITER_PROMPT,
     QUERY_REWRITING_PROMPT,
     AUGMENTED_QUERY_PROMPT,
+    FA_HELPDESK_PROMPT,
     MCP_SYSTEM_PROMPT,
 )
 
@@ -842,6 +843,7 @@ class QueryPlanner:
         - Marketing Plan
         - Brand Positioning Statement
         - Creative Copywriter
+        - Help Desk
         - General
 
         Args:
@@ -863,6 +865,7 @@ class QueryPlanner:
 
             - Creative Brief
             - Marketing Plan
+            - Help Desk
             - Brand Positioning Statement
             - Creative Copywriter
             - General
@@ -875,7 +878,8 @@ class QueryPlanner:
             - **Creative Brief**: Look for project kickoffs, campaign overviews, client objectives, audience targeting, timelines, deliverables, or communication goals.
             - **Marketing Plan**: Look for references to strategy, goals, budget, channels, timelines, performance metrics, or ROI.
             - **Brand Positioning Statement**: Watch for messages about defining brand essence, values, personality, competitive differentiation, or target audience perception.
-            - **Creative Copywriter**: Use this category when the user asks for help creating or refining marketing text. This includes taglines, headlines, ad copy, email subject lines, social captions, website copy, or product descriptions. Trigger this if the user is brainstorming, writing, or editing text with a creative, promotional purpose.
+            - **Creative Copywriter**: Use this category when users ask meta-questions about your fundamental functions, purpose, or identity. This applies to inquiries such as "What can you do?", "What are your capabilities?", or "How do you work?". This category is distinct from standard user commands or requests for technical support.
+            - **Help Desk**: Use this category when users ask "What can you do?", "What are your capabilities?", or similar questions about your functions.
             - **General**: If the input lacks context, doesn't relate to marketing deliverables, or is unclear or unrelated to the above.
 
             If the question or context is not clearly related to any of the above categories, always return "General".
@@ -1328,6 +1332,7 @@ class ResponseGenerator:
             "Marketing Plan": MARKETING_PLAN_PROMPT,
             "Brand Positioning Statement": BRAND_POSITION_STATEMENT_PROMPT,
             "Creative Copywriter": CREATIVE_COPYWRITER_PROMPT,
+            "Help Desk": FA_HELPDESK_PROMPT,
         }
 
         if state.query_category in category_prompts:
