@@ -1759,7 +1759,7 @@ class ConversationOrchestrator:
 
             return {
                 "success": complete_data.get("success", False),
-                "thread_id": complete_data.get("container_id", ""),
+                "code_thread_id": complete_data.get("container_id", ""),
                 "images_processed": self._transform_artifacts_to_images(
                     complete_data.get("artifacts", [])
                 ),
