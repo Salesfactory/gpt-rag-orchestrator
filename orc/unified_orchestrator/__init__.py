@@ -31,9 +31,12 @@ Example usage:
 
 from .orchestrator import ConversationOrchestrator
 from .models import ConversationState, OrchestratorConfig
+from .enums import VerbosityLevel, VERBOSITY_PROMPTS
 
 __all__ = [
     "ConversationOrchestrator",
     "ConversationState",
     "OrchestratorConfig",
+    "VerbosityLevel",
+    "VERBOSITY_PROMPTS",
 ]
