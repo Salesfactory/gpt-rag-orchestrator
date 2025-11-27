@@ -984,7 +984,17 @@ def create_organization_usage(organization_id, period_start, period_end):
             usage_item = {
                 "id": str(uuid.uuid4()),
                 "organization_id": organization_id,
-                "current_usage": 0,
+                "currentUsage": {
+                "conversationMinutes": 0,
+                "pages": 0,
+                "documents": 0,
+                "spreadsheets": 0,
+                "scrapingUrls": 0,
+                "scrapingSites": 0,
+                "reports": 0,
+                "images": 0,
+                "users": 0
+                },
                 "usage_type": "",
                 "periodStart": period_start,
                 "periodEnd": period_end,
