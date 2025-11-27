@@ -943,6 +943,66 @@ def create_organization_without_subscription(user_id, organization_name):
     return result
 
 
+def create_organization_usage(organization_id, period_start, period_end):
+    if not organization_id:
+        return {"error": "Organization ID not found."}
+
+    logging.info(
+        f"[create_organization_usage] Processing usage record for organization: {organization_id}"
+    )
+
+    credential = DefaultAzureCredential()
+    db_client = CosmosClient(AZURE_DB_URI, credential, consistency_level="Session")
+    db = db_client.get_database_client(database=AZURE_DB_NAME)
+    container = db.get_container_client("organizationUsage")
+
+    try:
+        # Check if usage record already exists
+        query = "SELECT * FROM c WHERE c.organization_id = @organization_id"
+        parameters = [{"name": "@organization_id", "value": organization_id}]
+        results = list(
+            container.query_items(
+                query=query, parameters=parameters, enable_cross_partition_query=True
+            )
+        )
+
+        if results:
+            usage_item = results[0]
+            usage_item["periodStart"] = period_start
+            usage_item["periodEnd"] = period_end
+            # If updating the subscription/period, we might want to reset usage or keep it?
+            # The request says "include ... a current usage with a 0 value".
+            # We will assume updating implies starting/refreshing the period usage.
+            usage_item["current_usage"] = 0 
+            usage_item["updatedAt"] = int(datetime.now(timezone.utc).timestamp())
+            
+            container.replace_item(item=usage_item["id"], body=usage_item)
+            logging.info(
+                f"[create_organization_usage] Successfully updated usage record for organization {organization_id}"
+            )
+        else:
+            usage_item = {
+                "id": str(uuid.uuid4()),
+                "organization_id": organization_id,
+                "current_usage": 0,
+                "usage_type": "",
+                "periodStart": period_start,
+                "periodEnd": period_end,
+                "createdAt": int(datetime.now(timezone.utc).timestamp()),
+                "metadata": {},
+            }
+            container.create_item(body=usage_item)
+            logging.info(
+                f"[create_organization_usage] Successfully created usage record for organization {organization_id}"
+            )
+        return {"success": True}
+    except Exception as e:
+        logging.error(
+            f"[create_organization_usage] Failed to process usage record: {str(e)}"
+        )
+        return {"error": str(e)}
+
+
 def update_organization_subscription(
     user_id,
     organization_id,
@@ -980,6 +1040,9 @@ def update_organization_subscription(
         logging.info(
             f"[util__module] Successfully created new organization, adding organizationId to user {user_id}"
         )
+        create_organization_usage(
+            result["id"], int(datetime.now(timezone.utc).timestamp()), expiration_date
+        )
         try:
             container = db.get_container_client("users")
             user = container.read_item(item=user_id, partition_key=user_id)
@@ -1010,6 +1073,11 @@ def update_organization_subscription(
                 container.replace_item(item=organization["id"], body=organization)
                 logging.info(
                     f"Successfully updated suscription information for organization {organization_id}"
+                )
+                create_organization_usage(
+                    organization["id"],
+                    int(datetime.now(timezone.utc).timestamp()),
+                    expiration_date,
                 )
             except Exception as e:
                 logging.error(
