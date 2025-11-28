@@ -22,6 +22,7 @@ from shared.util import (
     update_subscription_logs,
     updateExpirationDate,
     trigger_indexer_with_retry,
+    reset_usage_counters,
 )
 
 from orc import ConversationOrchestrator, get_settings
@@ -301,7 +302,6 @@ async def webhook(req: Request) -> Response:
                 status_code=500,
             )
     elif event["type"] == "customer.subscription.updated":
-        print("  Webhook received!", event["type"])
         subscriptionId = event["data"]["object"]["id"]
         status = event["data"]["object"]["status"]
         expirationDate = event["data"]["object"]["current_period_end"]
@@ -461,6 +461,55 @@ async def webhook(req: Request) -> Response:
                 media_type="application/json",
                 status_code=500,
             )
+
+    elif event["type"] == "invoice.payment_succeeded":
+        print("  Webhook received!", event["type"])
+        subscriptionId = event["data"]["object"]["subscription"]
+        billing_reason = event["data"]["object"]["billing_reason"]
+        
+        # Check if this is a subscription renewal (not the first payment)
+        if billing_reason == "subscription_cycle":
+            try:
+                logging.info(
+                    f"Processing subscription renewal for subscription: {subscriptionId}"
+                )
+                result = reset_usage_counters(subscriptionId)
+                
+                if "error" in result:
+                    logging.error(
+                        f"Failed to reset usage counters: {result['error']}"
+                    )
+                    return Response(
+                        content=json.dumps({
+                            "error": f"Error resetting usage counters: {result['error']}"
+                        }),
+                        media_type="application/json",
+                        status_code=500,
+                    )
+                
+                logging.info(
+                    f"Successfully reset usage counters for subscription {subscriptionId}: "
+                    f"{result.get('message', 'Success')}"
+                )
+                
+                # Optionally log the renewal to audit logs
+                handle_subscription_logs(subscriptionId, "renewed")
+                
+            except Exception as e:
+                logging.exception("[webbackend] exception in /api/webhook")
+                return Response(
+                    content=json.dumps({
+                        "error": f"Error in webhook execution: {str(e)}"
+                    }),
+                    media_type="application/json",
+                    status_code=500,
+                )
+        else:
+            logging.info(
+                f"Invoice payment succeeded for subscription {subscriptionId}, "
+                f"billing reason: {billing_reason} (not a renewal)"
+            )
+    
     else:
         # Unexpected event type
         print(f"Unexpected event type: {event['type']}")
