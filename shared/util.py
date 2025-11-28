@@ -6,6 +6,7 @@ load_dotenv()
 import re
 import json
 import asyncio
+import calendar
 import logging
 import os
 import requests
@@ -1575,3 +1576,152 @@ def get_verbosity_instruction(
             f"Valid levels: {[level.value for level in VerbosityLevel]}"
         )
         return VERBOSITY_PROMPTS[default]
+
+
+def reset_usage_counters(subscription_id):
+    """
+    Resets usage counters for an organization when their subscription renews.
+    
+    Parameters:
+    - subscription_id (str): Stripe subscription ID.
+    
+    Returns:
+    - dict: Success or error response
+    """
+    if not subscription_id:
+        return {"error": "Subscription ID not provided."}
+    
+    logging.info(f"Resetting usage counters for subscription: {subscription_id}")
+    
+    try:
+        credential = DefaultAzureCredential()
+        db_client = CosmosClient(AZURE_DB_URI, credential, consistency_level="Session")
+        db = db_client.get_database_client(database=AZURE_DB_NAME)
+        
+        # First, get the organization ID from the subscription ID
+        organizations_container = db.get_container_client("organizations")
+        org_query = "SELECT * FROM c WHERE c.subscriptionId = @subscription_id"
+        org_parameters = [{"name": "@subscription_id", "value": subscription_id}]
+        org_result = list(
+            organizations_container.query_items(
+                query=org_query, 
+                parameters=org_parameters, 
+                enable_cross_partition_query=True
+            )
+        )
+        
+        if not org_result:
+            logging.warning(f"No organization found with subscription ID: {subscription_id}")
+            return {"error": "Organization not found for this subscription ID."}
+        
+        organization = org_result[0]
+        organization_id = organization.get("id")
+        
+        if not organization_id:
+            logging.error(f"Organization ID not found in organization record")
+            return {"error": "Organization ID not found."}
+        
+        # Now query the organizationsUsage container
+        usage_container = db.get_container_client("organizationsUsage")
+        usage_query = "SELECT * FROM c WHERE c.organizationId = @organization_id"
+        usage_parameters = [{"name": "@organization_id", "value": organization_id}]
+        usage_result = list(
+            usage_container.query_items(
+                query=usage_query,
+                parameters=usage_parameters,
+                enable_cross_partition_query=True
+            )
+        )
+        
+        if not usage_result:
+            logging.warning(
+                f"No usage record found for organization ID: {organization_id}. Creating new record."
+            )
+            # Create a new usage record if it doesn't exist
+            now = datetime.now(timezone.utc)
+            new_usage_record = {
+                "id": str(uuid.uuid4()),
+                "organizationId": organization_id,
+                "currentUsage": {
+                    "conversationMinutes": 0,
+                    "pages": 0,
+                    "documents": 0,
+                    "spreadsheets": 0,
+                    "scrapingUrls": 0,
+                    "scrapingSites": 0,
+                    "reports": 0,
+                    "images": 0,
+                    "users": 0
+                },
+                "periodStart": now.isoformat(),
+                "periodEnd": (now.replace(month=now.month + 1) if now.month < 12 
+                             else now.replace(year=now.year + 1, month=1)).isoformat(),
+                "lastRecordedAt": now.isoformat(),
+                "metadata": {},
+                "createdAt": now.isoformat()
+            }
+            usage_container.create_item(body=new_usage_record)
+            logging.info(f"Created new usage record for organization {organization_id}")
+            return {
+                "success": True,
+                "message": f"Created new usage record for organization {organization_id}"
+            }
+        
+        # Update existing usage record
+        usage_record = usage_result[0]
+        now = datetime.now(timezone.utc)
+        
+        # Calculate next period end (roughly 30 days from now, or next month)
+        try:
+            if now.month == 12:
+                next_period_end = now.replace(year=now.year + 1, month=1)
+            else:
+                next_period_end = now.replace(month=now.month + 1)
+        except ValueError:
+            # Handle edge case for days that don't exist in target month (e.g., Jan 31 -> Feb 31)
+            next_month = now.month + 1 if now.month < 12 else 1
+            next_year = now.year if now.month < 12 else now.year + 1
+            last_day = calendar.monthrange(next_year, next_month)[1]
+            next_period_end = now.replace(
+                year=next_year, 
+                month=next_month, 
+                day=min(now.day, last_day)
+            )
+        
+        # Reset all usage counters to 0
+        usage_record["currentUsage"] = {
+            "conversationMinutes": 0,
+            "pages": 0,
+            "documents": 0,
+            "spreadsheets": 0,
+            "scrapingUrls": 0,
+            "scrapingSites": 0,
+            "reports": 0,
+            "images": 0,
+            "users": 0
+        }
+        
+        # Update period dates
+        usage_record["periodStart"] = now.isoformat()
+        usage_record["periodEnd"] = next_period_end.isoformat()
+        usage_record["lastRecordedAt"] = now.isoformat()
+        
+        # Replace the item in Cosmos DB
+        usage_container.replace_item(item=usage_record["id"], body=usage_record)
+        
+        logging.info(
+            f"Successfully reset usage counters for organization {organization_id} "
+            f"(subscription {subscription_id})"
+        )
+        
+        return {
+            "success": True,
+            "message": f"Usage counters reset for organization {organization_id}",
+            "organizationId": organization_id,
+            "periodStart": usage_record["periodStart"],
+            "periodEnd": usage_record["periodEnd"]
+        }
+        
+    except Exception as e:
+        logging.error(f"Error resetting usage counters: {str(e)}")
+        return {"error": f"Failed to reset usage counters: {str(e)}"}
