@@ -37,9 +37,12 @@ DEFAULT_MAX_BREADTH = 15
 # Use DFApp for Durable Functions support
 app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
 
-# Must import AFTER app is created to avoid circular imports
+# Must import AFTER app is created to register durable functions
 import report_worker.activities  # GenerateReportActivity, LoadScheduledJobsActivity
-
+import orchestrators.main_orchestrator 
+import orchestrators.tenant_orchestrator  
+import orchestrators.oneshot_orchestrator  
+import entities.rate_limiter_entity  
 ENABLE_LEGACY = os.getenv("ENABLE_LEGACY_QUEUE_WORKER") == "1"
 
 if ENABLE_LEGACY:
