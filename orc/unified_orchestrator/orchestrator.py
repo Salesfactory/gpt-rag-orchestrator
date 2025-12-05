@@ -15,7 +15,6 @@ import traceback
 import aiohttp
 import asyncio
 from typing import List, Optional, Dict, Any
-from datetime import datetime, timezone
 
 from langsmith import traceable
 from langgraph.checkpoint.memory import MemorySaver
@@ -387,7 +386,7 @@ class ConversationOrchestrator:
                                     )
                                     raise RuntimeError(f"Streaming error: {error_msg}")
 
-                            except json.JSONDecodeError as e:
+                            except json.JSONDecodeError:
                                 logger.warning(
                                     f"[StreamDataAnalyst] Failed to parse chunk: {json_str[:100]}"
                                 )

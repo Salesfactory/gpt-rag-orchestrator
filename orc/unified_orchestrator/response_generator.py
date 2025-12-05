@@ -11,7 +11,6 @@ Responsibilities:
 - Sanitize responses (remove storage URLs)
 """
 
-import re
 import logging
 from typing import Dict, Any
 
