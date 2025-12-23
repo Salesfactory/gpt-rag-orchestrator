@@ -15,7 +15,6 @@ import traceback
 import aiohttp
 import asyncio
 from typing import List, Optional, Dict, Any
-from datetime import datetime, timezone
 
 from langsmith import traceable
 from langgraph.checkpoint.memory import MemorySaver
@@ -26,9 +25,9 @@ from langchain_core.messages import SystemMessage, HumanMessage, ToolMessage
 from langchain_openai import AzureChatOpenAI
 from langchain_anthropic import ChatAnthropic
 
-from shared.cosmos_db import store_agent_error
+from shared.cosmos_db import CosmosDBClient
 from shared.util import get_organization, get_secret
-from shared.prompts import MCP_SYSTEM_PROMPT
+from shared.prompts import MCP_SYSTEM_PROMPT, CONVERSATION_SUMMARIZATION_PROMPT
 
 from .models import ConversationState, OrchestratorConfig
 from .state_manager import StateManager
@@ -73,6 +72,7 @@ class ConversationOrchestrator:
         self.organization_id = organization_id
         self.config = config or OrchestratorConfig()
         self.storage_url = os.environ.get("AZURE_STORAGE_ACCOUNT_URL")
+        self.cosmos_client = CosmosDBClient()
 
         logger.info(
             f"[ConversationOrchestrator] Initializing for org: {organization_id}"
@@ -137,7 +137,7 @@ class ConversationOrchestrator:
             Configured AzureChatOpenAI instance
         """
         logger.info(
-            "[ConversationOrchestrator] Initializing planning LLM (Azure OpenAI)"
+            "[ConversationOrchestrator] Initializing planning LLM"
         )
 
         endpoint = os.getenv("O1_ENDPOINT")
@@ -248,7 +248,7 @@ class ConversationOrchestrator:
                 error_data["error_type"] = context
                 error_data["stack_trace"] = traceback.format_exc()
 
-            store_agent_error(**error_data)
+            self.cosmos_client.store_agent_error(**error_data)
             logger.debug(f"[ErrorHandler] Stored error for context: {context}")
 
         except Exception as store_error:
@@ -387,7 +387,7 @@ class ConversationOrchestrator:
                                     )
                                     raise RuntimeError(f"Streaming error: {error_msg}")
 
-                            except json.JSONDecodeError as e:
+                            except json.JSONDecodeError:
                                 logger.warning(
                                     f"[StreamDataAnalyst] Failed to parse chunk: {json_str[:100]}"
                                 )
@@ -464,10 +464,12 @@ class ConversationOrchestrator:
             code_thread_id = conversation_data.get("code_thread_id")
             last_mcp_tool_used = conversation_data.get("last_mcp_tool_used", "")
             uploaded_file_refs = conversation_data.get("uploaded_file_refs", [])
+            conversation_summary = conversation_data.get("conversation_summary", "")
 
             logger.info(
                 f"[Initialize Node] Loaded conversation with code_thread_id: {code_thread_id}, "
-                f"last_tool: {last_mcp_tool_used}, cached_files: {len(uploaded_file_refs)}",
+                f"last_tool: {last_mcp_tool_used}, cached_files: {len(uploaded_file_refs)}, "
+                f"summary_words: {len(conversation_summary.split()) if conversation_summary else 0}",
                 extra={
                     "conversation_id": self.current_conversation_id,
                     "code_thread_id": code_thread_id,
@@ -483,6 +485,7 @@ class ConversationOrchestrator:
                 "code_thread_id": code_thread_id,
                 "last_mcp_tool_used": last_mcp_tool_used,
                 "uploaded_file_refs": uploaded_file_refs,
+                "conversation_summary": conversation_summary,
             }
 
         except Exception as e:
@@ -517,11 +520,13 @@ class ConversationOrchestrator:
                 "code_thread_id": None,
                 "last_mcp_tool_used": "",
                 "uploaded_file_refs": [],
+                "conversation_summary": "",
             }
             return {
                 "code_thread_id": None,
                 "last_mcp_tool_used": "",
                 "uploaded_file_refs": [],
+                "conversation_summary": "",
             }
 
 
@@ -672,17 +677,6 @@ class ConversationOrchestrator:
         log_info("[Categorize Node] Starting categorization")
 
         try:
-            progress_data = {
-                "type": "progress",
-                "step": "categorize",
-                "message": "Categorizing your request...",
-                "progress": 30,
-                "timestamp": time.time(),
-            }
-            self._progress_queue.append(
-                f"__PROGRESS__{json.dumps(progress_data)}__PROGRESS__\n"
-            )
-
             categorize_result = await self.query_planner.categorize_query(
                 state=state,
                 conversation_data=self.current_conversation_data,
@@ -715,18 +709,6 @@ class ConversationOrchestrator:
 
             # Store error in Cosmos DB
             self._store_error(e, "query_categorization_error")
-
-            # Emit warning progress
-            warning_data = {
-                "type": "progress",
-                "step": "categorize",
-                "message": "Using general category (categorization failed)...",
-                "progress": 30,
-                "timestamp": time.time(),
-            }
-            self._progress_queue.append(
-                f"__PROGRESS__{json.dumps(warning_data)}__PROGRESS__\n"
-            )
 
             # Fallback to General category
             return {
@@ -843,8 +825,21 @@ class ConversationOrchestrator:
         formatted_history = self.context_builder.format_conversation_history(history)
 
         last_tool_used = state.last_mcp_tool_used or ""
+        conversation_summary = state.conversation_summary
 
         system_msg = MCP_SYSTEM_PROMPT
+
+        if conversation_summary:
+            system_msg += f"""
+
+    <----------- CONVERSATION SUMMARY ------------>
+    Here is the summary of the conversation so far:
+    {conversation_summary}
+    <----------- END OF CONVERSATION SUMMARY ------------>
+    """
+            logger.info(
+                f"[Prepare Messages Node] Added conversation summary ({len(conversation_summary.split())} words) to system prompt"
+            )
 
         if formatted_history:
             system_msg += f"""
@@ -1258,6 +1253,160 @@ class ConversationOrchestrator:
 
 
 
+    async def _summarize_and_save_background(
+        self,
+        question: str,
+        answer: str,
+        existing_summary: str,
+    ) -> None:
+        """
+        Background task to summarize conversation and save to Cosmos DB.
+
+        Args:
+            question: The user's question
+            answer: The generated response
+            existing_summary: The existing conversation summary (if any)
+        """
+        try:
+            logger.info(
+                "[Summarizer] Starting background summarization",
+                extra={"conversation_id": self.current_conversation_id},
+            )
+
+            prompt = CONVERSATION_SUMMARIZATION_PROMPT.format(
+                existing_summary=existing_summary or "(No existing summary)",
+                question=question,
+                answer=answer,
+            )
+
+            response = await self.planning_llm.ainvoke(prompt)
+            summary = response.content.strip()
+
+            logger.info(
+                f"[Summarizer] Completed summarization ({len(summary.split())} words)",
+                extra={"conversation_id": self.current_conversation_id},
+            )
+
+            self.current_conversation_data["conversation_summary"] = summary
+            self.cosmos_client.update_conversation_data(
+                conversation_id=self.current_conversation_id,
+                user_id=self.current_user_info.get("id"),
+                conversation_data=self.current_conversation_data,
+            )
+            logger.info(
+                "[Summarizer] Saved summary to Cosmos DB",
+                extra={"conversation_id": self.current_conversation_id},
+            )
+
+        except Exception as e:
+            logger.error(
+                f"[Summarizer] Background summarization failed: {e}",
+                extra={
+                    "conversation_id": self.current_conversation_id,
+                    "error_type": type(e).__name__,
+                },
+                exc_info=True,
+            )
+
+
+    async def _user_credit_tracking_node(self, state: ConversationState) -> Dict[str, Any]:
+        """
+        User Credit Tracking node: Track and update user credit consumption.
+        Args:
+            self: ConversationOrchestrator instance
+            state: Current conversation state
+
+        Returns:
+            Empty dictionary (no state updates)
+        """
+        logger.info(
+            f"[User Credit Tracking Node] Starting credit tracking for "
+            f"mode: {state.last_mcp_tool_used}, category: {state.query_category}"
+        )
+
+        try:
+            credit_table_result = self.cosmos_client.get_credit_table()
+
+            if not credit_table_result:
+                logger.warning(
+                    "[User Credit Tracking Node] Failed to retrieve credit table, skipping credit tracking"
+                )
+                return {}
+
+            credit_table = credit_table_result[0]
+
+            mode_used = state.last_mcp_tool_used
+            tool_used = state.query_category
+
+            mode_cost = 0
+            tool_cost = 0
+
+            # assumed this is the way we define the schema in cosmos
+            mode_cost = credit_table["mode"].get(mode_used, 0)
+            logger.debug(
+                f"[User Credit Tracking Node] Mode '{mode_used}' cost: {mode_cost}"
+            )
+
+
+            tool_cost = credit_table["tools"].get(tool_used, 0)
+            logger.debug(
+                f"[User Credit Tracking Node] Tool '{tool_used}' cost: {tool_cost}"
+            )
+
+            total_cost = mode_cost + tool_cost
+
+            logger.info(
+                f"[User Credit Tracking Node] Total credit cost: {total_cost} "
+                f"(mode: {mode_cost}, tool: {tool_cost})"
+            )
+
+            if total_cost == 0:
+                logger.info(
+                    "[User Credit Tracking Node] No credit cost, skipping update"
+                )
+                return {}
+
+            org_id = self.organization_id
+            user_id = self.current_user_info.get("id")
+
+            if not user_id:
+                logger.warning(
+                    "[User Credit Tracking Node] No user_id available, skipping credit update"
+                )
+                return {}
+
+            result = self.cosmos_client.update_user_credit(
+                organization_id=org_id,
+                user_id=user_id,
+                credit_consumed=total_cost
+            )
+
+            if result:
+                logger.info(
+                    f"[User Credit Tracking Node] Successfully updated credit for user {user_id}, "
+                    f"consumed: {total_cost}"
+                )
+            else:
+                logger.error(
+                    f"[User Credit Tracking Node] Failed to update credit for user {user_id}"
+                )
+
+        except Exception as e:
+            logger.error(
+                f"[User Credit Tracking Node] Error during credit tracking: {str(e)}",
+                extra={
+                    "conversation_id": self.current_conversation_id,
+                    "user_id": self.current_user_info.get("id") if self.current_user_info else None,
+                    "organization_id": self.organization_id,
+                    "error_type": type(e).__name__,
+                },
+                exc_info=True,
+            )
+            # Don't fail the workflow, credit tracking is non-critical
+
+        return {}
+
+
     async def _save_node(self, state: ConversationState) -> Dict[str, Any]:
         """
         Save node: Persist conversation to Cosmos DB.
@@ -1265,6 +1414,7 @@ class ConversationOrchestrator:
         Updates conversation history with user question and assistant response.
         Includes thoughts and metadata in assistant message. Serializes LangGraph
         memory and saves to Cosmos DB. Emits completion progress (100%).
+        Also kicks off background summarization task.
 
         Args:
             self: ConversationOrchestrator instance
@@ -1368,6 +1518,14 @@ class ConversationOrchestrator:
         self._progress_queue.append(
             f"__PROGRESS__{json.dumps(progress_data)}__PROGRESS__\n"
         )
+        asyncio.create_task(
+            self._summarize_and_save_background(
+                question=state.question,
+                answer=self.current_response_text,
+                existing_summary=state.conversation_summary,
+            )
+        )
+        logger.info("[Save Node] Kicked off background summarization task")
 
         # Return empty dict (no state updates)
         return {}
@@ -1408,10 +1566,11 @@ class ConversationOrchestrator:
         graph.add_node("execute_tools", self._execute_tools_node)
         graph.add_node("extract_context", self._extract_context_node)
         graph.add_node("generate_response", self._generate_response_node)
-        graph.add_node("save", self._save_node)
+        graph.add_node("save_conversation", self._save_node)
+        graph.add_node("user_credit_tracking", self._user_credit_tracking_node)
 
         logger.debug(
-            "[ConversationOrchestrator] Added 11 nodes to graph",
+            "[ConversationOrchestrator] Added 12 nodes to graph",
             extra={"conversation_id": self.current_conversation_id},
         )
 
@@ -1428,9 +1587,10 @@ class ConversationOrchestrator:
         # Define edges
         graph.add_edge(START, "initialize")
         graph.add_edge("initialize", "rewrite")
+        graph.add_edge("initialize", "categorize")
         graph.add_edge("rewrite", "augment")
-        graph.add_edge("augment", "categorize")
-        graph.add_edge("categorize", "prepare_tools")
+        graph.add_edge("categorize", "augment")
+        graph.add_edge("augment", "prepare_tools")
         graph.add_edge("prepare_tools", "prepare_messages")
         graph.add_edge("prepare_messages", "plan_tools")
 
@@ -1447,11 +1607,12 @@ class ConversationOrchestrator:
         # After tool execution, go directly to context extraction
         graph.add_edge("execute_tools", "extract_context")
         graph.add_edge("extract_context", "generate_response")
-        graph.add_edge("generate_response", "save")
-        graph.add_edge("save", END)
+        graph.add_edge("generate_response", "save_conversation")
+        graph.add_edge("save_conversation", "user_credit_tracking")
+        graph.add_edge("user_credit_tracking", END)
 
         logger.debug(
-            "[ConversationOrchestrator] Defined graph edges with single-pass tool execution",
+            "[ConversationOrchestrator] Defined graph edges with single-pass tool execution and credit tracking",
             extra={"conversation_id": self.current_conversation_id},
         )
         compiled_graph = graph.compile(checkpointer=memory)
@@ -1662,7 +1823,9 @@ class ConversationOrchestrator:
             user_id = user_info.get("id")
 
             self.state_manager = StateManager(
-                organization_id=self.organization_id, user_id=user_id
+                organization_id=self.organization_id,
+                user_id=user_id,
+                cosmos_client=self.cosmos_client
             )
 
             self.context_builder = ContextBuilder(
