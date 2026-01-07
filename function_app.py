@@ -38,7 +38,7 @@ DEFAULT_MAX_BREADTH = 15
 app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
 
 # Must import AFTER app is created to register durable functions
-import report_worker.activities  # GenerateReportActivity, LoadScheduledJobsActivity
+import report_worker.activities  # GenerateReportActivity
 import orchestrators.main_orchestrator 
 import orchestrators.tenant_orchestrator  
 import orchestrators.oneshot_orchestrator  
@@ -107,6 +107,17 @@ if ENABLE_LEGACY:
                 )
 
             # Don't re-raise - let message go to poison queue
+
+@app.route(route="health", methods=[func.HttpMethod.GET])
+async def health_check(req: Request) -> Response:
+    """
+    Health check endpoint for Azure App Service health monitoring.
+    pinged by Azure's health check feature at 1-minute intervals
+
+    Returns:
+        200 OK when the application is healthy
+    """
+    return Response("OK", status_code=200, media_type="text/plain")
 
 @app.route(route="start-orch", methods=[func.HttpMethod.POST])
 @app.durable_client_input(client_name="client")
