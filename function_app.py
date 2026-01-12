@@ -188,7 +188,7 @@ async def stream_response(req: Request) -> StreamingResponse:
 
         logging.info(
             f"[FunctionApp] Retrieved organizationId: {organization_id} from user data"
-        )
+        ) 
 
     # print configuration settings for the user
     settings = get_settings(client_principal)
@@ -237,7 +237,7 @@ def blob_event_grid_trigger(event: func.EventGridEvent):
     Filtering is handled at the infrastructure level.
     """
     try:
-        indexer_name = f'{os.getenv("AZURE_AI_SEARCH_INDEX_NAME")}-test-indexer'
+        indexer_name = f'{os.getenv("AZURE_AI_SEARCH_INDEX_NAME")}-indexer'
         logging.info(f"[blob_event_grid] Event received, triggering indexer '{indexer_name}'")
 
         indexer_success = trigger_indexer_with_retry(indexer_name, event.subject)
