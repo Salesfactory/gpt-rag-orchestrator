@@ -229,7 +229,7 @@ async def stream_response(req: Request) -> StreamingResponse:
             media_type="application/json",
         )
 
-@app.function_name(name="blob_event_grid_trigger")
+@app.function_name(name="EventGridTrigger")
 @app.event_grid_trigger(arg_name="event")
 def blob_event_grid_trigger(event: func.EventGridEvent):
     """
