@@ -108,7 +108,7 @@ if ENABLE_LEGACY:
 
             # Don't re-raise - let message go to poison queue
 
-@app.route(route="health", methods=[func.HttpMethod.GET])
+@app.route(route="health", methods=[func.HttpMethod.GET], auth_level=func.AuthLevel.ANONYMOUS)
 async def health_check(req: Request) -> Response:
     """
     Health check endpoint for Azure App Service health monitoring.
