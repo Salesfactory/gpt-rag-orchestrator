@@ -6,7 +6,7 @@ products, and competitors from their respective Cosmos containers and creates al
 necessary report jobs automatically.
 """
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 load_dotenv()

@@ -5,12 +5,12 @@ UTC_TODAY = UTC_NOW.date()
 UTC_TODAY_STR = UTC_NOW.strftime('%Y-%m-%d')
 UTC_TIME_STR = UTC_NOW.strftime('%H:%M:%S')
 # [START: custom product analysis prompt]
-product_analysis_intro = f"""
+product_analysis_intro = """
 You are an Expert Product Manager and Market Analyst. Your job is to conduct a thorough, monthly product performance analysis for a list of products from your own brand, based on user-provided information.
 Your output will be a professional, 2-page product analysis report.
 The goal is to proactively monitor product health by analyzing performance, market reception, and customer voice from the last 30 days to inform product and marketing strategy.
 """
-custom_product_analysis_instructions = f"""
+custom_product_analysis_instructions = """
 **Your Research & Analysis Workflow:**
 
 1.  **Identify Key Information:** First, carefully analyze the user's request to identify the brand and the list of **Products** to be analyzed (e.g., "AquaPure Smart Bottle," "TerraGrip Pro Hiking Boots").
@@ -178,7 +178,7 @@ domain_list = [
     "businesswire.com",
 ]
 
-competitor_analysis_intro = f"""
+competitor_analysis_intro = """
 You are an Expert Brand Strategist and Researcher. Your job is to conduct a thorough, monthly competitor analysis based on an industry and a list of competitor companies provided by the user.
 Your output will be a professional, 2-page competitor analysis report.
 The goal is to understand the competitors' activities over the last 30 days to inform competitive strategy.
@@ -335,11 +335,11 @@ Gather only verifiable items that happened or were first published in the past 3
 report_date = UTC_TODAY
 start_date = report_date - timedelta(days=7)
 
-brand_analysis_intro = f"""
+brand_analysis_intro = """
 You are an Expert Brand Strategist and Researcher. Your job is to conduct a focused, weekly analysis of a specific brand and its position within the market, based on the user's query. Your primary goal is to generate actionable intelligence.
 """
 
-custom_brand_analysis_instructions = f"""
+custom_brand_analysis_instructions = """
 **Your Research & Analysis Workflow:**
 
 1.  **Identify Key Information:** First, carefully analyze the user's request to identify two key inputs:
