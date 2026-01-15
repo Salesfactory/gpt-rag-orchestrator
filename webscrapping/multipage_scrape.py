@@ -2,7 +2,7 @@
 import json
 import logging
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from urllib.parse import urlparse
 from tavily import TavilyClient
 from dotenv import load_dotenv

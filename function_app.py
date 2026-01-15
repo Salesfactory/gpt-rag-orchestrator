@@ -3,7 +3,6 @@ import azure.durable_functions as df
 import logging
 import json
 import os
-import stripe
 import traceback
 from datetime import datetime, timezone
 
@@ -13,13 +12,6 @@ from scheduler.create_batch_jobs import create_batch_jobs
 
 from shared.util import (
     get_user,
-    handle_new_subscription_logs,
-    handle_subscription_logs,
-    update_organization_subscription,
-    disable_organization_active_subscription,
-    enable_organization_subscription,
-    update_subscription_logs,
-    updateExpirationDate,
     trigger_indexer_with_retry,
 )
 
@@ -39,10 +31,6 @@ app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
 
 # Must import AFTER app is created to register durable functions
 import report_worker.activities  # GenerateReportActivity
-import orchestrators.main_orchestrator 
-import orchestrators.tenant_orchestrator  
-import orchestrators.oneshot_orchestrator  
-import entities.rate_limiter_entity  
 ENABLE_LEGACY = os.getenv("ENABLE_LEGACY_QUEUE_WORKER") == "1"
 
 if ENABLE_LEGACY:

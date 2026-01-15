@@ -9,12 +9,10 @@ import logging
 import traceback
 import asyncio
 from datetime import datetime, timezone
-from typing import Dict, Any, List
-import azure.functions as func
 
 from function_app import app
 from report_worker.processor import process_report_job
-from shared.util import update_report_job_status, get_report_job
+from shared.util import update_report_job_status
 
 from shared.cosmos_jobs import (
     cosmos_container,

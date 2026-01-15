@@ -2,7 +2,6 @@ import json
 import logging
 import os
 import re
-import html
 import base64
 from datetime import datetime, timedelta, timezone
 from azure.storage.blob import (

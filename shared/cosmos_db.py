@@ -75,7 +75,7 @@ class CosmosDBClient:
             conversation = container.read_item(
                 item=conversation_id, partition_key=user_id
             )
-        except Exception as e:
+        except Exception:
             logging.info(
                 f"[CosmosDB] Conversation not found, creating new conversation_id: {conversation_id}"
             )

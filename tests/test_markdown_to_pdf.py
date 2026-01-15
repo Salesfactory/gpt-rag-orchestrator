@@ -5,7 +5,6 @@ Tests the functionality of converting dictionaries with markdown content to PDF 
 """
 
 import unittest
-import tempfile
 import os
 from unittest.mock import patch, MagicMock
 import sys

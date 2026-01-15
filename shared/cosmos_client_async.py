@@ -1,4 +1,5 @@
-import os, threading
+import os
+import threading
 from functools import lru_cache
 from azure.identity import DefaultAzureCredential
 from azure.cosmos import CosmosClient

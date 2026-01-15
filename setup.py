@@ -73,7 +73,7 @@ def get_function_key(subscription_id, resource_group, function_app_name, credent
     Returns:
     str: A unique key for the function.
     """    
-    logging.info(f"Obtaining function key after creating or updating its value.")
+    logging.info("Obtaining function key after creating or updating its value.")
     accessToken = f"Bearer {credential.get_token('https://management.azure.com/.default').token}"
     # Get key
     requestUrl = f"https://management.azure.com/subscriptions/{subscription_id}/resourceGroups/{resource_group}/providers/Microsoft.Web/sites/{function_app_name}/functions/orc/keys/mykey?api-version=2022-03-01"
@@ -146,7 +146,7 @@ def main(subscription_id=None, resource_group=None, function_app_name=None, key_
         enable_env_credentials (bool, optional): Whether to use environment credentials to run the setup.
     """   
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    logging.info(f"Starting setup.")
+    logging.info("Starting setup.")
 
     if subscription_id is None:
         subscription_id = input("Enter subscription ID: ")
