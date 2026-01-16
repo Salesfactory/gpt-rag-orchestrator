@@ -955,7 +955,7 @@ class ConversationOrchestrator:
                     tool_choice={"type": "tool", "name": "agentic_search"},
                 )
             else:
-                model_with_tools = self.tool_calling_llm.bind_tools(self.wrapped_tools)
+                model_with_tools = self.tool_calling_llm.bind_tools(self.wrapped_tools, tool_choice="any")
 
             response = await model_with_tools.ainvoke(state.messages)
 
