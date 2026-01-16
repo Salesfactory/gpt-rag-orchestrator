@@ -29,6 +29,7 @@ class ConversationState:
     question: str
     blob_names: List[str] = field(default_factory=list)
     is_data_analyst_mode: bool = False
+    is_agentic_search_mode: bool = False
 
     # Query Processing
     rewritten_query: str = ""
