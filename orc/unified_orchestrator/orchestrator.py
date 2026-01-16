@@ -789,6 +789,14 @@ class ConversationOrchestrator:
                 logger.info(
                     "[Prepare Tools Node] Forced data_analyst tool (data analyst mode active)"
                 )
+            # Force agentic_search if agentic search mode is active (mostly testing purpose)
+            elif state.is_agentic_search_mode:
+                self.wrapped_tools = [
+                    t for t in self.wrapped_tools if t.name == "agentic_search"
+                ]
+                logger.info(
+                    "[Prepare Tools Node] Forced agentic_search tool (agentic search mode active)"
+                )
 
             logger.info(
                 f"[Prepare Tools Node] Prepared {len(self.wrapped_tools)} tools"
@@ -936,6 +944,15 @@ class ConversationOrchestrator:
                 model_with_tools = self.tool_calling_llm.bind_tools(
                     self.wrapped_tools,
                     tool_choice={"type": "tool", "name": "data_analyst"},
+                )
+            elif (
+                len(self.wrapped_tools) == 1
+                and self.wrapped_tools[0].name == "agentic_search"
+            ):
+                logger.info("[Plan Tools Node] Forcing agentic_search tool usage")
+                model_with_tools = self.tool_calling_llm.bind_tools(
+                    self.wrapped_tools,
+                    tool_choice={"type": "tool", "name": "agentic_search"},
                 )
             else:
                 model_with_tools = self.tool_calling_llm.bind_tools(self.wrapped_tools)
@@ -1767,6 +1784,7 @@ class ConversationOrchestrator:
         user_timezone: Optional[str] = None,
         blob_names: Optional[List[str]] = None,
         is_data_analyst_mode: Optional[bool] = None,
+        is_agentic_search_mode: Optional[bool] = None,
     ):
         """
         Main entry point for generating responses with progress streaming.
@@ -1786,6 +1804,7 @@ class ConversationOrchestrator:
             user_timezone: User's timezone
             blob_names: List of uploaded file names
             is_data_analyst_mode: Whether data analyst mode is active
+            is_agentic_search_mode: Whether agentic search mode is active
 
         Yields:
             Progress updates (__PROGRESS__), metadata (__METADATA__), and response tokens
@@ -1795,6 +1814,7 @@ class ConversationOrchestrator:
         blob_names = blob_names or []
         user_settings = user_settings or {}
         is_data_analyst_mode = is_data_analyst_mode or False
+        is_agentic_search_mode = is_agentic_search_mode or False
 
         log_info(f"[ConversationOrchestrator] Starting conversation: {conversation_id}")
         log_info(f"[ConversationOrchestrator] Question: {question[:100]}...")
@@ -1861,6 +1881,7 @@ class ConversationOrchestrator:
                 question=question,
                 blob_names=blob_names,
                 is_data_analyst_mode=is_data_analyst_mode,
+                is_agentic_search_mode=is_agentic_search_mode,
             )
 
             # Create memory saver for checkpointing
