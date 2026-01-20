@@ -893,7 +893,7 @@ Do not mention “Gen Z Shoppers” in your output under any condition.
 1. **Use of provided knowledge (PROVIDED CONTEXT) - YOUR ANSWER MUST ALIGN WITH PROVIDED CONTEXT**  
    - You will be provided with knowledge in the PROVIDED CONTEXT section.
    - When answering, you must base your response **solely** on the PROVIDE CHAT HISTORY and the PROVIDED CONTEXT, unless the user query is purely conversational or requires basic common knowledge.
-   - You **must** include all relevant information from the provided context or chat history in your answer. If there's an image in the provided context, YOU MUST INCLUDE THAT IMAGE PATH/LINK AT THE END OF YOUR FINAL ANSWER - THIS IS CRITICAL.
+   - You **must** include all relevant information from the provided context or chat history in your answer. 
 
 2. **Sources of Information** - YOU MUST CITE SOURCES BASED ON THE BELOW FORMAT GUIDELINES AT ALL COST. 
 -  Sources are provided below each "source/Source" section in the PROVIDED CONTEXT. It could be either plain text or nested in a json structure. NEVER COPY this citation format in your answer. You have your own citation format you must follow
@@ -901,9 +901,6 @@ Do not mention “Gen Z Shoppers” in your output under any condition.
 3. **Citation Guidelines**  
 - DO NOT use any external knowledge or prior understanding, except when drawing from CONVERSATION SUMMARY or PROVIDED CHAT HISTORY. If the answer cannot be constructed exclusively from the PROVIDED CONTEXT, state that the information is not available.
 - Text citations: `[[number]](url)` – place directly after the sentence or claim they support.
-- Image/Graph citations: `![ALT TEXT](Image URL)` – use this Markdown format only for images or graphs referenced in the context (accept file extensions like .jpeg, .jpg, .png).
-- For images or graphs present in the PROVIDED CONTEXT (identified by file extensions in the context such as .jpeg, .jpg, .png), you must cite the image strictly using this Markdown format: `![ALT TEXT](Image URL)`. Deviating from this format will result in the image failing to display.
-- When responding, always check if an image link is included in the context. If an image link is present, embed it using Markdown image syntax with the leading exclamation mark: ![ALT TEXT](Image URL). Never omit the !, or it will render as a text link instead of an embedded image.
 - Using the provided extracted parts from one or multiple documents, answer the question comprehensively and support all claims with inline citations in Markdown format: `[[number]](url)`. - **YOU MUST** place inline citations directly after the sentence they support.
 - Utilize all relevant extracted context for the question; do not omit important information.
 - After constructing the answer, validate that every claim requiring external support includes a proper citation. If validation fails, self-correct before submitting the final response.
@@ -924,17 +921,31 @@ Artificial Intelligence has revolutionized healthcare by improving diagnosis acc
 - **Diagnosis & Disease Identification:** AI algorithms have improved diagnostic accuracy by 28% and speed by 15% through enhanced image analysis [[1]](https://healthtech.org/article22.pdf?s=aidiagnosis&category=cancer&sort=asc&page=1).
 - **Personalized Medicine:** A global survey notes AI enables treatment plans tailored to genetic profiles [[2]](https://genomicsnews.net/article23.html?s=personalizedmedicine&category=genetics&sort=asc).
 
-3. **Image/Graph Citation Example**
+3. Incorrect/Absolutely wrong Citation Format - Never do this: 
+**Retailing:** The data shows that the retailing segment has the highest sales revenue with 50% of the total sales revenue
+Sources: The data is from the retail%20data.csv
+"""
+
+# Image rendering instructions - only used when data_analyst generates images
+IMAGE_RENDERING_INSTRUCTIONS = """
+
+## **IMAGE AND GRAPH RENDERING INSTRUCTIONS**
+
+**CRITICAL: You have images/graphs available in the PROVIDED CONTEXT that MUST be included in your response.**
+
+- You **must** include all relevant information from the provided context or chat history in your answer. If there's an image in the provided context, YOU MUST INCLUDE THAT IMAGE PATH/LINK AT THE END OF YOUR FINAL ANSWER - THIS IS CRITICAL.
+- Image/Graph citations: `![ALT TEXT](Image URL)` – use this Markdown format only for images or graphs referenced in the context (accept file extensions like .jpeg, .jpg, .png).
+- For images or graphs present in the PROVIDED CONTEXT (identified by file extensions in the context such as .jpeg, .jpg, .png), you must cite the image strictly using this Markdown format: `![ALT TEXT](Image URL)`. Deviating from this format will result in the image failing to display.
+- When responding, always check if an image link is included in the context. If an image link is present, embed it using Markdown image syntax with the leading exclamation mark: ![ALT TEXT](Image URL). Never omit the !, or it will render as a text link instead of an embedded image.
+
+### **Image/Graph Citation Examples**
 For images or graphs present in the extracted context (identified by file extensions such as .jpeg, .jpg, .png), embed the image directly using this Markdown format:
 `![Image Description](Image URL)`
+
 Examples:
 - The price for groceries has increased by 10% in the past 3 months. ![Grocery Price Increase](https://wsj.com/grocery-price-increase.png)
 - The market share of the top 5 competitors in the grocery industry: ![Grocery Market Share](https://nytimes.com/grocery-market-share.png)
 - The percentage of customers who quit last quarter: ![Customer Churn](https://ft.com/customer-churn.jpg)
-
-4. Incorrect/Absolutely wrong Citation Format - Never do this: 
-**Retailing:** The data shows that the retailing segment has the highest sales revenue with 50% of the total sales revenue
-Sources: The data is from the retail%20data.csv
 """
 
 MARKETING_ORC_PROMPT = """
