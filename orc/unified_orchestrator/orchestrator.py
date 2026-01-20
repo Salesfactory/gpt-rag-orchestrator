@@ -1099,7 +1099,7 @@ class ConversationOrchestrator:
 
         Extracts context documents, blob URLs, and file references from the
         messages that contain tool results. Also extracts metadata like
-        last_mcp_tool_used and code_thread_id.
+        last_mcp_tool_used and code_thread_id. Checks for images in tool results.
 
         Args:
             self: ConversationOrchestrator instance
@@ -1152,6 +1152,7 @@ class ConversationOrchestrator:
             # Extract metadata
             last_mcp_tool_used = ""
             code_thread_id = state.code_thread_id
+            has_images = False
 
             for msg in state.messages:
                 if hasattr(msg, "name"):
@@ -1162,20 +1163,28 @@ class ConversationOrchestrator:
                         content = msg.content
                         if isinstance(content, str):
                             try:
-                                result_dict = json.loads(content)
-                                if isinstance(result_dict, dict):
-                                    code_thread_id = result_dict.get(
-                                        "code_thread_id", code_thread_id
-                                    )
-                            except Exception:
-                                pass
+                                if (result_dict := json.loads(content)) and isinstance(result_dict, dict):
+                                    code_thread_id = result_dict.get("code_thread_id", code_thread_id)
+
+                                    # Check for images in images_processed
+                                    images = result_dict.get("images_processed", [])
+                                    has_images = isinstance(images, list) and len(images) > 0
+                                    if has_images:
+                                        logger.info(
+                                            f"[Extract Context Node] Detected {len(images)} images in data_analyst results"
+                                        )
+                            except json.JSONDecodeError as e:
+                                logger.warning(
+                                    f"[Extract Context Node] Failed to parse data_analyst content as JSON: {e}"
+                                )
 
             # Store blob URLs for metadata emission
             self.current_blob_urls = blob_urls
 
             logger.info(
                 f"[Extract Context Node] Extracted {len(context_docs)} docs, "
-                f"{len(blob_urls)} blobs, {len(uploaded_file_refs)} file refs"
+                f"{len(blob_urls)} blobs, {len(uploaded_file_refs)} file refs, "
+                f"has_images: {has_images}"
             )
 
             return {
@@ -1187,6 +1196,7 @@ class ConversationOrchestrator:
                     if uploaded_file_refs
                     else state.uploaded_file_refs
                 ),
+                "has_images": has_images,
             }
 
         except Exception as e:
@@ -1196,6 +1206,7 @@ class ConversationOrchestrator:
                 "code_thread_id": state.code_thread_id,
                 "last_mcp_tool_used": "",
                 "uploaded_file_refs": state.uploaded_file_refs,
+                "has_images": False,
             }
 
 

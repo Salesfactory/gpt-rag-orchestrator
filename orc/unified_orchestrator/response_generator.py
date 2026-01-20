@@ -25,6 +25,7 @@ from shared.prompts import (
     BRAND_POSITION_STATEMENT_PROMPT,
     CREATIVE_COPYWRITER_PROMPT,
     FA_HELPDESK_PROMPT,
+    IMAGE_RENDERING_INSTRUCTIONS
 )
 from shared.util import get_verbosity_instruction
 
@@ -133,6 +134,17 @@ class ResponseGenerator:
             logger.debug(
                 f"[ResponseGenerator] Added {len(state.context_docs)} context documents to system prompt"
             )
+
+            # Add image rendering instructions only if images are present
+            if state.has_images:
+                system_prompt += f"""
+                <----------- IMAGE RENDERING INSTRUCTIONS ------------>
+                {IMAGE_RENDERING_INSTRUCTIONS}
+                <----------- END OF IMAGE RENDERING INSTRUCTIONS ------------>
+                """
+                logger.info(
+                    "[ResponseGenerator] Added image rendering instructions (has_images=True)"
+                )
 
         # Add category-specific prompt based on query category
         category_prompts = {
