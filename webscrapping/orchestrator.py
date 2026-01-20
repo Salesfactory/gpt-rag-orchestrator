@@ -8,18 +8,13 @@ components and provides both standalone and Azure Functions interfaces.
 
 import logging
 from datetime import datetime, timezone
-from typing import List, Dict, Any
-import azure.functions as func
+from typing import Dict, Any
 
 from .utils import (
     generate_request_id,
-    parse_request_body,
-    create_error_response,
-    create_success_response,
     calculate_duration,
     format_timestamp,
     validate_urls,
-    log_processing_summary,
 )
 from .blob_manager import create_crawler_manager_from_env
 from .scraper import WebScraper

@@ -789,6 +789,14 @@ class ConversationOrchestrator:
                 logger.info(
                     "[Prepare Tools Node] Forced data_analyst tool (data analyst mode active)"
                 )
+            # Force agentic_search if agentic search mode is active (mostly testing purpose)
+            elif state.is_agentic_search_mode:
+                self.wrapped_tools = [
+                    t for t in self.wrapped_tools if t.name == "agentic_search"
+                ]
+                logger.info(
+                    "[Prepare Tools Node] Forced agentic_search tool (agentic search mode active)"
+                )
 
             logger.info(
                 f"[Prepare Tools Node] Prepared {len(self.wrapped_tools)} tools"
@@ -937,8 +945,17 @@ class ConversationOrchestrator:
                     self.wrapped_tools,
                     tool_choice={"type": "tool", "name": "data_analyst"},
                 )
+            elif (
+                len(self.wrapped_tools) == 1
+                and self.wrapped_tools[0].name == "agentic_search"
+            ):
+                logger.info("[Plan Tools Node] Forcing agentic_search tool usage")
+                model_with_tools = self.tool_calling_llm.bind_tools(
+                    self.wrapped_tools,
+                    tool_choice={"type": "tool", "name": "agentic_search"},
+                )
             else:
-                model_with_tools = self.tool_calling_llm.bind_tools(self.wrapped_tools)
+                model_with_tools = self.tool_calling_llm.bind_tools(self.wrapped_tools, tool_choice="any")
 
             response = await model_with_tools.ainvoke(state.messages)
 
@@ -1082,7 +1099,7 @@ class ConversationOrchestrator:
 
         Extracts context documents, blob URLs, and file references from the
         messages that contain tool results. Also extracts metadata like
-        last_mcp_tool_used and code_thread_id.
+        last_mcp_tool_used and code_thread_id. Checks for images in tool results.
 
         Args:
             self: ConversationOrchestrator instance
@@ -1135,6 +1152,7 @@ class ConversationOrchestrator:
             # Extract metadata
             last_mcp_tool_used = ""
             code_thread_id = state.code_thread_id
+            has_images = False
 
             for msg in state.messages:
                 if hasattr(msg, "name"):
@@ -1145,20 +1163,28 @@ class ConversationOrchestrator:
                         content = msg.content
                         if isinstance(content, str):
                             try:
-                                result_dict = json.loads(content)
-                                if isinstance(result_dict, dict):
-                                    code_thread_id = result_dict.get(
-                                        "code_thread_id", code_thread_id
-                                    )
-                            except Exception:
-                                pass
+                                if (result_dict := json.loads(content)) and isinstance(result_dict, dict):
+                                    code_thread_id = result_dict.get("code_thread_id", code_thread_id)
+
+                                    # Check for images in images_processed
+                                    images = result_dict.get("images_processed", [])
+                                    has_images = isinstance(images, list) and len(images) > 0
+                                    if has_images:
+                                        logger.info(
+                                            f"[Extract Context Node] Detected {len(images)} images in data_analyst results"
+                                        )
+                            except json.JSONDecodeError as e:
+                                logger.warning(
+                                    f"[Extract Context Node] Failed to parse data_analyst content as JSON: {e}"
+                                )
 
             # Store blob URLs for metadata emission
             self.current_blob_urls = blob_urls
 
             logger.info(
                 f"[Extract Context Node] Extracted {len(context_docs)} docs, "
-                f"{len(blob_urls)} blobs, {len(uploaded_file_refs)} file refs"
+                f"{len(blob_urls)} blobs, {len(uploaded_file_refs)} file refs, "
+                f"has_images: {has_images}"
             )
 
             return {
@@ -1170,6 +1196,7 @@ class ConversationOrchestrator:
                     if uploaded_file_refs
                     else state.uploaded_file_refs
                 ),
+                "has_images": has_images,
             }
 
         except Exception as e:
@@ -1179,6 +1206,7 @@ class ConversationOrchestrator:
                 "code_thread_id": state.code_thread_id,
                 "last_mcp_tool_used": "",
                 "uploaded_file_refs": state.uploaded_file_refs,
+                "has_images": False,
             }
 
 
@@ -1767,6 +1795,7 @@ class ConversationOrchestrator:
         user_timezone: Optional[str] = None,
         blob_names: Optional[List[str]] = None,
         is_data_analyst_mode: Optional[bool] = None,
+        is_agentic_search_mode: Optional[bool] = None,
     ):
         """
         Main entry point for generating responses with progress streaming.
@@ -1786,6 +1815,7 @@ class ConversationOrchestrator:
             user_timezone: User's timezone
             blob_names: List of uploaded file names
             is_data_analyst_mode: Whether data analyst mode is active
+            is_agentic_search_mode: Whether agentic search mode is active
 
         Yields:
             Progress updates (__PROGRESS__), metadata (__METADATA__), and response tokens
@@ -1795,6 +1825,7 @@ class ConversationOrchestrator:
         blob_names = blob_names or []
         user_settings = user_settings or {}
         is_data_analyst_mode = is_data_analyst_mode or False
+        is_agentic_search_mode = is_agentic_search_mode or False
 
         log_info(f"[ConversationOrchestrator] Starting conversation: {conversation_id}")
         log_info(f"[ConversationOrchestrator] Question: {question[:100]}...")
@@ -1861,6 +1892,7 @@ class ConversationOrchestrator:
                 question=question,
                 blob_names=blob_names,
                 is_data_analyst_mode=is_data_analyst_mode,
+                is_agentic_search_mode=is_agentic_search_mode,
             )
 
             # Create memory saver for checkpointing

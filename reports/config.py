@@ -2,8 +2,7 @@ import os
 import logging
 from functools import cached_property
 from dataclasses import dataclass
-from typing import Literal, Union, Optional, get_args
-from deepagents import SubAgent
+from typing import Literal, Union, get_args
 from tavily import TavilyClient
 from langchain_openai import AzureChatOpenAI
 from langchain_anthropic import ChatAnthropic

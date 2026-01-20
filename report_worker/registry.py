@@ -5,7 +5,6 @@ This module provides a registry system for different report generators.
 Each report type has a unique key and associated generator function.
 """
 
-import logging
 from typing import Dict, Any, Optional, Type
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone

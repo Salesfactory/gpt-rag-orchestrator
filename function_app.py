@@ -3,7 +3,6 @@ import azure.durable_functions as df
 import logging
 import json
 import os
-import stripe
 import traceback
 from datetime import datetime, timezone
 
@@ -13,13 +12,6 @@ from scheduler.create_batch_jobs import create_batch_jobs
 
 from shared.util import (
     get_user,
-    handle_new_subscription_logs,
-    handle_subscription_logs,
-    update_organization_subscription,
-    disable_organization_active_subscription,
-    enable_organization_subscription,
-    update_subscription_logs,
-    updateExpirationDate,
     trigger_indexer_with_retry,
 )
 
@@ -39,10 +31,6 @@ app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
 
 # Must import AFTER app is created to register durable functions
 import report_worker.activities  # GenerateReportActivity
-import orchestrators.main_orchestrator 
-import orchestrators.tenant_orchestrator  
-import orchestrators.oneshot_orchestrator  
-import entities.rate_limiter_entity  
 ENABLE_LEGACY = os.getenv("ENABLE_LEGACY_QUEUE_WORKER") == "1"
 
 if ENABLE_LEGACY:
@@ -108,7 +96,7 @@ if ENABLE_LEGACY:
 
             # Don't re-raise - let message go to poison queue
 
-@app.route(route="health", methods=[func.HttpMethod.GET])
+@app.route(route="health", methods=[func.HttpMethod.GET], auth_level=func.AuthLevel.ANONYMOUS)
 async def health_check(req: Request) -> Response:
     """
     Health check endpoint for Azure App Service health monitoring.
@@ -168,6 +156,7 @@ async def stream_response(req: Request) -> StreamingResponse:
     user_timezone = req_body.get("user_timezone")
     blob_names = req_body.get("blob_names", [])
     is_data_analyst_mode = req_body.get("is_data_analyst_mode", False)
+    is_agentic_search_mode = req_body.get("is_agentic_search_mode", False)
     client_principal_id = req_body.get("client_principal_id")
     client_principal_name = req_body.get("client_principal_name")
     client_principal_organization = req_body.get("client_principal_organization")
@@ -214,6 +203,7 @@ async def stream_response(req: Request) -> StreamingResponse:
                     user_timezone=user_timezone,
                     blob_names=blob_names,
                     is_data_analyst_mode=is_data_analyst_mode,
+                    is_agentic_search_mode=is_agentic_search_mode,
                 ),
                 media_type="text/event-stream",
             )
