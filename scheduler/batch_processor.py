@@ -1,6 +1,7 @@
 """
 Helper functions for batch job processing via HTTP endpoint.
 """
+
 import asyncio
 import logging
 from shared.cosmos_jobs import load_scheduled_jobs
@@ -28,7 +29,7 @@ async def load_and_process_jobs(client):
         return {
             "success": False,
             "message": "No jobs found (check schedule_time <= now and status = QUEUED)",
-            "job_count": 0
+            "job_count": 0,
         }
 
     logger.info(f"Loaded {len(jobs)} jobs")
@@ -45,5 +46,5 @@ async def load_and_process_jobs(client):
         "success": True,
         "instance_id": instance_id,
         "job_count": len(jobs),
-        "message": f"Started processing {len(jobs)} jobs"
+        "message": f"Started processing {len(jobs)} jobs",
     }

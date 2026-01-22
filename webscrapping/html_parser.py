@@ -117,4 +117,4 @@ class HtmlParser:
             return chunks
         else:
             # Fallback: return content as single chunk if splitting fails
-            return [content] 
+            return [content]

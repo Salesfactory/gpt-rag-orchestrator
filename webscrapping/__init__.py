@@ -26,7 +26,7 @@ from webscrapping.blob_manager import WebCrawlerManager
 """
 
 from .orchestrator import scrape_single_url
-from .scraper import WebScraper  
+from .scraper import WebScraper
 from .html_parser import HtmlParser
 from .blob_manager import WebCrawlerManager, create_crawler_manager_from_env
 from .metrics import CrawlerSummary
@@ -35,26 +35,23 @@ from .config import CrawlerConfig, Document, Storage, Html, HtmlParserConfig
 # Main entry points
 __all__ = [
     # Main functions
-    'scrape_single_url',
-    
+    "scrape_single_url",
     # Core classes
-    'WebScraper',
-    'HtmlParser', 
-    'WebCrawlerManager',
-    'CrawlerSummary',
-    
+    "WebScraper",
+    "HtmlParser",
+    "WebCrawlerManager",
+    "CrawlerSummary",
     # Configuration
-    'CrawlerConfig',
-    'Document',
-    'Storage', 
-    'Html',
-    'HtmlParserConfig',
-    
+    "CrawlerConfig",
+    "Document",
+    "Storage",
+    "Html",
+    "HtmlParserConfig",
     # Utility functions
-    'create_crawler_manager_from_env',
+    "create_crawler_manager_from_env",
 ]
 
 # Package metadata
-__version__ = '1.0.0'
-__author__ = 'Web Scraping Team'
-__description__ = 'Simple single URL web scraping with Azure Blob Storage integration' 
+__version__ = "1.0.0"
+__author__ = "Web Scraping Team"
+__description__ = "Simple single URL web scraping with Azure Blob Storage integration"

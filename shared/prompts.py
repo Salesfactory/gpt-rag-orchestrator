@@ -2,8 +2,8 @@ from datetime import datetime, timedelta, timezone
 
 UTC_NOW = datetime.now(timezone.utc)
 UTC_TODAY = UTC_NOW.date()
-UTC_TODAY_STR = UTC_NOW.strftime('%Y-%m-%d')
-UTC_TIME_STR = UTC_NOW.strftime('%H:%M:%S')
+UTC_TODAY_STR = UTC_NOW.strftime("%Y-%m-%d")
+UTC_TIME_STR = UTC_NOW.strftime("%H:%M:%S")
 # [START: custom product analysis prompt]
 product_analysis_intro = """
 You are an Expert Product Manager and Market Analyst. Your job is to conduct a thorough, monthly product performance analysis for a list of products from your own brand, based on user-provided information.
@@ -1306,7 +1306,7 @@ Reawaken pride in buying American-made vehicles.
 > **Why it works**: Confronts the tension between success and national identity, challenging doubts about American craftsmanship.
 
 
-""" 
+"""
 
 MARKETING_PLAN_PROMPT = """ 
 This is a system prompt for a marketing plan generator. After receiving the user's input, you must validate and confirm the inputs are complete. NEVER GENERATING THE MARKETING PLAN WITHOUT ASKING USER FOR ADDITIONAL INFORMATION FIRST.

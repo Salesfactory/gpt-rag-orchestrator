@@ -42,15 +42,16 @@ def break_long_urls(text: str, max_length: int = 130) -> str:
             return url
 
         # Get adaptive break percentage based on URL length
-        adaptive_percent = 1/(len(url)/ max_length)
+        adaptive_percent = 1 / (len(url) / max_length)
         break_point = int(len(url) * adaptive_percent)
 
         # Log the adaptive breaking decision
         logger.debug(
-            f"Breaking URL of length {len(url)} at {adaptive_percent*100:.0f}% (position {break_point})")
+            f"Breaking URL of length {len(url)} at {adaptive_percent*100:.0f}% (position {break_point})"
+        )
 
         # Try to break at a natural point (after / or ? or &)
-        natural_breaks = ['/', '?', '&', '=', '-', '_']
+        natural_breaks = ["/", "?", "&", "=", "-", "_"]
         best_break = break_point
 
         # Look for natural break points within 10 characters of the calculated break point
@@ -60,15 +61,20 @@ def break_long_urls(text: str, max_length: int = 130) -> str:
                 break
 
         # Insert line break
-        broken_url = url[:best_break] + '\n' + url[best_break:]
+        broken_url = url[:best_break] + "\n" + url[best_break:]
 
         # If the remaining part is still too long, break it again
         remaining = url[best_break:]
         if len(remaining) > max_length:
             # For the second break, just break at max_length
             second_break = max_length
-            broken_url = url[:best_break] + '\n' + \
-                remaining[:second_break] + '\n' + remaining[second_break:]
+            broken_url = (
+                url[:best_break]
+                + "\n"
+                + remaining[:second_break]
+                + "\n"
+                + remaining[second_break:]
+            )
 
         return broken_url
 
@@ -98,7 +104,8 @@ def html_to_pdf_xhtml2pdf(html_content: str) -> bytes:
 
         if pisa_status.err:
             raise Exception(
-                f"xhtml2pdf conversion failed with {pisa_status.err} errors")
+                f"xhtml2pdf conversion failed with {pisa_status.err} errors"
+            )
 
         # Get the PDF bytes
         pdf_bytes = pdf_buffer.getvalue()
@@ -107,8 +114,7 @@ def html_to_pdf_xhtml2pdf(html_content: str) -> bytes:
         return pdf_bytes
 
     except Exception as e:
-        logger.error(
-            f"Failed to convert HTML to PDF using xhtml2pdf: {str(e)}")
+        logger.error(f"Failed to convert HTML to PDF using xhtml2pdf: {str(e)}")
         raise Exception(f"HTML to PDF conversion failed: {str(e)}") from e
 
 
@@ -132,14 +138,16 @@ def markdown_to_html(markdown_content: str) -> str:
     processed_content = break_long_urls(markdown_content, max_length=130)
 
     # Use markdown library with extensions for better formatting
-    md = markdown.Markdown(extensions=[
-        'fenced_code',
-        'tables',
-        'toc',
-        'nl2br',  # Convert newlines to <br>
-        'sane_lists',
-        'codehilite'  # Code highlighting
-    ])
+    md = markdown.Markdown(
+        extensions=[
+            "fenced_code",
+            "tables",
+            "toc",
+            "nl2br",  # Convert newlines to <br>
+            "sane_lists",
+            "codehilite",  # Code highlighting
+        ]
+    )
 
     html_content = md.convert(processed_content)
 
@@ -318,10 +326,10 @@ def dict_to_pdf(input_dict: Dict[str, Any]) -> bytes:
         Exception: If PDF generation fails
     """
 
-    if 'content' not in input_dict:
+    if "content" not in input_dict:
         raise KeyError("Dictionary must contain a 'content' field")
 
-    markdown_content = input_dict['content']
+    markdown_content = input_dict["content"]
 
     if not isinstance(markdown_content, str):
         raise ValueError("Content field must be a string")
@@ -331,7 +339,8 @@ def dict_to_pdf(input_dict: Dict[str, Any]) -> bytes:
 
     try:
         logger.info(
-            f"Converting markdown content to PDF (length: {len(markdown_content)} chars)")
+            f"Converting markdown content to PDF (length: {len(markdown_content)} chars)"
+        )
 
         # Convert markdown to HTML
         html_content = markdown_to_html(markdown_content)
@@ -368,7 +377,7 @@ def save_dict_to_pdf_file(input_dict: Dict[str, Any], output_path: str) -> str:
         pdf_bytes = dict_to_pdf(input_dict)
 
         # Write to file
-        with open(output_path, 'wb') as f:
+        with open(output_path, "wb") as f:
             f.write(pdf_bytes)
 
         logger.info(f"PDF saved to: {output_path}")
@@ -381,7 +390,7 @@ def save_dict_to_pdf_file(input_dict: Dict[str, Any], output_path: str) -> str:
 
 if __name__ == "__main__":
     input_dict = {
-        'content': '''# Comprehensive Markdown Style Test
+        "content": '''# Comprehensive Markdown Style Test
 
 This document contains various markdown elements to test PDF conversion styling.
 
@@ -679,7 +688,7 @@ If this PDF renders correctly with all the long content properly wrapped and no 
 
 **Note:** This document should render with proper formatting including headers, lists, tables, code blocks, quotes, and various text styles.
         ''',
-        'question.txt': 'Please provide an analysis of the construction adhesive market in the US'
+        "question.txt": "Please provide an analysis of the construction adhesive market in the US",
     }
 
-    save_dict_to_pdf_file(input_dict, 'test_comprehensive.pdf')
+    save_dict_to_pdf_file(input_dict, "test_comprehensive.pdf")

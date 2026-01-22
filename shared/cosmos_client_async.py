@@ -12,6 +12,7 @@ AZURE_DB_ID = os.environ.get("AZURE_DB_ID")
 AZURE_DB_NAME = os.environ.get("AZURE_DB_NAME")
 AZURE_DB_URI = f"https://{AZURE_DB_ID}.documents.azure.com:443/"
 
+
 def get_client() -> CosmosClient:
     global _client
     if _client is None:
@@ -24,9 +25,11 @@ def get_client() -> CosmosClient:
                 )
     return _client
 
+
 @lru_cache(maxsize=16)
 def get_db(db_name: str):
     return get_client().get_database_client(db_name)
+
 
 @lru_cache(maxsize=64)
 def get_container(db_name: str, container_name: str):

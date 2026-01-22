@@ -590,6 +590,7 @@ def set_settings(client_principal, temperature, frequency_penalty, presence_pena
     else:
         logging.info("[util__module] set_settings: user_id not provided.")
 
+
 # Check if there are any users in the database
 def check_users_existance():
     credential = DefaultAzureCredential()
@@ -1537,9 +1538,7 @@ def normalize_markdown(md_raw: str) -> str:
     return md.strip()
 
 
-def get_verbosity_instruction(
-    user_settings: dict, default = None
-) -> str:
+def get_verbosity_instruction(user_settings: dict, default=None) -> str:
     """
     Get the verbosity instruction based on user settings.
 
@@ -1552,10 +1551,10 @@ def get_verbosity_instruction(
     """
     # Import here to avoid circular dependency
     from orc.unified_orchestrator.enums import VERBOSITY_PROMPTS, VerbosityLevel
-    
+
     if default is None:
         default = VerbosityLevel.BALANCED
-    
+
     verbosity_value = user_settings.get("detail_level")
 
     logging.info(f"[Util] User verbosity setting: {verbosity_value}")

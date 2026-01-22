@@ -39,7 +39,9 @@ class ConversationState:
     # Conversation Context
     messages: Annotated[List[BaseMessage], add_messages] = field(default_factory=list)
     context_docs: List[Any] = field(default_factory=list)
-    has_images: bool = False  # Flag to indicate if context contains images (for prompt rendering instructions)
+    has_images: bool = (
+        False  # Flag to indicate if context contains images (for prompt rendering instructions)
+    )
 
     # Persistence
     code_thread_id: Optional[str] = (

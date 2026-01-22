@@ -8,6 +8,7 @@ from azure.storage.blob.aio import BlobServiceClient
 _client: Optional[BlobServiceClient] = None
 _lock = asyncio.Lock()
 
+
 async def get_blob_service_client() -> BlobServiceClient:
     """Process-wide async BlobServiceClient singleton."""
     global _client
