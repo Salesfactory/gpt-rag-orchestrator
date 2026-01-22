@@ -14,6 +14,7 @@ from shared.prompts import (
 
 class VerbosityLevel(str, Enum):
     """Verbosity levels for response generation."""
+
     BRIEF = "brief"
     BALANCED = "balanced"
     DETAILED = "detailed"

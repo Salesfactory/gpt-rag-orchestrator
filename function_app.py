@@ -31,9 +31,11 @@ app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
 
 # Must import AFTER app is created to register durable functions
 import report_worker.activities  # GenerateReportActivity
+
 ENABLE_LEGACY = os.getenv("ENABLE_LEGACY_QUEUE_WORKER") == "1"
 
 if ENABLE_LEGACY:
+
     @app.function_name(name="report_worker")
     @app.queue_trigger(
         arg_name="msg",
@@ -56,8 +58,8 @@ if ENABLE_LEGACY:
 
         try:
             # Extract message metadata and required fields
-            job_id, organization_id, dequeue_count, message_id = extract_message_metadata(
-                msg
+            job_id, organization_id, dequeue_count, message_id = (
+                extract_message_metadata(msg)
             )
 
             # Return early if message parsing failed
@@ -65,15 +67,21 @@ if ENABLE_LEGACY:
                 return
 
             # Log processing start with dequeue count for monitoring
-            logging.info(f"[ReportWorker] Starting job {job_id} for organization {organization_id} (attempt {dequeue_count})")
+            logging.info(
+                f"[ReportWorker] Starting job {job_id} for organization {organization_id} (attempt {dequeue_count})"
+            )
 
             # Check if this is a retry and log warning
             if dequeue_count > 1:
-                logging.warning(f"[ReportWorker] Job {job_id} is being retried (attempt {dequeue_count})")
+                logging.warning(
+                    f"[ReportWorker] Job {job_id} is being retried (attempt {dequeue_count})"
+                )
 
             # Process the report job
             await process_report_job(job_id, organization_id, dequeue_count)
-            logging.info(f"[ReportWorker] Successfully completed job {job_id} for organization {organization_id}")
+            logging.info(
+                f"[ReportWorker] Successfully completed job {job_id} for organization {organization_id}"
+            )
 
         except Exception as e:
             logging.error(
@@ -96,7 +104,10 @@ if ENABLE_LEGACY:
 
             # Don't re-raise - let message go to poison queue
 
-@app.route(route="health", methods=[func.HttpMethod.GET], auth_level=func.AuthLevel.ANONYMOUS)
+
+@app.route(
+    route="health", methods=[func.HttpMethod.GET], auth_level=func.AuthLevel.ANONYMOUS
+)
 async def health_check(req: Request) -> Response:
     """
     Health check endpoint for Azure App Service health monitoring.
@@ -107,6 +118,7 @@ async def health_check(req: Request) -> Response:
     """
     return Response("OK", status_code=200, media_type="text/plain")
 
+
 @app.route(route="start-orch", methods=[func.HttpMethod.POST])
 @app.durable_client_input(client_name="client")
 async def start_orch(req: Request, client: df.DurableOrchestrationClient):
@@ -114,11 +126,18 @@ async def start_orch(req: Request, client: df.DurableOrchestrationClient):
     orch = body.get("orchestrator", "OneShotOrchestrator")
     payload = body.get("input", {})
     instance_id = await client.start_new(orch, client_input=payload)
-    return Response(content=json.dumps({"instanceId": instance_id}), media_type="application/json")
+    return Response(
+        content=json.dumps({"instanceId": instance_id}), media_type="application/json"
+    )
 
-@app.timer_trigger(schedule="0 0 6 * * 0", arg_name="mytimer", run_on_startup=False)  # Every Sunday at 6:00 AM UTC
+
+@app.timer_trigger(
+    schedule="0 0 6 * * 0", arg_name="mytimer", run_on_startup=False
+)  # Every Sunday at 6:00 AM UTC
 @app.durable_client_input(client_name="client")
-async def batch_jobs_timer(mytimer: func.TimerRequest, client: df.DurableOrchestrationClient) -> None:
+async def batch_jobs_timer(
+    mytimer: func.TimerRequest, client: df.DurableOrchestrationClient
+) -> None:
     """
     Timer trigger that runs every Sunday at 6:00 AM UTC.
     Cron expression: "0 0 6 * * 0" means:
@@ -144,6 +163,7 @@ async def batch_jobs_timer(mytimer: func.TimerRequest, client: df.DurableOrchest
     except Exception as e:
         logging.error(f"Batch jobs timer failed: {str(e)}")
         raise
+
 
 @app.route(route="orc", methods=[func.HttpMethod.POST])
 async def stream_response(req: Request) -> StreamingResponse:
@@ -177,7 +197,7 @@ async def stream_response(req: Request) -> StreamingResponse:
 
         logging.info(
             f"[FunctionApp] Retrieved organizationId: {organization_id} from user data"
-        ) 
+        )
 
     # print configuration settings for the user
     settings = get_settings(client_principal)
@@ -189,9 +209,7 @@ async def stream_response(req: Request) -> StreamingResponse:
     settings["model"] = settings.get("model") or "gpt-4.1"
     logging.info(f"[function_app] Validated settings: {settings}")
     if question:
-        orchestrator = ConversationOrchestrator(
-            organization_id=organization_id
-        )
+        orchestrator = ConversationOrchestrator(organization_id=organization_id)
         try:
             logging.info("[FunctionApp] Processing conversation")
             return StreamingResponse(
@@ -219,6 +237,7 @@ async def stream_response(req: Request) -> StreamingResponse:
             media_type="application/json",
         )
 
+
 @app.function_name(name="EventGridTrigger")
 @app.event_grid_trigger(arg_name="event")
 def blob_event_grid_trigger(event: func.EventGridEvent):
@@ -228,14 +247,20 @@ def blob_event_grid_trigger(event: func.EventGridEvent):
     """
     try:
         indexer_name = f'{os.getenv("AZURE_AI_SEARCH_INDEX_NAME")}-indexer'
-        logging.info(f"[blob_event_grid] Event received, triggering indexer '{indexer_name}'")
+        logging.info(
+            f"[blob_event_grid] Event received, triggering indexer '{indexer_name}'"
+        )
 
         indexer_success = trigger_indexer_with_retry(indexer_name, event.subject)
 
         if indexer_success:
-            logging.info(f"[blob_event_grid] Successfully triggered indexer '{indexer_name}'")
+            logging.info(
+                f"[blob_event_grid] Successfully triggered indexer '{indexer_name}'"
+            )
         else:
-            logging.warning(f"[blob_event_grid] Could not trigger indexer '{indexer_name}'")
+            logging.warning(
+                f"[blob_event_grid] Could not trigger indexer '{indexer_name}'"
+            )
 
     except Exception as e:
         logging.error(f"[blob_event_grid] Error: {str(e)}, Event ID: {event.id}")

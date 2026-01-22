@@ -15,10 +15,10 @@ logger = logging.getLogger(__name__)
 def log_info(message: str, **kwargs):
     """
     Log message with both logger and print for visibility in Azure Functions.
-    
+
     This dual logging approach ensures messages are visible both in structured
     logs and in the Azure Functions console output.
-    
+
     Args:
         message: The message to log
         **kwargs: Additional keyword arguments to pass to logger.info
@@ -31,16 +31,16 @@ def log_info(message: str, **kwargs):
 def transform_artifacts_to_images(artifacts: List[Dict]) -> List[Dict]:
     """
     Transform streaming artifacts to images_processed format.
-    
+
     Converts artifact dictionaries from data analyst tool output into a format
     suitable for image rendering in the UI.
-    
+
     Args:
         artifacts: List of artifact dictionaries with keys:
             - blob_path: Path to the blob storage location
             - filename: Name of the file
             - size: Size in bytes (optional)
-    
+
     Returns:
         List of dictionaries formatted for image processing with keys:
             - file_id: Blob path identifier
@@ -62,16 +62,16 @@ def transform_artifacts_to_images(artifacts: List[Dict]) -> List[Dict]:
 def transform_artifacts_to_blobs(artifacts: List[Dict]) -> List[Dict]:
     """
     Transform streaming artifacts to blob_urls format.
-    
+
     Converts artifact dictionaries from data analyst tool output into a format
     suitable for blob URL references in the UI.
-    
+
     Args:
         artifacts: List of artifact dictionaries with keys:
             - filename: Name of the file
             - blob_url: Public URL to access the blob
             - blob_path: Storage path to the blob
-    
+
     Returns:
         List of dictionaries formatted for blob URL processing with keys:
             - filename: Original filename
@@ -91,23 +91,23 @@ def transform_artifacts_to_blobs(artifacts: List[Dict]) -> List[Dict]:
 def get_tool_progress_message(tool_name: str, stage: str) -> str:
     """
     Get tool-specific progress message for UI.
-    
+
     Provides user-friendly progress messages for different MCP tools at various
     stages of execution. Used to display meaningful status updates in the UI.
-    
+
     Args:
         tool_name: Name of the MCP tool (e.g., "agentic_search", "data_analyst",
                    "web_fetch", "document_chat")
         stage: Stage of execution ("planning" or "executing")
-    
+
     Returns:
         User-friendly progress message string. Returns a generic message if
         the tool_name or stage is not recognized.
-    
+
     Examples:
         >>> get_tool_progress_message("agentic_search", "executing")
         "Searching your knowledge base..."
-        
+
         >>> get_tool_progress_message("data_analyst", "planning")
         "Planning data analysis..."
     """
@@ -130,6 +130,4 @@ def get_tool_progress_message(tool_name: str, stage: str) -> str:
         },
     }
 
-    return tool_messages.get(tool_name, {}).get(
-        stage, f"{stage.capitalize()} tools..."
-    )
+    return tool_messages.get(tool_name, {}).get(stage, f"{stage.capitalize()} tools...")

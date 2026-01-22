@@ -13,23 +13,28 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Mock azure.functions to avoid ImportError
 import unittest.mock
-sys.modules['azure.functions'] = unittest.mock.MagicMock()
+
+sys.modules["azure.functions"] = unittest.mock.MagicMock()
 import report_scheduler
+
 
 class TestReportScheduler(unittest.TestCase):
     def setUp(self):
         self.org_id = "org123"
         self.brand_name = "BrandX"
         self.industry_description = "IndustryDesc"
-        self.sample_org = {"id": self.org_id, "industry_description": self.industry_description}
+        self.sample_org = {
+            "id": self.org_id,
+            "industry_description": self.industry_description,
+        }
         self.sample_brand = {"name": self.brand_name}
         self.sample_payload = {
             "report_key": "brand_analysis",
             "report_name": self.brand_name,
             "params": {
                 "brand_focus": self.brand_name,
-                "industry_context": self.industry_description
-            }
+                "industry_context": self.industry_description,
+            },
         }
         os.environ["AZURE_DB_NAME"] = "testdb"
 
@@ -45,7 +50,10 @@ class TestReportScheduler(unittest.TestCase):
     @patch("report_scheduler.cosmos_client_async.get_container")
     def test_get_brands_success(self, mock_get_container):
         mock_container = MagicMock()
-        mock_container.query_items.return_value = [{"name": "BrandA"}, {"name": "BrandB"}]
+        mock_container.query_items.return_value = [
+            {"name": "BrandA"},
+            {"name": "BrandB"},
+        ]
         mock_get_container.return_value = mock_container
         result = report_scheduler.get_brands(self.org_id)
         self.assertEqual(len(result), 2)
@@ -68,7 +76,9 @@ class TestReportScheduler(unittest.TestCase):
         self.assertEqual(result[0]["name"], "CompetitorA")
 
     def test_create_brands_payload(self):
-        payload = report_scheduler.create_brands_payload(self.brand_name, self.industry_description)
+        payload = report_scheduler.create_brands_payload(
+            self.brand_name, self.industry_description
+        )
         self.assertEqual(payload, self.sample_payload)
 
     @patch("report_scheduler.requests.post")
@@ -93,7 +103,7 @@ class TestReportScheduler(unittest.TestCase):
     def test_log_response_result_success(self):
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.content = b"{\"result\": \"ok\"}"
+        mock_response.content = b'{"result": "ok"}'
         mock_response.elapsed = timedelta(seconds=2)
         mock_response.json.return_value = {"result": "ok"}
         # Should not raise
@@ -112,11 +122,18 @@ class TestReportScheduler(unittest.TestCase):
     @patch("report_scheduler.get_brands")
     @patch("report_scheduler.send_http_request")
     @patch("report_scheduler.log_response_result")
-    def test_main_flow(self, mock_log_response, mock_send_http, mock_get_brands, mock_get_orgs):
+    def test_main_flow(
+        self, mock_log_response, mock_send_http, mock_get_brands, mock_get_orgs
+    ):
         # Setup mocks
         mock_get_orgs.return_value = [self.sample_org]
         mock_get_brands.return_value = [self.sample_brand]
-        mock_send_http.return_value = MagicMock(status_code=200, content=b"{}", elapsed=timedelta(seconds=1), json=lambda: {"ok": True})
+        mock_send_http.return_value = MagicMock(
+            status_code=200,
+            content=b"{}",
+            elapsed=timedelta(seconds=1),
+            json=lambda: {"ok": True},
+        )
         mock_log_response.return_value = None
         # Patch environment
         with patch.dict(os.environ, {"AZURE_DB_NAME": "testdb"}):
@@ -137,6 +154,7 @@ class TestReportScheduler(unittest.TestCase):
     def test_main_no_organizations(self, mock_get_orgs):
         with patch.object(report_scheduler, "WEB_APP_URL", "http://test/api"):
             report_scheduler.main(MagicMock())
+
 
 class TestProductCategoryGrouping(unittest.TestCase):
     def setUp(self):
@@ -176,7 +194,7 @@ class TestProductCategoryGrouping(unittest.TestCase):
         self.assertEqual(payload["report_name"], ", ".join(product_names))
         self.assertEqual(payload["params"]["categories"][0]["category"], category)
         self.assertEqual(payload["params"]["categories"][0]["product"], product_names)
-        
+
 
 class TestCompetitorGrouping(unittest.TestCase):
     def setUp(self):
@@ -203,9 +221,15 @@ class TestCompetitorGrouping(unittest.TestCase):
             self.assertIn("categories", payload["params"])
             self.assertEqual(payload["report_key"], "competitor_analysis")
             self.assertEqual(payload["report_name"], competitor_name)
-            self.assertEqual(payload["params"]["categories"][0]["brands"], self.brand_names)
-            self.assertEqual(payload["params"]["categories"][0]["competitors"], [competitor_name])
-            self.assertEqual(payload["params"]["industry_context"], self.industry_description)
+            self.assertEqual(
+                payload["params"]["categories"][0]["brands"], self.brand_names
+            )
+            self.assertEqual(
+                payload["params"]["categories"][0]["competitors"], [competitor_name]
+            )
+            self.assertEqual(
+                payload["params"]["industry_context"], self.industry_description
+            )
 
     def test_create_competitors_payload_format(self):
         competitor_name = "Competitor1"
@@ -219,8 +243,13 @@ class TestCompetitorGrouping(unittest.TestCase):
         self.assertEqual(payload["report_key"], "competitor_analysis")
         self.assertEqual(payload["report_name"], competitor_name)
         self.assertEqual(payload["params"]["categories"][0]["brands"], self.brand_names)
-        self.assertEqual(payload["params"]["categories"][0]["competitors"], [competitor_name])
-        self.assertEqual(payload["params"]["industry_context"], self.industry_description)
+        self.assertEqual(
+            payload["params"]["categories"][0]["competitors"], [competitor_name]
+        )
+        self.assertEqual(
+            payload["params"]["industry_context"], self.industry_description
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

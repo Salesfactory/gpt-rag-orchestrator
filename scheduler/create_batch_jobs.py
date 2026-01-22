@@ -5,6 +5,7 @@ This script fetches all organizations, then for each organization fetches brands
 products, and competitors from their respective Cosmos containers and creates all
 necessary report jobs automatically.
 """
+
 import uuid
 from datetime import datetime, timezone
 from dotenv import load_dotenv
@@ -22,7 +23,11 @@ AZURE_DB_NAME = os.getenv("AZURE_DB_NAME")
 
 def get_cosmos_client():
     """Get Cosmos DB client using Managed Identity"""
-    return CosmosClient(f"https://{AZURE_DB_ID}.documents.azure.com:443/", credential=DefaultAzureCredential())
+    return CosmosClient(
+        f"https://{AZURE_DB_ID}.documents.azure.com:443/",
+        credential=DefaultAzureCredential(),
+    )
+
 
 def fetch_items_for_org(container_name: str, organization_id: str):
     """Fetch all items from a Cosmos container for a specific organization"""
@@ -34,17 +39,20 @@ def fetch_items_for_org(container_name: str, organization_id: str):
         query = "SELECT * FROM c WHERE c.organization_id = @organization_id"
         params = [{"name": "@organization_id", "value": organization_id}]
 
-        items = list(container.query_items(
-            query=query,
-            parameters=params,
-            enable_cross_partition_query=True
-        ))
+        items = list(
+            container.query_items(
+                query=query, parameters=params, enable_cross_partition_query=True
+            )
+        )
         return items
     except Exception as e:
         print(f"Error fetching {container_name} for org {organization_id}: {e}")
         return []
 
-def create_batch_jobs(include_brands=True, include_products=True, include_competitors=True):
+
+def create_batch_jobs(
+    include_brands=True, include_products=True, include_competitors=True
+):
     """Create all report jobs for all organizations"""
 
     schedule_time = datetime.now(timezone.utc).isoformat()
@@ -57,10 +65,11 @@ def create_batch_jobs(include_brands=True, include_products=True, include_compet
         database = client.get_database_client(AZURE_DB_NAME)
         org_container = database.get_container_client("organizations")
 
-        all_orgs = list(org_container.query_items(
-            query="SELECT * FROM c",
-            enable_cross_partition_query=True
-        ))
+        all_orgs = list(
+            org_container.query_items(
+                query="SELECT * FROM c", enable_cross_partition_query=True
+            )
+        )
 
         print(f"Found {len(all_orgs)} organizations to process")
         print("=" * 80)
@@ -100,7 +109,7 @@ def create_batch_jobs(include_brands=True, include_products=True, include_compet
                         "report_name": brand_name,
                         "params": {
                             "brand_focus": brand_name,
-                            "industry_context": industry_description
+                            "industry_context": industry_description,
                         },
                         "status": "QUEUED",
                         "schedule_time": schedule_time,
@@ -132,7 +141,11 @@ def create_batch_jobs(include_brands=True, include_products=True, include_compet
                 # Create one job per category
                 for category, product_names in category_map.items():
                     job_id = str(uuid.uuid4())
-                    report_name = product_names[0] if len(product_names) == 1 else ", ".join(product_names)
+                    report_name = (
+                        product_names[0]
+                        if len(product_names) == 1
+                        else ", ".join(product_names)
+                    )
 
                     job_doc = {
                         "id": job_id,
@@ -144,10 +157,7 @@ def create_batch_jobs(include_brands=True, include_products=True, include_compet
                         "report_name": report_name,
                         "params": {
                             "categories": [
-                                {
-                                    "product": product_names,
-                                    "category": category
-                                }
+                                {"product": product_names, "category": category}
                             ]
                         },
                         "status": "QUEUED",
@@ -163,10 +173,16 @@ def create_batch_jobs(include_brands=True, include_products=True, include_compet
             # 3. Create competitor analysis jobs
             if include_competitors:
                 competitors = fetch_items_for_org("competitors", organization_id)
-                brands = fetch_items_for_org("brands", organization_id) if not include_brands else brands
+                brands = (
+                    fetch_items_for_org("brands", organization_id)
+                    if not include_brands
+                    else brands
+                )
                 print(f"  Found {len(competitors)} competitors")
 
-                brand_names = [brand.get("name") for brand in brands if brand.get("name")]
+                brand_names = [
+                    brand.get("name") for brand in brands if brand.get("name")
+                ]
 
                 for competitor in competitors:
                     competitor_name = competitor.get("name")
@@ -186,10 +202,10 @@ def create_batch_jobs(include_brands=True, include_products=True, include_compet
                             "categories": [
                                 {
                                     "brands": brand_names,
-                                    "competitors": [competitor_name]
+                                    "competitors": [competitor_name],
                                 }
                             ],
-                            "industry_context": industry_description
+                            "industry_context": industry_description,
                         },
                         "status": "QUEUED",
                         "schedule_time": schedule_time,
@@ -203,28 +219,32 @@ def create_batch_jobs(include_brands=True, include_products=True, include_compet
 
             # Add organization summary
             if org_jobs_created > 0:
-                org_summaries.append({
-                    "organization_id": organization_id,
-                    "jobs_created": org_jobs_created
-                })
+                org_summaries.append(
+                    {
+                        "organization_id": organization_id,
+                        "jobs_created": org_jobs_created,
+                    }
+                )
                 total_created += org_jobs_created
                 print(f"  Total jobs created for {organization_id}: {org_jobs_created}")
 
         print("\n" + "=" * 80)
-        print(f"SUMMARY: Created {total_created} jobs across {len(org_summaries)} organizations")
+        print(
+            f"SUMMARY: Created {total_created} jobs across {len(org_summaries)} organizations"
+        )
         print("=" * 80)
 
         for org_summary in org_summaries:
-            print(f"  {org_summary['organization_id']}: {org_summary['jobs_created']} jobs")
+            print(
+                f"  {org_summary['organization_id']}: {org_summary['jobs_created']} jobs"
+            )
 
-        return {
-            "total_created": total_created,
-            "organizations": org_summaries
-        }
+        return {"total_created": total_created, "organizations": org_summaries}
 
     except Exception as e:
         print(f"Error creating batch jobs: {e}")
         raise
+
 
 if __name__ == "__main__":
     result = create_batch_jobs()

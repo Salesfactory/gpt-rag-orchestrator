@@ -14,11 +14,7 @@ from function_app import app
 from report_worker.processor import process_report_job
 from shared.util import update_report_job_status
 
-from shared.cosmos_jobs import (
-    cosmos_container,
-    try_mark_job_running,
-    mark_job_result
-)
+from shared.cosmos_jobs import cosmos_container, try_mark_job_running, mark_job_result
 
 logger = logging.getLogger(__name__)
 
@@ -57,17 +53,23 @@ async def GenerateReportActivity(job: dict) -> dict:
     etag = job.get("etag")
     attempt = job.get("attempt", 1)
 
-    logger.info(f"[GenerateReportActivity] Starting job {job_id} for org {organization_id} (attempt {attempt})")
+    logger.info(
+        f"[GenerateReportActivity] Starting job {job_id} for org {organization_id} (attempt {attempt})"
+    )
 
     try:
         if etag:
             container = cosmos_container()
             if not try_mark_job_running(container, job_id, organization_id, etag):
-                logger.info(f"[GenerateReportActivity] Skip {job_id}, another worker took it.")
-                return {"job_id": job_id,
-                        "organization_id": organization_id,
-                        "status": "SKIPPED",
-                        "reason": "Job already taken by another worker"}
+                logger.info(
+                    f"[GenerateReportActivity] Skip {job_id}, another worker took it."
+                )
+                return {
+                    "job_id": job_id,
+                    "organization_id": organization_id,
+                    "status": "SKIPPED",
+                    "reason": "Job already taken by another worker",
+                }
         # Add timeout protection (30 minutes max per job)
         async with asyncio.timeout(1800):  # 1800 seconds = 30 minutes
             await process_report_job(job_id, organization_id, attempt)
@@ -82,7 +84,7 @@ async def GenerateReportActivity(job: dict) -> dict:
             "job_id": job_id,
             "organization_id": organization_id,
             "status": "SUCCEEDED",
-            "completed_at": completion_time
+            "completed_at": completion_time,
         }
 
     except asyncio.TimeoutError:
@@ -94,17 +96,25 @@ async def GenerateReportActivity(job: dict) -> dict:
             "error_type": "timeout",
             "error_message": error_msg,
             "attempt": attempt,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
-        update_report_job_status(job_id, organization_id, "FAILED", error_payload=error_payload)
-        mark_job_result(cosmos_container(), job_id, organization_id, status="FAILED", error=error_msg)
+        update_report_job_status(
+            job_id, organization_id, "FAILED", error_payload=error_payload
+        )
+        mark_job_result(
+            cosmos_container(),
+            job_id,
+            organization_id,
+            status="FAILED",
+            error=error_msg,
+        )
 
         return {
             "job_id": job_id,
             "organization_id": organization_id,
             "status": "FAILED",
             "error": error_msg,
-            "error_type": "timeout"
+            "error_type": "timeout",
         }
 
     except Exception as e:
@@ -119,15 +129,23 @@ async def GenerateReportActivity(job: dict) -> dict:
             "error_type": "unexpected",
             "error_message": error_msg,
             "attempt": attempt,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat(),
         }
-        update_report_job_status(job_id, organization_id, "FAILED", error_payload=error_payload)
-        mark_job_result(cosmos_container(), job_id, organization_id, status="FAILED", error=error_msg)
+        update_report_job_status(
+            job_id, organization_id, "FAILED", error_payload=error_payload
+        )
+        mark_job_result(
+            cosmos_container(),
+            job_id,
+            organization_id,
+            status="FAILED",
+            error=error_msg,
+        )
 
         return {
             "job_id": job_id,
             "organization_id": organization_id,
             "status": "FAILED",
             "error": error_msg,
-            "error_type": "unexpected"
+            "error_type": "unexpected",
         }

@@ -25,7 +25,7 @@ from shared.prompts import (
     BRAND_POSITION_STATEMENT_PROMPT,
     CREATIVE_COPYWRITER_PROMPT,
     FA_HELPDESK_PROMPT,
-    IMAGE_RENDERING_INSTRUCTIONS
+    IMAGE_RENDERING_INSTRUCTIONS,
 )
 from shared.util import get_verbosity_instruction
 
@@ -277,4 +277,3 @@ class ResponseGenerator:
             )
             error_message = "I apologize, but I encountered an error while generating the response. Please try again."
             yield error_message
-            

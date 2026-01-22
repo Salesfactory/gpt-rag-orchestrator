@@ -35,7 +35,12 @@ from .context_builder import ContextBuilder
 from .query_planner import QueryPlanner
 from .mcp_client import MCPClient
 from .response_generator import ResponseGenerator
-from .utils import log_info, transform_artifacts_to_images, transform_artifacts_to_blobs, get_tool_progress_message
+from .utils import (
+    log_info,
+    transform_artifacts_to_images,
+    transform_artifacts_to_blobs,
+    get_tool_progress_message,
+)
 
 
 # Configure logging
@@ -128,7 +133,6 @@ class ConversationOrchestrator:
 
         logger.info("[ConversationOrchestrator] Initialization complete")
 
-
     def _init_planning_llm(self) -> AzureChatOpenAI:
         """
         Initialize Azure OpenAI LLM for planning tasks.
@@ -136,9 +140,7 @@ class ConversationOrchestrator:
         Returns:
             Configured AzureChatOpenAI instance
         """
-        logger.info(
-            "[ConversationOrchestrator] Initializing planning LLM"
-        )
+        logger.info("[ConversationOrchestrator] Initializing planning LLM")
 
         endpoint = os.getenv("O1_ENDPOINT")
         api_key = os.getenv("O1_KEY")
@@ -210,7 +212,6 @@ class ConversationOrchestrator:
             max_retries=3,
         )
 
-
     def _store_error(
         self,
         error: Exception,
@@ -256,7 +257,6 @@ class ConversationOrchestrator:
                 f"[ErrorHandler] Failed to store error: {store_error}",
                 extra={"original_error": str(error), "context": context},
             )
-
 
     @traceable(run_type="tool", name="data_analyst_stream")
     async def _stream_data_analyst(
@@ -418,7 +418,6 @@ class ConversationOrchestrator:
             logger.error(f"[StreamDataAnalyst] Error: {e}", exc_info=True)
             raise
 
-
     # ============================================================================
     # Workflow Node Methods
     # ============================================================================
@@ -529,8 +528,6 @@ class ConversationOrchestrator:
                 "conversation_summary": "",
             }
 
-
-
     async def _rewrite_node(self, state: ConversationState) -> Dict[str, Any]:
         """
         Rewrite node: Rewrite query with organization context.
@@ -591,8 +588,6 @@ class ConversationOrchestrator:
             return {
                 "rewritten_query": state.question,
             }
-
-
 
     async def _augment_node(self, state: ConversationState) -> Dict[str, Any]:
         """
@@ -658,8 +653,6 @@ class ConversationOrchestrator:
                 "augmented_query": state.rewritten_query or state.question,
             }
 
-
-
     async def _categorize_node(self, state: ConversationState) -> Dict[str, Any]:
         """
         Categorize node: Categorize query into marketing categories.
@@ -714,8 +707,6 @@ class ConversationOrchestrator:
             return {
                 "query_category": "General",
             }
-
-
 
     async def _prepare_tools_node(self, state: ConversationState) -> Dict[str, Any]:
         """
@@ -808,8 +799,6 @@ class ConversationOrchestrator:
 
         return {}
 
-
-
     async def _prepare_messages_node(self, state: ConversationState) -> Dict[str, Any]:
         """
         Prepare messages node: Build initial messages for tool calling.
@@ -884,8 +873,6 @@ class ConversationOrchestrator:
 
         return {"messages": messages}
 
-
-
     async def _plan_tools_node(self, state: ConversationState) -> Dict[str, Any]:
         """
         Plan tools node: Claude with bind_tools decides which tools to use.
@@ -955,7 +942,9 @@ class ConversationOrchestrator:
                     tool_choice={"type": "tool", "name": "agentic_search"},
                 )
             else:
-                model_with_tools = self.tool_calling_llm.bind_tools(self.wrapped_tools, tool_choice="any")
+                model_with_tools = self.tool_calling_llm.bind_tools(
+                    self.wrapped_tools, tool_choice="any"
+                )
 
             response = await model_with_tools.ainvoke(state.messages)
 
@@ -968,9 +957,7 @@ class ConversationOrchestrator:
                 )
                 if selected_tools:
                     tool_name = selected_tools[0]  # Use first tool for progress message
-                    tool_message = get_tool_progress_message(
-                        tool_name, "planning"
-                    )
+                    tool_message = get_tool_progress_message(tool_name, "planning")
                     planning_progress = {
                         "type": "progress",
                         "step": "tool_selected",
@@ -993,8 +980,6 @@ class ConversationOrchestrator:
         except Exception as e:
             logger.error(f"[Plan Tools Node] Error invoking Claude: {e}", exc_info=True)
             return {"messages": state.messages}
-
-
 
     async def _execute_tools_node(self, state: ConversationState) -> Dict[str, Any]:
         """
@@ -1091,8 +1076,6 @@ class ConversationOrchestrator:
             logger.error(f"[Execute Tools Node] Error executing tools: {e}")
             return {}
 
-
-
     async def _extract_context_node(self, state: ConversationState) -> Dict[str, Any]:
         """
         Extract context node: Parse tool results from messages.
@@ -1163,12 +1146,18 @@ class ConversationOrchestrator:
                         content = msg.content
                         if isinstance(content, str):
                             try:
-                                if (result_dict := json.loads(content)) and isinstance(result_dict, dict):
-                                    code_thread_id = result_dict.get("code_thread_id", code_thread_id)
+                                if (result_dict := json.loads(content)) and isinstance(
+                                    result_dict, dict
+                                ):
+                                    code_thread_id = result_dict.get(
+                                        "code_thread_id", code_thread_id
+                                    )
 
                                     # Check for images in images_processed
                                     images = result_dict.get("images_processed", [])
-                                    has_images = isinstance(images, list) and len(images) > 0
+                                    has_images = (
+                                        isinstance(images, list) and len(images) > 0
+                                    )
                                     if has_images:
                                         logger.info(
                                             f"[Extract Context Node] Detected {len(images)} images in data_analyst results"
@@ -1208,8 +1197,6 @@ class ConversationOrchestrator:
                 "uploaded_file_refs": state.uploaded_file_refs,
                 "has_images": False,
             }
-
-
 
     async def _generate_response_node(self, state: ConversationState) -> Dict[str, Any]:
         """
@@ -1274,12 +1261,10 @@ class ConversationOrchestrator:
             logger.error(f"[Generate Response Node] Error generating response: {e}")
             response_text = "I apologize, but I encountered an error while generating the response. Please try again."
             self._progress_queue.append(response_text)
-        
+
         self.current_response_text = response_text
 
         return {}
-
-
 
     async def _summarize_and_save_background(
         self,
@@ -1336,8 +1321,9 @@ class ConversationOrchestrator:
                 exc_info=True,
             )
 
-
-    async def _user_credit_tracking_node(self, state: ConversationState) -> Dict[str, Any]:
+    async def _user_credit_tracking_node(
+        self, state: ConversationState
+    ) -> Dict[str, Any]:
         """
         User Credit Tracking node: Track and update user credit consumption.
         Args:
@@ -1375,7 +1361,6 @@ class ConversationOrchestrator:
                 f"[User Credit Tracking Node] Mode '{mode_used}' cost: {mode_cost}"
             )
 
-
             tool_cost = credit_table["tools"].get(tool_used, 0)
             logger.debug(
                 f"[User Credit Tracking Node] Tool '{tool_used}' cost: {tool_cost}"
@@ -1404,9 +1389,7 @@ class ConversationOrchestrator:
                 return {}
 
             result = self.cosmos_client.update_user_credit(
-                organization_id=org_id,
-                user_id=user_id,
-                credit_consumed=total_cost
+                organization_id=org_id, user_id=user_id, credit_consumed=total_cost
             )
 
             if result:
@@ -1424,7 +1407,11 @@ class ConversationOrchestrator:
                 f"[User Credit Tracking Node] Error during credit tracking: {str(e)}",
                 extra={
                     "conversation_id": self.current_conversation_id,
-                    "user_id": self.current_user_info.get("id") if self.current_user_info else None,
+                    "user_id": (
+                        self.current_user_info.get("id")
+                        if self.current_user_info
+                        else None
+                    ),
                     "organization_id": self.organization_id,
                     "error_type": type(e).__name__,
                 },
@@ -1433,7 +1420,6 @@ class ConversationOrchestrator:
             # Don't fail the workflow, credit tracking is non-critical
 
         return {}
-
 
     async def _save_node(self, state: ConversationState) -> Dict[str, Any]:
         """
@@ -1558,8 +1544,6 @@ class ConversationOrchestrator:
         # Return empty dict (no state updates)
         return {}
 
-
-
     def _build_graph(self, memory: MemorySaver) -> StateGraph:
         """
         Construct the LangGraph workflow.
@@ -1650,7 +1634,6 @@ class ConversationOrchestrator:
             extra={"conversation_id": self.current_conversation_id},
         )
         return compiled_graph
-
 
     async def _stream_graph_execution(
         self, graph: StateGraph, state: ConversationState, config: Dict[str, Any]
@@ -1784,7 +1767,6 @@ class ConversationOrchestrator:
             )
             raise
 
-
     @traceable(run_type="llm")
     async def generate_response_with_progress(
         self,
@@ -1856,7 +1838,7 @@ class ConversationOrchestrator:
             self.state_manager = StateManager(
                 organization_id=self.organization_id,
                 user_id=user_id,
-                cosmos_client=self.cosmos_client
+                cosmos_client=self.cosmos_client,
             )
 
             self.context_builder = ContextBuilder(

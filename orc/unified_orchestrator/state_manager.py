@@ -26,7 +26,9 @@ class StateManager:
     - Persist metadata and thoughts
     """
 
-    def __init__(self, organization_id: str, user_id: str, cosmos_client: CosmosDBClient):
+    def __init__(
+        self, organization_id: str, user_id: str, cosmos_client: CosmosDBClient
+    ):
         """
         Initialize StateManager.
 

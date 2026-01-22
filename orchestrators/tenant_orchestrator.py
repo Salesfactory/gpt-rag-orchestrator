@@ -16,12 +16,16 @@ def TenantOrchestrator(context: df.DurableOrchestrationContext):
 
     limiter = df.EntityId("RateLimiter", "global")
     results = []
-    retry_opts = df.RetryOptions(first_retry_interval_in_milliseconds=30000, max_number_of_attempts=5)
+    retry_opts = df.RetryOptions(
+        first_retry_interval_in_milliseconds=30000, max_number_of_attempts=5
+    )
 
     for job in jobs:
         # Acquire capacity
         while True:
-            grant = yield context.call_entity(limiter, "acquire", {"tenant_id": tenant_id})
+            grant = yield context.call_entity(
+                limiter, "acquire", {"tenant_id": tenant_id}
+            )
             if grant.get("granted"):
                 break
             wait_ms = grant.get("wait_ms", 1500)
@@ -38,7 +42,9 @@ def TenantOrchestrator(context: df.DurableOrchestrationContext):
         except Exception as e:
             # capture failures and continue
             logging.error(f"[TenantOrchestrator] job failed: {e}")
-            results.append({"job_id": job.get("job_id"), "status": "FAILED", "error": str(e)})
+            results.append(
+                {"job_id": job.get("job_id"), "status": "FAILED", "error": str(e)}
+            )
 
         # Always release after processing (outside finally to avoid generator cleanup issues)
         yield context.call_entity(limiter, "release", {"tenant_id": tenant_id})

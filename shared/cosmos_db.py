@@ -15,7 +15,7 @@ class CosmosDBClient:
         db_id: str = None,
         db_name: str = None,
         db_uri: str = None,
-        consistency_level: str = "Session"
+        consistency_level: str = "Session",
     ):
         self.db_id = db_id or os.environ.get("AZURE_DB_ID")
         self.db_name = db_name or os.environ.get("AZURE_DB_NAME")
@@ -34,7 +34,7 @@ class CosmosDBClient:
             self._client = CosmosClient(
                 self.db_uri,
                 credential=self._credential,
-                consistency_level=self.consistency_level
+                consistency_level=self.consistency_level,
             )
             self._db = self._client.get_database_client(database=self.db_name)
 
@@ -59,7 +59,7 @@ class CosmosDBClient:
         conversation_id: str,
         user_id: str,
         type: str = None,
-        user_timezone: str = None
+        user_timezone: str = None,
     ) -> dict:
         self._ensure_connected()
         container = self._db.get_container_client("conversations")
@@ -69,7 +69,9 @@ class CosmosDBClient:
             try:
                 tz = ZoneInfo(user_timezone)
             except Exception:
-                logging.warning(f"[CosmosDB] Unknown timezone '{user_timezone}', defaulting to UTC")
+                logging.warning(
+                    f"[CosmosDB] Unknown timezone '{user_timezone}', defaulting to UTC"
+                )
 
         try:
             conversation = container.read_item(
@@ -125,16 +127,13 @@ class CosmosDBClient:
             except Exception as e:
                 logging.error(
                     f"[CosmosDB] Failed to update 'history' for conversation_id: {conversation_id}. Error: {e}",
-                    exc_info=True
+                    exc_info=True,
                 )
 
         return conversation_data
 
     def update_conversation_data(
-        self,
-        conversation_id: str,
-        user_id: str,
-        conversation_data: dict
+        self, conversation_id: str, user_id: str, conversation_data: dict
     ) -> dict:
         try:
             self._ensure_connected()
@@ -147,7 +146,9 @@ class CosmosDBClient:
                 }
             )
         except Exception as e:
-            logging.error(f"[CosmosDB] Error updating the conversations: {e}", exc_info=True)
+            logging.error(
+                f"[CosmosDB] Error updating the conversations: {e}", exc_info=True
+            )
 
         return conversation_data
 
@@ -158,13 +159,17 @@ class CosmosDBClient:
         try:
             self._ensure_connected()
             container = self._db.get_container_client(container=container_name)
-            credit_table = list(container.query_items(
-                query="SELECT * FROM c WHERE c.id = 'requestCost'",
-                enable_cross_partition_query=True
-            ))
+            credit_table = list(
+                container.query_items(
+                    query="SELECT * FROM c WHERE c.id = 'requestCost'",
+                    enable_cross_partition_query=True,
+                )
+            )
             return credit_table
         except Exception as e:
-            logging.error(f"[CosmosDB] Error retrieving the credit table: {e}", exc_info=True)
+            logging.error(
+                f"[CosmosDB] Error retrieving the credit table: {e}", exc_info=True
+            )
             return None
 
     def update_user_credit(
@@ -172,7 +177,7 @@ class CosmosDBClient:
         organization_id: str,
         user_id: str,
         credit_consumed: float,
-        container_name: str = "organizationsUsage"
+        container_name: str = "organizationsUsage",
     ) -> dict:
         """
         Atomically increment currentUsed credit for a user.
@@ -184,14 +189,18 @@ class CosmosDBClient:
             # Query for the org config document to find user index
             query = "SELECT * FROM c WHERE c.organizationId = @organization_id"
             parameters = [{"name": "@organization_id", "value": organization_id}]
-            results = list(container.query_items(
-                query=query,
-                parameters=parameters,
-                enable_cross_partition_query=True
-            ))
+            results = list(
+                container.query_items(
+                    query=query,
+                    parameters=parameters,
+                    enable_cross_partition_query=True,
+                )
+            )
 
             if not results:
-                logging.error(f"[CosmosDB] Organization config not found for organization_id: {organization_id}")
+                logging.error(
+                    f"[CosmosDB] Organization config not found for organization_id: {organization_id}"
+                )
                 return None
 
             org_config = results[0]
@@ -202,20 +211,20 @@ class CosmosDBClient:
                 if user_obj.get("userId") == user_id:
                     user_index = idx
                     break
-            
+
             # Use atomic patch operation to increment the credit
             patch_operations = [
                 {
                     "op": "incr",
                     "path": f"/policy/allowedUserIds/{user_index}/currentUsed",
-                    "value": credit_consumed
+                    "value": credit_consumed,
                 }
             ]
 
             updated_config = container.patch_item(
                 item=org_config["id"],
                 partition_key=organization_id,
-                patch_operations=patch_operations
+                patch_operations=patch_operations,
             )
 
             logging.info(
