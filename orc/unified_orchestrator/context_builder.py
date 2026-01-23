@@ -117,7 +117,7 @@ class ContextBuilder:
 
             <----------- PROVIDED Brand Information ------------>
             This is the Brand information for the organization that the user belongs to.
-            When relevant, incorporate Brand information to tailor responses, ensuring that answers are highly relevant to the user's company, goals, and operational environment.        
+            When relevant, incorporate Brand information to tailor responses, ensuring that answers are highly relevant to the user's company, goals, and operational environment.
             Here is the Brand information:
             {brand_info}
             <----------- END OF PROVIDED Brand Information ------------>

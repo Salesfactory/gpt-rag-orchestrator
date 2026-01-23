@@ -88,13 +88,13 @@ class QueryPlanner:
         # Build user prompt
         user_prompt = f"""
         Please rewrite the query to be used for searching the database. Make sure to follow the alias mapping instructions at all cost.
-        Original query: 
+        Original query:
         <Original query>
         {question}
         </Original query>
 
         THE HISTORICAL CONVERSATION IS VERY IMPORTANT TO THE USER'S FOLLOW UP QUESTIONS, YOU MUST TAKE THAT INTO ACCOUNT.
-        Please also consider the line of business/industry of my company when rewriting the query if relevant. However, do not completely alter the query's original intention. Do not be verbose. 
+        Please also consider the line of business/industry of my company when rewriting the query if relevant. However, do not completely alter the query's original intention. Do not be verbose.
         if the question is a very casual/conversational one, do not rewrite, return it as it is
         """
 
@@ -144,9 +144,9 @@ class QueryPlanner:
         history = conversation_data.get("history", [])
         formatted_history = context_builder.format_conversation_history(history)
 
-        augmented_query_prompt = f""" 
+        augmented_query_prompt = f"""
         Augment the query with the historical conversation context. If the query is a very casual/conversational one, do not augment, return it as it is.
-        
+
         Here is the historical conversation context if available:
         <context>
         {formatted_history}
@@ -223,8 +223,8 @@ class QueryPlanner:
             - Creative Copywriter
             - General
 
-            Use both the current question and the historical conversation context to make an informed decision. 
-            Context is crucial, as users may refer to previous topics, provide follow-ups, or respond to earlier prompts. 
+            Use both the current question and the historical conversation context to make an informed decision.
+            Context is crucial, as users may refer to previous topics, provide follow-ups, or respond to earlier prompts.
 
             To help you make an accurate decision, consider these cues for each category:
 

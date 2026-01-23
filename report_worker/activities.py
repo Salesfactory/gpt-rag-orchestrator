@@ -49,7 +49,6 @@ async def GenerateReportActivity(job: dict) -> dict:
     """
     job_id = job["job_id"]
     organization_id = job["organization_id"]
-    tenant_id = job.get("tenant_id")
     etag = job.get("etag")
     attempt = job.get("attempt", 1)
 

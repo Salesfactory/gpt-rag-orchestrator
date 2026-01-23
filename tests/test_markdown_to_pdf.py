@@ -7,6 +7,7 @@ Tests the functionality of converting dictionaries with markdown content to PDF 
 import unittest
 import os
 from unittest.mock import patch, MagicMock
+import importlib.util
 import sys
 
 # Add the project root to the path so we can import our modules
@@ -24,8 +25,8 @@ class TestMarkdownToPdf(unittest.TestCase):
             "question.txt": "Please provide an analysis of the construction adhesive market in the US",
             "content": """# Weekly Brand Analysis Report
 
-**Brand Focus:** Henkel Construction Adhesives & Sealants 
-**For the Week of:** 2025-08-21 to 2025-08-27 
+**Brand Focus:** Henkel Construction Adhesives & Sealants
+**For the Week of:** 2025-08-21 to 2025-08-27
 **Data Scope:** Publicly available web data from the past 7 days.
 
 ## 1. Executive Summary
@@ -210,9 +211,7 @@ print("Hello World")
         """Integration test with the actual example provided by the user."""
         # This test requires actual xhtml2pdf functionality
         # Skip if xhtml2pdf is not available
-        try:
-            from xhtml2pdf import pisa
-        except ImportError:
+        if importlib.util.find_spec("xhtml2pdf") is None:
             self.skipTest("xhtml2pdf not available for integration test")
 
         try:
@@ -262,7 +261,7 @@ This contains <b>HTML</b> tags.
         """Test with unicode characters in content."""
         unicode_content = """
 # Título con acentos
-        
+
 Este es contenido en español con caracteres especiales: ñ, á, é, í, ó, ú
 También probamos emojis: 🚀 📊 💡
 Y caracteres especiales: €, £, ¥, ©, ®, ™

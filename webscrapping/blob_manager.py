@@ -214,9 +214,6 @@ class WebCrawlerManager:
                     page_metadata["checksum"] = checksum
                     page_metadata["source_address"] = page_url
 
-                    # Check if this exact path existed before (for proper status)
-                    path_existed = self._blob_path_exists(blob_path)
-
                     # Upload to blob storage
                     BlobHandler.upload(
                         storage_account_url=self.documents_storage_account_url,

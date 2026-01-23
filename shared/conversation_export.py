@@ -225,7 +225,7 @@ def format_conversation_as_html(conversation_data):
             * {{
                 box-sizing: border-box;
             }}
-            
+
             body {{
                 font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
                 max-width: 900px;
@@ -236,7 +236,7 @@ def format_conversation_as_html(conversation_data):
                 line-height: 1.6;
                 min-height: 100vh;
             }}
-            
+
             .conversation-header {{
                 background: white;
                 padding: 32px;
@@ -245,7 +245,7 @@ def format_conversation_as_html(conversation_data):
                 border: 1px solid #e5e7eb;
                 box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
             }}
-            
+
             .conversation-header h1 {{
                 margin: 0 0 20px 0;
                 font-size: 28px;
@@ -253,19 +253,19 @@ def format_conversation_as_html(conversation_data):
                 color: #111827;
                 letter-spacing: -0.025em;
             }}
-            
+
             .conversation-header p {{
                 margin: 8px 0;
                 color: #6b7280;
                 font-size: 15px;
                 font-weight: 500;
             }}
-            
+
             .conversation-header strong {{
                 color: #374151;
                 font-weight: 600;
             }}
-            
+
             .message {{
                 background: white;
                 margin: 20px 0;
@@ -275,25 +275,25 @@ def format_conversation_as_html(conversation_data):
                 box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
                 transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
             }}
-            
+
             .message:hover {{
                 border-color: #d1d5db;
                 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
                 transform: translateY(-1px);
             }}
-            
+
             .user-message {{
                 background: #f8fafc;
                 border-left: 3px solid #3b82f6;
                 margin-left: 32px;
             }}
-            
+
             .freddaid-message {{
                 background: #f9fafb;
                 border-left: 3px solid #6b7280;
                 margin-right: 32px;
             }}
-            
+
             .role {{
                 font-weight: 600;
                 font-size: 13px;
@@ -305,7 +305,7 @@ def format_conversation_as_html(conversation_data):
                 color: #374151;
                 text-transform: uppercase;
             }}
-            
+
             .role::before {{
                 content: '';
                 width: 6px;
@@ -313,22 +313,22 @@ def format_conversation_as_html(conversation_data):
                 border-radius: 50%;
                 background: #9ca3af;
             }}
-            
+
             .user-message .role::before {{
                 background: #3b82f6;
             }}
-            
+
             .freddaid-message .role::before {{
                 background: #6b7280;
             }}
-            
+
             .content {{
                 line-height: 1.7;
                 color: #1f2937;
                 font-size: 15px;
                 font-weight: 400;
             }}
-            
+
             /* Markdown formatting styles */
             .content h1, .content h2, .content h3, .content h4, .content h5, .content h6 {{
                 margin: 20px 0 12px 0;
@@ -336,28 +336,28 @@ def format_conversation_as_html(conversation_data):
                 color: #111827;
                 line-height: 1.3;
             }}
-            
+
             .content h1 {{ font-size: 24px; border-bottom: 2px solid #e5e7eb; padding-bottom: 8px; }}
             .content h2 {{ font-size: 20px; border-bottom: 1px solid #e5e7eb; padding-bottom: 6px; }}
             .content h3 {{ font-size: 18px; }}
             .content h4 {{ font-size: 16px; }}
             .content h5 {{ font-size: 15px; }}
             .content h6 {{ font-size: 14px; }}
-            
+
             .content p {{
                 margin: 12px 0;
             }}
-            
+
             .content strong {{
                 font-weight: 600;
                 color: #111827;
             }}
-            
+
             .content em {{
                 font-style: italic;
                 color: #374151;
             }}
-            
+
             .content code {{
                 background-color: #f3f4f6;
                 color: #dc2626;
@@ -367,7 +367,7 @@ def format_conversation_as_html(conversation_data):
                 font-size: 13px;
                 border: 1px solid #e5e7eb;
             }}
-            
+
             .content pre {{
                 background-color: #1f2937;
                 color: #f9fafb;
@@ -377,7 +377,7 @@ def format_conversation_as_html(conversation_data):
                 margin: 16px 0;
                 border: 1px solid #374151;
             }}
-            
+
             .content pre code {{
                 background: none;
                 color: inherit;
@@ -385,25 +385,25 @@ def format_conversation_as_html(conversation_data):
                 border: none;
                 font-size: 14px;
             }}
-            
+
             .content ul, .content ol {{
                 margin: 12px 0;
                 padding-left: 24px;
             }}
-            
+
             .content li {{
                 margin: 6px 0;
                 line-height: 1.6;
             }}
-            
+
             .content ul li {{
                 list-style-type: disc;
             }}
-            
+
             .content ol li {{
                 list-style-type: decimal;
             }}
-            
+
             .content blockquote {{
                 border-left: 4px solid #d1d5db;
                 padding-left: 16px;
@@ -414,7 +414,7 @@ def format_conversation_as_html(conversation_data):
                 padding: 12px 16px;
                 border-radius: 4px;
             }}
-            
+
             .content a {{
                 color: #3b82f6;
                 text-decoration: none;
@@ -422,11 +422,11 @@ def format_conversation_as_html(conversation_data):
                 transition: border-color 0.2s;
                 display: none;
             }}
-            
+
             .content a:hover {{
                 border-bottom-color: #3b82f6;
             }}
-            
+
             .content table {{
                 border-collapse: collapse;
                 width: 100%;
@@ -435,30 +435,30 @@ def format_conversation_as_html(conversation_data):
                 border-radius: 6px;
                 overflow: hidden;
             }}
-            
+
             .content th, .content td {{
                 border: 1px solid #e5e7eb;
                 padding: 8px 12px;
                 text-align: left;
             }}
-            
+
             .content th {{
                 background-color: #f9fafb;
                 font-weight: 600;
                 color: #374151;
             }}
-            
+
             .content tr:nth-child(even) {{
                 background-color: #f9fafb;
             }}
-            
+
             .content hr {{
                 border: none;
                 height: 1px;
                 background-color: #e5e7eb;
                 margin: 24px 0;
             }}
-            
+
             .content img {{
                 max-width: 100%;
                 height: auto;
@@ -467,14 +467,14 @@ def format_conversation_as_html(conversation_data):
                 box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
                 display: block;
             }}
-            
+
             .timestamp {{
                 color: #9ca3af;
                 font-size: 12px;
                 margin-top: 16px;
                 font-weight: 500;
             }}
-            
+
             .export-info {{
                 background: #f3f4f6;
                 padding: 16px 20px;
@@ -488,61 +488,61 @@ def format_conversation_as_html(conversation_data):
                 gap: 8px;
                 font-weight: 500;
             }}
-            
+
             .messages {{
                 animation: fadeIn 0.6s ease-out;
             }}
-            
+
             @keyframes fadeIn {{
                 from {{ opacity: 0; transform: translateY(20px); }}
                 to {{ opacity: 1; transform: translateY(0); }}
             }}
-            
+
             /* Clean scrollbar */
             ::-webkit-scrollbar {{
                 width: 6px;
             }}
-            
+
             ::-webkit-scrollbar-track {{
                 background: #f1f5f9;
             }}
-            
+
             ::-webkit-scrollbar-thumb {{
                 background: #cbd5e1;
                 border-radius: 3px;
             }}
-            
+
             ::-webkit-scrollbar-thumb:hover {{
                 background: #94a3b8;
             }}
-            
+
             @media (max-width: 768px) {{
                 body {{
                     padding: 20px;
                 }}
-                
+
                 .conversation-header {{
                     padding: 24px;
                 }}
-                
+
                 .message {{
                     padding: 20px;
                 }}
-                
+
                 .user-message {{
                     margin-left: 16px;
                 }}
-                
+
                 .freddaid-message {{
                     margin-right: 16px;
                 }}
             }}
-            
+
             @media (max-width: 480px) {{
                 .user-message {{
                     margin-left: 8px;
                 }}
-                
+
                 .freddaid-message {{
                     margin-right: 8px;
                 }}
@@ -553,14 +553,14 @@ def format_conversation_as_html(conversation_data):
         <div class="export-info">
             📋 This conversation was exported on {export_date}
         </div>
-        
+
         <div class="conversation-header">
             <h1>Conversation Export</h1>
             <p><strong>Started:</strong> {start_date}</p>
             <p><strong>Conversation ID:</strong> {conversation_id}</p>
             <p><strong>Total Messages:</strong> {message_count}</p>
         </div>
-        
+
         <div class="messages">
             {messages_html}
         </div>
@@ -686,7 +686,7 @@ def process_message_content(doc, content, role, user_style, assistant_style):
     # Split content by lines to handle multi-line messages
     content_lines = content.split("\n")
 
-    for line_idx, line in enumerate(content_lines):
+    for line in content_lines:
         line = line.strip()
         if not line:
             # Add empty paragraph for spacing
@@ -712,7 +712,7 @@ def process_message_content(doc, content, role, user_style, assistant_style):
                     p.style = user_style
                 else:
                     p.style = assistant_style
-            except:
+            except Exception:
                 pass  # Use default style if custom style fails
 
 
@@ -742,7 +742,7 @@ def format_conversation_as_docx(conversation_data):
         user_style.font.size = Pt(11)
         user_style.paragraph_format.left_indent = Inches(0.5)
         user_style.paragraph_format.space_after = Pt(6)
-    except:
+    except Exception:
         user_style = doc.styles["Normal"]  # Fallback if style exists
 
     try:
@@ -754,7 +754,7 @@ def format_conversation_as_docx(conversation_data):
         assistant_style.font.size = Pt(11)
         assistant_style.paragraph_format.right_indent = Inches(0.5)
         assistant_style.paragraph_format.space_after = Pt(6)
-    except:
+    except Exception:
         assistant_style = doc.styles["Normal"]  # Fallback if style exists
 
     # Add document header

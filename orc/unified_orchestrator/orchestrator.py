@@ -856,7 +856,7 @@ class ConversationOrchestrator:
     <----------- PREVIOUS TOOL USED ------------>
     The last tool used in this conversation (if available) was: {last_tool_used}
 
-    Consider this when deciding which tool to use for follow-up questions. Most of the time, user would like to continue to use the same tool throughout the session. 
+    Consider this when deciding which tool to use for follow-up questions. Most of the time, user would like to continue to use the same tool throughout the session.
     If user requests a chart after using the data_analyst tool, always trigger the data_analyst tool again to perform the visualization. Don't ask user for the chart requirements. They don't even know. Just make sure the chart looks clear, accurate, and reflect user's intention.
     <----------- END OF PREVIOUS TOOL USED ------------>
     """
