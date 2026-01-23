@@ -286,9 +286,9 @@ async def conversations(req: Request) -> Response:
             if not user_id:
                 return Response("Missing user_id in request body", status_code=400)
 
-            if export_format not in ["html", "json", "docx"]:
+            if export_format not in ["html", "json"]:
                 return Response(
-                    "Invalid export format. Supported formats: html, json, docx",
+                    "Invalid export format. Supported formats: html, json",
                     status_code=400,
                 )
 
