@@ -414,7 +414,7 @@ This document contains various markdown elements to test PDF conversion styling.
 
 ## Text Formatting
 
-This paragraph demonstrates **bold text**, *italic text*, and ***bold italic text***. 
+This paragraph demonstrates **bold text**, *italic text*, and ***bold italic text***.
 
 You can also use `inline code` within sentences. Here's some ~~strikethrough text~~ and some regular text.
 
@@ -498,12 +498,12 @@ const items = [
 
 ```sql
 -- SQL example
-SELECT 
+SELECT
     customer_id,
     customer_name,
     COUNT(*) as order_count,
     SUM(total_amount) as total_spent
-FROM orders 
+FROM orders
 WHERE order_date >= '2023-01-01'
 GROUP BY customer_id, customer_name
 ORDER BY total_spent DESC;
@@ -523,11 +523,11 @@ Here are some example links:
 
 ### Nested Quotes
 > This is a quote
-> 
+>
 > > This is a nested quote within the first quote
-> > 
+> >
 > > It should have different styling
-> 
+>
 > Back to the original quote level
 
 ## Special Characters and Symbols
@@ -551,16 +551,16 @@ Below this line there should be another horizontal rule.
 1. **Project Setup**
    - Install dependencies: `npm install`
    - Configure environment variables
-   
+
 2. **Database Configuration**
-   
+
    | Environment | Host | Port |
    |-------------|------|------|
    | Development | localhost | 5432 |
    | Production | prod-db.example.com | 5432 |
 
 3. **Code Implementation**
-   
+
    ```python
    # Example configuration
    config = {
@@ -611,25 +611,25 @@ def very_long_function_name_that_might_cause_overflow_issues_in_pdf_generation_w
     without causing any overflow issues in the PDF generation process.
     """
     very_long_variable_name_that_exceeds_normal_line_length_limits = "This is a very long string that might cause overflow issues in PDF generation when displayed in code blocks and should be handled gracefully by the text wrapping system"
-    
+
     another_extremely_long_variable_name_for_demonstration_purposes = {
         "very_long_key_name_that_might_cause_issues": "very_long_value_that_should_wrap_properly",
         "another_long_key_for_testing_purposes": "another_long_value_with_lots_of_text_content",
         "url_key": "https://www.example.com/very/long/url/that/might/cause/overflow/issues/in/code/blocks"
     }
-    
+
     return very_long_variable_name_that_exceeds_normal_line_length_limits, another_extremely_long_variable_name_for_demonstration_purposes
 ```
 
 ### SQL with Long Queries
 ```sql
 -- This is a very long SQL comment that explains the query in great detail and might cause overflow issues if not handled properly
-SELECT 
+SELECT
     very_long_column_name_that_exceeds_normal_limits,
     another_extremely_long_column_name_for_testing,
     yet_another_long_column_name_that_should_wrap_properly,
-    CASE 
-        WHEN very_long_condition_that_might_cause_overflow_issues_in_pdf_generation = 'very_long_value_that_should_wrap_properly' 
+    CASE
+        WHEN very_long_condition_that_might_cause_overflow_issues_in_pdf_generation = 'very_long_value_that_should_wrap_properly'
         THEN 'very_long_result_value_that_demonstrates_text_wrapping_capabilities'
         ELSE 'another_long_default_value_for_comprehensive_testing_purposes'
     END as very_long_alias_name_that_tests_wrapping
@@ -679,7 +679,7 @@ If this PDF renders correctly with all the long content properly wrapped and no 
 ---
 
 5. **Testing Results**
-   
+
    > All tests passed successfully. The application is ready for deployment.
 
 ---

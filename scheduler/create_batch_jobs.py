@@ -6,16 +6,16 @@ products, and competitors from their respective Cosmos containers and creates al
 necessary report jobs automatically.
 """
 
+import os
 import uuid
 from datetime import datetime, timezone
 from dotenv import load_dotenv
-
-load_dotenv()
-
-from shared.cosmos_jobs import cosmos_container
 from azure.cosmos import CosmosClient
 from azure.identity import DefaultAzureCredential
-import os
+
+from shared.cosmos_jobs import cosmos_container
+
+load_dotenv()
 
 AZURE_DB_ID = os.getenv("AZURE_DB_ID")
 AZURE_DB_NAME = os.getenv("AZURE_DB_NAME")

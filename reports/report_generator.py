@@ -2,8 +2,6 @@ import logging
 from typing import Dict, Any
 from functools import cached_property
 
-# Set logging level to WARNING
-logging.basicConfig(level=logging.WARNING)
 from shared.prompts import (
     competitor_analysis_prompt,
     product_analysis_prompt,
@@ -12,6 +10,9 @@ from shared.prompts import (
 from deepagents import create_deep_agent
 from reports.config import AgentConfig, EnvironmentConfigLoader
 from shared.util import normalize_markdown
+
+# Set logging level to WARNING
+logging.basicConfig(level=logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
@@ -199,7 +200,7 @@ if __name__ == "__main__":
 
     Power Grab Mounting Tape - Mounting Tape
 """
-    brand_analysis_query = """ 
+    brand_analysis_query = """
     Please generate the weekly Brand Analysis Report.
 
     Brand Focus: Loctite's consumer and construction adhesives business.

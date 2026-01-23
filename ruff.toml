@@ -1,0 +1,11 @@
+# Ruff configuration for gpt-rag-orchestrator
+
+[lint]
+# Enable all default rules except line length
+select = ["E", "F", "W"]
+ignore = ["E501"]  # Don't enforce line length limits
+
+# Per-file ignores for intentional import order violations
+[lint.per-file-ignores]
+# Azure Functions requires importing Durable Functions activities after app creation
+"function_app.py" = ["E402"]
