@@ -65,7 +65,6 @@ class OrchestratorConfig:
     # Used for: query rewriting, categorization, tool selection
     planning_model: str = "gpt-4.1"
     planning_temperature: float = 0.3
-    planning_max_tokens: int = 50000  # account for conversation history
     planning_api_version: str = "2025-04-01-preview"
 
     # Response Model Configuration (Anthropic Claude Sonnet with Extended Thinking)
@@ -80,10 +79,5 @@ class OrchestratorConfig:
     tool_calling_max_tokens: int = 5000
 
     # Retrieval Configuration
-    retriever_top_k: int = 5
     reranker_threshold: float = 2.0
     web_search_results: int = 2
-
-    # MCP Configuration
-    mcp_timeout: int = 600
-    mcp_max_retries: int = 3
