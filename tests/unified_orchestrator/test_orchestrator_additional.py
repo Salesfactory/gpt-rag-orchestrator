@@ -1,6 +1,5 @@
 """Additional unit tests for ConversationOrchestrator internals."""
 
-import json
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
