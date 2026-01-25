@@ -76,7 +76,6 @@ class ConversationOrchestrator:
         """
         self.organization_id = organization_id
         self.config = config or OrchestratorConfig()
-        self.storage_url = os.environ.get("AZURE_STORAGE_ACCOUNT_URL")
         self.cosmos_client = CosmosDBClient()
 
         logger.info(
@@ -1845,9 +1844,7 @@ class ConversationOrchestrator:
                 organization_data=self.organization_data
             )
 
-            self.query_planner = QueryPlanner(
-                llm=self.planning_llm, organization_data=self.organization_data
-            )
+            self.query_planner = QueryPlanner(llm=self.planning_llm)
 
             self.mcp_client = MCPClient(
                 organization_id=self.organization_id,
@@ -1857,8 +1854,6 @@ class ConversationOrchestrator:
 
             self.response_generator = ResponseGenerator(
                 claude_llm=self.response_llm,
-                organization_data=self.organization_data,
-                storage_url=self.storage_url,
             )
 
             logger.info(

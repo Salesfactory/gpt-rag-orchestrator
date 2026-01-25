@@ -37,16 +37,14 @@ class QueryPlanner:
     - Categorize queries into proper marketing categories
     """
 
-    def __init__(self, llm: AzureChatOpenAI, organization_data: Dict[str, Any]):
+    def __init__(self, llm: AzureChatOpenAI):
         """
         Initialize QueryPlanner.
 
         Args:
             llm: Azure OpenAI LLM instance for planning tasks
-            organization_data: Organization information
         """
         self.llm = llm
-        self.organization_data = organization_data
         logger.info("[QueryPlanner] Initialized")
 
     @traceable(run_type="llm", name="query_rewrite")
