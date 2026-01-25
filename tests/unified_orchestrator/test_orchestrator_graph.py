@@ -56,9 +56,7 @@ class TestOrchestratorGraph(unittest.TestCase):
         orch = make_orchestrator()
         memory = MagicMock()
 
-        with patch(
-            "orc.unified_orchestrator.orchestrator.StateGraph", FakeStateGraph
-        ):
+        with patch("orc.unified_orchestrator.orchestrator.StateGraph", FakeStateGraph):
             compiled = orch._build_graph(memory)
 
         self.assertIn("initialize", compiled["nodes"])

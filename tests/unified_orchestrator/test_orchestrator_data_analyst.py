@@ -119,12 +119,8 @@ class TestStreamDataAnalyst(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["last_agent_message"], "done")
         self.assertEqual(len(result["images_processed"]), 1)
         self.assertEqual(len(result["blob_urls"]), 1)
-        self.assertTrue(
-            any("__THINKING__" in item for item in orch._progress_queue)
-        )
-        self.assertTrue(
-            any("__PROGRESS__" in item for item in orch._progress_queue)
-        )
+        self.assertTrue(any("__THINKING__" in item for item in orch._progress_queue))
+        self.assertTrue(any("__PROGRESS__" in item for item in orch._progress_queue))
 
     async def test_stream_data_analyst_error_chunk(self):
         orch = make_orchestrator()

@@ -36,9 +36,7 @@ class TestGenerateResponseWithProgress(unittest.IsolatedAsyncioTestCase):
 
         with patch.object(
             ConversationOrchestrator, "_stream_graph_execution", fake_stream
-        ), patch(
-            "orc.unified_orchestrator.orchestrator.StateManager"
-        ), patch(
+        ), patch("orc.unified_orchestrator.orchestrator.StateManager"), patch(
             "orc.unified_orchestrator.orchestrator.ContextBuilder"
         ), patch(
             "orc.unified_orchestrator.orchestrator.QueryPlanner"

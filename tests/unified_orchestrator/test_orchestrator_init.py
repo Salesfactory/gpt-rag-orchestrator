@@ -71,7 +71,9 @@ class TestOrchestratorInit(unittest.TestCase):
             ), patch.object(
                 ConversationOrchestrator, "_init_response_llm", return_value=MagicMock()
             ), patch.object(
-                ConversationOrchestrator, "_init_tool_calling_llm", return_value=MagicMock()
+                ConversationOrchestrator,
+                "_init_tool_calling_llm",
+                return_value=MagicMock(),
             ):
                 orch = ConversationOrchestrator("org-1")
         mock_cosmos.assert_called_once()

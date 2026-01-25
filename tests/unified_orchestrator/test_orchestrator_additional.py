@@ -164,7 +164,9 @@ class TestOrchestratorAdditional(unittest.IsolatedAsyncioTestCase):
         orch = make_orchestrator()
         orch.context_builder = MagicMock()
         orch.context_builder.format_conversation_history.return_value = "Human: hi"
-        orch.current_conversation_data = {"history": [{"role": "user", "content": "hi"}]}
+        orch.current_conversation_data = {
+            "history": [{"role": "user", "content": "hi"}]
+        }
 
         state = make_state(
             question="Q",
@@ -230,9 +232,7 @@ class TestOrchestratorAdditional(unittest.IsolatedAsyncioTestCase):
             result = await orch._execute_tools_node(state)
 
         self.assertEqual(result["messages"], ["ok"])
-        self.assertTrue(
-            any("Executing tools" in item for item in orch._progress_queue)
-        )
+        self.assertTrue(any("Executing tools" in item for item in orch._progress_queue))
 
     async def test_extract_context_node_invalid_json(self):
         orch = make_orchestrator()
@@ -303,14 +303,14 @@ class TestOrchestratorAdditional(unittest.IsolatedAsyncioTestCase):
         await orch._generate_response_node(make_state())
 
         self.assertIn("I apologize", orch.current_response_text)
-        self.assertTrue(
-            any("I apologize" in item for item in orch._progress_queue)
-        )
+        self.assertTrue(any("I apologize" in item for item in orch._progress_queue))
 
     async def test_summarize_and_save_background_success(self):
         orch = make_orchestrator()
         orch.planning_llm = MagicMock()
-        orch.planning_llm.ainvoke = AsyncMock(return_value=MagicMock(content=" summary "))
+        orch.planning_llm.ainvoke = AsyncMock(
+            return_value=MagicMock(content=" summary ")
+        )
         orch.current_conversation_id = "conv-1"
         orch.current_user_info = {"id": "user-1"}
         orch.current_conversation_data = {}
@@ -319,7 +319,9 @@ class TestOrchestratorAdditional(unittest.IsolatedAsyncioTestCase):
             question="Q", answer="A", existing_summary=""
         )
 
-        self.assertEqual(orch.current_conversation_data["conversation_summary"], "summary")
+        self.assertEqual(
+            orch.current_conversation_data["conversation_summary"], "summary"
+        )
         orch.cosmos_client.update_conversation_data.assert_called_once()
 
     async def test_summarize_and_save_background_error(self):

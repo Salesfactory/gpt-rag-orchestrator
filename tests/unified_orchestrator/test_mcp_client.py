@@ -62,14 +62,18 @@ class TestMCPClient(unittest.IsolatedAsyncioTestCase):
         self.assertNotEqual(getattr(tools[0], "name", ""), "document_chat")
 
     async def test_connect_success(self):
-        with patch.object(self.client, "_get_mcp_url", return_value="http://mcp"), patch(
+        with patch.object(
+            self.client, "_get_mcp_url", return_value="http://mcp"
+        ), patch(
             "orc.unified_orchestrator.mcp_client.MultiServerMCPClient"
         ) as mock_multi:
             await self.client.connect()
         self.assertIs(self.client.client, mock_multi.return_value)
 
     async def test_connect_failure_raises(self):
-        with patch.object(self.client, "_get_mcp_url", return_value="http://mcp"), patch(
+        with patch.object(
+            self.client, "_get_mcp_url", return_value="http://mcp"
+        ), patch(
             "orc.unified_orchestrator.mcp_client.MultiServerMCPClient",
             side_effect=Exception("boom"),
         ):
