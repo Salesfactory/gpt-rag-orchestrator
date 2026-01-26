@@ -69,6 +69,7 @@ __pycache__/
 
 # Pickle files
 *.pckl
+.coverage
 
 # Azurite artifacts
 __blobstorage__

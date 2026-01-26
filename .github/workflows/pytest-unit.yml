@@ -1,0 +1,64 @@
+name: Pytest Unit Testing
+
+on:
+  pull_request:
+    branches:
+      - develop
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  code-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+          python-version: "3.11"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Lint Code (Ruff)
+        run: |
+          ruff check . --output-format=github
+
+      - name: Check Code Formatting (Black)
+        run: |
+          black . --check --verbose
+
+  unit-tests:
+    needs: code-quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+          python-version: "3.11"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run Unit Tests with Coverage
+        run: |
+          bash scripts/test.sh coverage
