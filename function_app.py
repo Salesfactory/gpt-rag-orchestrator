@@ -257,7 +257,11 @@ def blob_event_grid_trigger(event: func.EventGridEvent):
         )
 
         for index_name in index_list:
-            indexer_name = f"{index_name}-indexer"
+            # Handle special case: pulse-index uses pulse-indexer (not pulse-index-indexer)
+            if index_name == "pulse-index":
+                indexer_name = "pulse-indexer"
+            else:
+                indexer_name = f"{index_name}-indexer"
             logging.info(f"[blob_event_grid] Triggering indexer '{indexer_name}'")
 
             indexer_success = trigger_indexer_with_retry(indexer_name, event.subject)
