@@ -42,11 +42,13 @@ def TenantOrchestrator(context: df.DurableOrchestrationContext):
             logging.error(
                 f"[TenantOrchestrator] Failed to acquire capacity for job {job.get('job_id')} after {max_acquire_attempts} attempts"
             )
-            results.append({
-                "job_id": job.get("job_id"),
-                "status": "FAILED",
-                "error": "Failed to acquire rate limiter capacity - timeout"
-            })
+            results.append(
+                {
+                    "job_id": job.get("job_id"),
+                    "status": "FAILED",
+                    "error": "Failed to acquire rate limiter capacity - timeout",
+                }
+            )
             continue  # Skip to next job - no token acquired, nothing to release
 
         # Token acquired - must release after processing
