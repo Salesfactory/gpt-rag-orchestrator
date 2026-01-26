@@ -26,11 +26,15 @@ DEFAULT_LIMIT = 30
 DEFAULT_MAX_DEPTH = 4
 DEFAULT_MAX_BREADTH = 15
 
-# Use DFApp for Durable Functions support
-app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
+# Import DFApp from registry to avoid circular imports
+from durable_functions_registry import app
 
-# Must import AFTER app is created to register durable functions
+# Import durable functions to register them (imports must happen after app is available)
 import report_worker.activities  # GenerateReportActivity
+import orchestrators.main_orchestrator  # noqa: F401
+import orchestrators.tenant_orchestrator  # noqa: F401
+import orchestrators.oneshot_orchestrator  # noqa: F401
+import entities.rate_limiter_entity  # noqa: F401
 
 ENABLE_LEGACY = os.getenv("ENABLE_LEGACY_QUEUE_WORKER") == "1"
 
@@ -132,23 +136,14 @@ async def start_orch(req: Request, client: df.DurableOrchestrationClient):
 
 
 @app.timer_trigger(
-    schedule="0 0 6 * * 0", arg_name="mytimer", run_on_startup=False
-)  # Every Sunday at 6:00 AM UTC
+    schedule="%REPORT_SCHEDULE_CRON%", arg_name="mytimer", run_on_startup=False
+)
 @app.durable_client_input(client_name="client")
 async def batch_jobs_timer(
     mytimer: func.TimerRequest, client: df.DurableOrchestrationClient
 ) -> None:
-    """
-    Timer trigger that runs every Sunday at 6:00 AM UTC.
-    Cron expression: "0 0 6 * * 0" means:
-    - 0 seconds
-    - 0 minutes
-    - 6 hours (6:00 AM)
-    - * any day of month
-    - * any month
-    - 0 Sunday
-    """
-    logging.info("Batch jobs timer trigger started - Sunday 6:00 AM UTC")
+
+    logging.info("Batch jobs timer trigger started")
 
     try:
         # Step 1: Create batch jobs

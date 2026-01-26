@@ -18,8 +18,8 @@ High-level sequence:
 
 ## Entrypoints
 
-- Timer (weekly, Durable): `scheduler/report_scheduler_timer.py`
-  - Cron: `0 0 2 * * 0` (Sundays 02:00 UTC)
+- Timer (weekly, Durable): `function_app.py`
+  - Cron: `%REPORT_SCHEDULE_CRON%` (default `0 0 6 * * 0`, Sundays 06:00 UTC)
   - Loads due jobs from Cosmos DB and starts `MainOrchestrator` with a unique `instance_id`.
 
 - HTTP (manual start): `function_app.py` (`POST /api/start-orch`)
@@ -64,10 +64,10 @@ This entity ensures work can be distributed fairly across tenants and provides b
 ### GenerateReportActivity
 File: `report_worker/activities.py`
 
-- Input: `{ job_id, organization_id, tenant_id?, etag?, attempt? }`.
+- Input: `{ job_id, organization_id, tenant_id?, etag?, attempt?, processing_instance_id? }`.
 - If `etag` is present, attempts `QUEUED → RUNNING` with Cosmos If-Match:
   - On ETag mismatch (taken by another worker), returns `{status: "SKIPPED", reason: ...}`.
-- Executes with a 30-minute timeout (`asyncio.timeout(1800)`).
+- Executes with a configurable timeout (`REPORT_JOB_TIMEOUT_SECONDS`, default 600 seconds).
 - Calls the processor (`process_report_job`) and records success/failure in Cosmos.
 - Returns a normalized result: `{ job_id, organization_id, status: SUCCEEDED|FAILED|SKIPPED, ... }`.
 
@@ -79,7 +79,7 @@ File: `report_worker/processor.py`
 
 Steps per job:
 1. Read the job from Cosmos DB. If not found, fail.
-2. If status is not `QUEUED`, skip (idempotent re-entry).
+2. If status is `SUCCEEDED`, skip; if `FAILED` with `error_type` ∈ {`transient`, `timeout`} and retries are enabled, transition back to `RUNNING`.
 3. Update status to `RUNNING` and set `started_at` (note: ETag-based transition already performed in activity).
 4. Select a markdown generator via `report_worker/registry.get_generator(report_key)`.
    - Generators return markdown only; conversion and storage are centralized.
@@ -113,10 +113,10 @@ To add a new type:
 ## Scheduling
 
 ### Weekly Batch (Durable)
-File: `scheduler/report_scheduler_timer.py`
+File: `function_app.py`
 
 - Loads due jobs via `shared/cosmos_jobs.load_scheduled_jobs()` (status `QUEUED` and `schedule_time <= now`).
-- Starts `MainOrchestrator` with a date-based `instance_id` (one orchestration per weekly run).
+- Starts `MainOrchestrator` (one orchestration per weekly run).
 
 ### Manual Start (HTTP)
 File: `function_app.py`
@@ -161,7 +161,7 @@ You can also use the Postman collection at `tests/durable-functions-test.postman
 Cosmos container: default `reportJobs` (configurable via env vars).
 
 Representative fields:
-- `job_id` (or `id`), `organization_id` (partition key), `tenant_id`
+- `job_id` (or `id`), `organization_id` (partition key), `tenant_id`, `processing_instance_id` (optional)
 - `report_key`, `params`, `status` ∈ {`QUEUED`, `RUNNING`, `SUCCEEDED`, `FAILED`}
 - `schedule_time`, `_etag` (for optimistic concurrency) # IMPORTANT
 - Worker-managed timestamps: `started_at`, `updated_at`, `completed_at`/`failed_at`
@@ -191,13 +191,15 @@ Transitions:
 - Rate Limiter Entity: Durable Entity enforces global and per-tenant concurrency limits at orchestration level. Prevents API rate limit errors and ensures fair resource distribution.
 - Durable Retries: Transient failures bubble to Durable which retries per `RetryOptions`.
 - Global Concurrency: Defaults to 1 via `RateLimiter.global_limit` and `WAVE_SIZE`. Increase for parallelism as needed.
-- Activity Timeout: 30 minutes per job (prevents indefinite execution).
+- Activity Timeout: Configurable via `REPORT_JOB_TIMEOUT_SECONDS` (default 600 seconds). Keep this ≤ `host.json` `functionTimeout` unless running on a plan that allows longer executions.
 
 ## Configuration
 
 Environment variables of interest:
 - Cosmos: `AZURE_DB_ID`, `AZURE_DB_NAME`, `AZURE_REPORT_JOBS_CONTAINER` (or `COSMOS_CONTAINER`)
 - Storage: `AZURE_STORAGE_CONNECTION_STRING` or `AZURE_STORAGE_ACCOUNT` (uses `DefaultAzureCredential`)
+- Timeouts: `REPORT_JOB_TIMEOUT_SECONDS` (default 600; keep ≤ `host.json` `functionTimeout` unless plan allows longer)
+- Scheduler: `REPORT_SCHEDULE_CRON` (cron schedule for `batch_jobs_timer`; requires app restart to apply)
 - Durable hub: uses the configured Storage account (Azurite locally)
 
 ## Local Development
@@ -231,7 +233,7 @@ When adding a new report type:
 - Activities: `report_worker/activities.py`
 - Processor: `report_worker/processor.py`
 - Registry: `report_worker/registry.py`
-- Scheduler (Durable): `scheduler/report_scheduler_timer.py`
+- Scheduler (Durable): `function_app.py`
 - Cosmos helpers: `shared/cosmos_jobs.py`, `shared/util.py`
 - PDF: `shared/markdown_to_pdf.py`
 - Blob client: `shared/blob_client_async.py`

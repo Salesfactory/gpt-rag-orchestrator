@@ -1,4 +1,4 @@
-from function_app import app
+from durable_functions_registry import app
 import azure.durable_functions as df
 
 
