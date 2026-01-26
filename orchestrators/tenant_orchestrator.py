@@ -21,7 +21,7 @@ def TenantOrchestrator(context: df.DurableOrchestrationContext):
     )
 
     for job in jobs:
-        max_acquire_attempts = 3  
+        max_acquire_attempts = 3
         acquire_attempts = 0
         granted = False
 
