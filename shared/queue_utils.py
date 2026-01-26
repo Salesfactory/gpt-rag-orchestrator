@@ -10,9 +10,7 @@ def _get_queue_client(queue_name: str) -> QueueClient:
     if not connection_string:
         raise ValueError("AzureWebJobsStorage is not set")
     api_version = None
-    if (
-        "UseDevelopmentStorage=true" in connection_string
-    ):
+    if "UseDevelopmentStorage=true" in connection_string:
         # Use an older, widely supported version for Azurite
         api_version = "2020-10-02"
     return QueueClient.from_connection_string(

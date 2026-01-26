@@ -215,9 +215,7 @@ def reset_stale_running_jobs(container, cutoff_iso: str) -> List[Dict[str, Any]]
             if not job_id or not organization_id:
                 continue
 
-            job_doc = container.read_item(
-                item=job_id, partition_key=organization_id
-            )
+            job_doc = container.read_item(item=job_id, partition_key=organization_id)
             if job_doc.get("status") != "RUNNING":
                 continue
 

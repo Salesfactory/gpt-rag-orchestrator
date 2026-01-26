@@ -39,6 +39,7 @@ from durable_functions_registry import app
 REPORT_SCHEDULE_CRON = os.getenv("REPORT_SCHEDULE_CRON", "0 0 14 * * *")
 HOST_INSTANCE_ID = os.getenv("WEBSITE_INSTANCE_ID", "local")
 
+
 @app.function_name(name="report_queue_worker")
 @app.queue_trigger(
     arg_name="msg",
@@ -134,9 +135,7 @@ async def report_stale_cleanup(cleanup_timer: func.TimerRequest) -> None:
         }
         enqueue_message("report-processing", payload)
 
-    logging.info(
-        f"[report-stale-cleanup] Reset {len(reset_jobs)} stale RUNNING job(s)"
-    )
+    logging.info(f"[report-stale-cleanup] Reset {len(reset_jobs)} stale RUNNING job(s)")
 
 
 @app.route(
@@ -151,9 +150,6 @@ async def health_check(req: Request) -> Response:
         200 OK when the application is healthy
     """
     return Response("OK", status_code=200, media_type="text/plain")
-
-
- 
 
 
 @app.function_name(name="report_queue_scheduler")
@@ -193,14 +189,10 @@ async def report_queue_scheduler(
             messages.append(json.dumps(msg))
 
         queue_msgs.set(messages)
-        logging.info(
-            f"[report-queue-scheduler] Enqueued {len(messages)} report jobs"
-        )
+        logging.info(f"[report-queue-scheduler] Enqueued {len(messages)} report jobs")
     except Exception as e:
         logging.error(f"[report-queue-scheduler] Failed: {str(e)}")
         raise
-
-
 
 
 @app.route(route="orc", methods=[func.HttpMethod.POST])
