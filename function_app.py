@@ -239,23 +239,37 @@ def blob_event_grid_trigger(event: func.EventGridEvent):
     """
     Event Grid trigger that triggers the search indexer when blob events are received.
     Filtering is handled at the infrastructure level.
+    Supports multiple indexers separated by commas.
     """
     try:
-        indexer_name = f'{os.getenv("AZURE_AI_SEARCH_INDEX_NAME")}-indexer'
+        index_names = os.getenv("AZURE_AI_SEARCH_INDEX_NAME", "")
+        if not index_names:
+            logging.warning(
+                "[blob_event_grid] AZURE_AI_SEARCH_INDEX_NAME not configured"
+            )
+            return
+
+        # Split by comma and strip whitespace to support multiple indexes
+        index_list = [name.strip() for name in index_names.split(",") if name.strip()]
+
         logging.info(
-            f"[blob_event_grid] Event received, triggering indexer '{indexer_name}'"
+            f"[blob_event_grid] Event received for blob: {event.subject}, triggering {len(index_list)} indexer(s)"
         )
 
-        indexer_success = trigger_indexer_with_retry(indexer_name, event.subject)
+        for index_name in index_list:
+            indexer_name = f"{index_name}-indexer"
+            logging.info(f"[blob_event_grid] Triggering indexer '{indexer_name}'")
 
-        if indexer_success:
-            logging.info(
-                f"[blob_event_grid] Successfully triggered indexer '{indexer_name}'"
-            )
-        else:
-            logging.warning(
-                f"[blob_event_grid] Could not trigger indexer '{indexer_name}'"
-            )
+            indexer_success = trigger_indexer_with_retry(indexer_name, event.subject)
+
+            if indexer_success:
+                logging.info(
+                    f"[blob_event_grid] Successfully triggered indexer '{indexer_name}'"
+                )
+            else:
+                logging.warning(
+                    f"[blob_event_grid] Could not trigger indexer '{indexer_name}'"
+                )
 
     except Exception as e:
         logging.error(f"[blob_event_grid] Error: {str(e)}, Event ID: {event.id}")
