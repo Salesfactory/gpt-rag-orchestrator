@@ -92,3 +92,6 @@ shared/data/company_name.json
 
 .gemini/
 gha-creds-*.json
+
+#local docs
+docs/unified_orchestrator_unit_test_plan.md
