@@ -55,15 +55,26 @@ async def load_scheduled_jobs() -> List[Dict[str, Any]]:
 
 
 def try_mark_job_running(
-    container, job_id: str, organization_id: str, etag: str
+    container,
+    job_id: str,
+    organization_id: str,
+    etag: str,
+    processing_instance_id: str | None = None,
 ) -> bool:
     """
     Optimistic transition QUEUED -> RUNNING using ETag to avoid duplicates.
+    Optionally records a processing_instance_id for retry ownership.
+
+    Returns:
+        True if successfully marked as running
+        False if job already taken (etag mismatch) or not found (404)
     """
     try:
         # Load existing doc to preserve its body (replace only status)
         existing = container.read_item(item=job_id, partition_key=organization_id)
         existing["status"] = "RUNNING"
+        if processing_instance_id:
+            existing["processing_instance_id"] = processing_instance_id
         container.replace_item(
             item=job_id,
             body=existing,
@@ -76,10 +87,10 @@ def try_mark_job_running(
             logging.info(f"[Idempotency] Job {job_id} already taken (etag mismatch).")
             return False
         elif e.status_code == 404:
-            logging.error(
-                f"[Cosmos] Job {job_id} not found for organization {organization_id}"
+            logging.warning(
+                f"[Cosmos] Job {job_id} not found for organization {organization_id} - likely already processed or deleted"
             )
-            raise ValueError(f"Job {job_id} not found in database")
+            return False
         raise
 
 

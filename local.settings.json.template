@@ -25,6 +25,7 @@
     "AGENT_ENDPOINT_SERVICE": "<your-agent-endpoint-service>",
     "REASONING_EFFORT": "high",
     "ENVIRONMENT": "local",
+    "REPORT_SCHEDULE_CRON": "0 0 6 * * 0",
     "AzureWebJobs.batch_jobs_timer.Disabled": "true"
   }
 }

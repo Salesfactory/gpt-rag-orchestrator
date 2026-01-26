@@ -16,8 +16,26 @@ from shared.blob_client_async import get_blob_service_client
 from .registry import get_generator
 
 
+class ReportJobDeterministicError(Exception):
+    """Non-retryable error during report generation."""
+
+
+class ReportJobTransientError(Exception):
+    """Retryable error during report generation (Durable Functions)."""
+
+
+def _is_retryable_failure(job: Dict[str, Any]) -> bool:
+    error = job.get("error")
+    if isinstance(error, dict):
+        return error.get("error_type") in {"transient", "timeout"}
+    return False
+
+
 async def process_report_job(
-    job_id: str, organization_id: str, dequeue_count: int = 1
+    job_id: str,
+    organization_id: str,
+    dequeue_count: int = 1,
+    allow_retry: bool = False,
 ) -> None:
     """
     Process a report generation job.
@@ -50,11 +68,29 @@ async def process_report_job(
 
     # Check job status for idempotency
     current_status = job.get("status", "").upper()
-    if current_status in ["SUCCEEDED", "FAILED"]:
+    if current_status == "SUCCEEDED":
         logging.info(
             f"[ReportWorker] Job {job_id} already completed with status {current_status}, skipping processing"
         )
         return
+
+    if current_status == "FAILED":
+        if allow_retry and _is_retryable_failure(job):
+            logging.info(
+                f"[ReportWorker] Retrying transiently failed job {job_id} (status=FAILED)"
+            )
+            success = update_report_job_status(job_id, organization_id, "RUNNING")
+            if not success:
+                logging.error(
+                    f"[ReportWorker] Failed to update job {job_id} status to RUNNING"
+                )
+                raise Exception(f"Failed to update job {job_id} status to RUNNING")
+        else:
+            logging.info(
+                f"[ReportWorker] Job {job_id} already completed with status {current_status}, skipping processing"
+            )
+            return
+
     # Update job status to RUNNING
     if current_status == "QUEUED":
         success = update_report_job_status(job_id, organization_id, "RUNNING")
@@ -64,9 +100,13 @@ async def process_report_job(
             )
             raise Exception(f"Failed to update job {job_id} status to RUNNING")
         logging.info(f"[ReportWorker] Updated job {job_id} status to RUNNING")
-    else:
+    elif current_status == "RUNNING":
         logging.info(
             f"[ReportWorker] Job {job_id} is already RUNNING, proceeding with processing"
+        )
+    elif current_status not in {"FAILED"}:
+        logging.info(
+            f"[ReportWorker] Job {job_id} has unexpected status {current_status}, proceeding with processing"
         )
 
     # Get report generator
@@ -84,6 +124,8 @@ async def process_report_job(
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             },
         )
+        if allow_retry:
+            raise ReportJobDeterministicError("Missing report_key")
         return
 
     generator = get_generator(report_key)
@@ -99,6 +141,10 @@ async def process_report_job(
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             },
         )
+        if allow_retry:
+            raise ReportJobDeterministicError(
+                f"No generator found for report_key: {report_key}"
+            )
         return
 
     logging.info(
@@ -165,6 +211,8 @@ async def process_report_job(
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             },
         )
+        if allow_retry:
+            raise ReportJobDeterministicError(str(e)) from e
         return
 
     except Exception as e:
@@ -180,6 +228,8 @@ async def process_report_job(
                 "timestamp": datetime.now(timezone.utc).isoformat(),
             },
         )
+        if allow_retry:
+            raise ReportJobTransientError(str(e)) from e
         raise  # Re-raise to trigger Azure Storage Queue retry
 
 
