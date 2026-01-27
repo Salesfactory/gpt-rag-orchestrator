@@ -128,7 +128,6 @@ async def report_stale_cleanup(cleanup_timer: func.TimerRequest) -> None:
         payload = {
             "job_id": job.get("job_id"),
             "organization_id": job.get("organization_id"),
-            "tenant_id": job.get("tenant_id"),
             "etag": job.get("etag"),
             "enqueued_at": datetime.now(timezone.utc).isoformat(),
         }
@@ -181,7 +180,6 @@ async def report_queue_scheduler(
             msg = {
                 "job_id": job["job_id"],
                 "organization_id": job["organization_id"],
-                "tenant_id": job["tenant_id"],
                 "etag": job.get("etag"),
                 "enqueued_at": datetime.now(timezone.utc).isoformat(),
             }
