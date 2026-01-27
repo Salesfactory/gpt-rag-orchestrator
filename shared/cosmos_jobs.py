@@ -31,7 +31,7 @@ def cosmos_container():
 async def load_scheduled_jobs() -> List[Dict[str, Any]]:
     """
     Returns jobs that are due now.
-    MUST include _etag -> mapped to 'etag' for the activity.
+    MUST include _etag -> mapped to 'etag' for the queue worker.
     """
     c = cosmos_container()
     query = "SELECT c.id, c.job_id, c.organization_id, c.tenant_id, c.schedule_time, c.status, c._etag FROM c WHERE c.status = 'QUEUED' AND c.schedule_time <= @now"
@@ -40,7 +40,7 @@ async def load_scheduled_jobs() -> List[Dict[str, Any]]:
         c.query_items(query=query, parameters=params, enable_cross_partition_query=True)
     )
 
-    # Normalize fields the orchestrators/activities expect
+    # Normalize fields the queue worker expects
     jobs = []
     for it in items:
         jobs.append(
