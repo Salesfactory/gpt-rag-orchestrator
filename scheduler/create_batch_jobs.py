@@ -102,7 +102,6 @@ def create_batch_jobs(
                     job_doc = {
                         "id": job_id,
                         "job_id": job_id,
-                        "tenant_id": organization_id,
                         "organization_id": organization_id,
                         "idempotency_key": str(uuid.uuid4()),
                         "report_key": "brand_analysis",
@@ -150,7 +149,6 @@ def create_batch_jobs(
                     job_doc = {
                         "id": job_id,
                         "job_id": job_id,
-                        "tenant_id": organization_id,
                         "organization_id": organization_id,
                         "idempotency_key": str(uuid.uuid4()),
                         "report_key": "product_analysis",
@@ -193,7 +191,6 @@ def create_batch_jobs(
                     job_doc = {
                         "id": job_id,
                         "job_id": job_id,
-                        "tenant_id": organization_id,
                         "organization_id": organization_id,
                         "idempotency_key": str(uuid.uuid4()),
                         "report_key": "competitor_analysis",

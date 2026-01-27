@@ -34,7 +34,7 @@ async def load_scheduled_jobs() -> List[Dict[str, Any]]:
     MUST include _etag -> mapped to 'etag' for the queue worker.
     """
     c = cosmos_container()
-    query = "SELECT c.id, c.job_id, c.organization_id, c.tenant_id, c.schedule_time, c.status, c._etag FROM c WHERE c.status = 'QUEUED' AND c.schedule_time <= @now"
+    query = "SELECT c.id, c.job_id, c.organization_id, c.schedule_time, c.status, c._etag FROM c WHERE c.status = 'QUEUED' AND c.schedule_time <= @now"
     params = [{"name": "@now", "value": datetime.now(UTC).isoformat()}]
     items = list(
         c.query_items(query=query, parameters=params, enable_cross_partition_query=True)
@@ -47,7 +47,6 @@ async def load_scheduled_jobs() -> List[Dict[str, Any]]:
             {
                 "job_id": it.get("job_id") or it.get("id"),
                 "organization_id": it["organization_id"],
-                "tenant_id": it["tenant_id"],
                 "etag": it.get("_etag"),
             }
         )
@@ -228,7 +227,6 @@ def reset_stale_running_jobs(container, cutoff_iso: str) -> List[Dict[str, Any]]
                 {
                     "job_id": updated.get("job_id") or updated.get("id"),
                     "organization_id": updated.get("organization_id"),
-                    "tenant_id": updated.get("tenant_id"),
                     "etag": updated.get("_etag"),
                 }
             )
