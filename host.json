@@ -9,9 +9,7 @@
     },
     "logLevel": {
       "default": "Information",
-      "Azure.Core": "Warning",
-      "DurableTask.AzureStorage": "Warning",
-      "DurableTask.Core": "Warning"
+      "Azure.Core": "Warning"
     }
   },
   "extensionBundle": {
@@ -19,14 +17,6 @@
     "version": "[4.0.0, 5.0.0)"
   },
   "extensions": {
-    "durableTask": {
-      "hubName": "DurableFunctionsHub",
-      "storageProvider": {
-        "type": "azureStorage"
-      },
-      "maxConcurrentActivityFunctions": 10,
-      "maxConcurrentOrchestratorFunctions": 50
-    },
     "queues": {
       "batchSize": 1,
       "newBatchThreshold": 0,

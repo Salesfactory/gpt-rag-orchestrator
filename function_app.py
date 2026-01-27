@@ -33,11 +33,10 @@ DEFAULT_LIMIT = 30
 DEFAULT_MAX_DEPTH = 4
 DEFAULT_MAX_BREADTH = 15
 
-# Import DFApp from registry to avoid circular imports
-from durable_functions_registry import app
-
 REPORT_SCHEDULE_CRON = os.getenv("REPORT_SCHEDULE_CRON", "0 0 14 * * *")
 HOST_INSTANCE_ID = os.getenv("WEBSITE_INSTANCE_ID", "local")
+
+app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
 
 
 @app.function_name(name="report_queue_worker")

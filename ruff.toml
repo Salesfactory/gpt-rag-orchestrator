@@ -7,5 +7,5 @@ ignore = ["E501"]  # Don't enforce line length limits
 
 # Per-file ignores for intentional import order violations
 [lint.per-file-ignores]
-# Azure Functions requires importing Durable Functions activities after app creation
+# Azure Functions app uses module-level decorators; ignore import-order warnings
 "function_app.py" = ["E402"]

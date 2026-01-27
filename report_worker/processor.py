@@ -21,7 +21,7 @@ class ReportJobDeterministicError(Exception):
 
 
 class ReportJobTransientError(Exception):
-    """Retryable error during report generation (Durable Functions)."""
+    """Retryable error during report generation."""
 
 
 def _is_retryable_failure(job: Dict[str, Any]) -> bool:

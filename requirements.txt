@@ -13,7 +13,6 @@ azure-common==1.1.28
 azure-core==1.35.0
 azure-cosmos==4.6.0
 azure-functions==1.23.0
-azure-functions-durable==1.4.0
 azure-identity==1.15.0
 azure-keyvault-secrets==4.7.0
 azure-search-documents==11.6.0b12
