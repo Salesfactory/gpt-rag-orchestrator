@@ -10,7 +10,7 @@ from openai import OpenAI
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
-env_path = Path(__file__).parent.parent / '.env'
+env_path = Path(__file__).parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 
 
@@ -25,14 +25,14 @@ class EvaluationResult(BaseModel):
         "2 = Major inaccuracies or incomplete, "
         "1 = Completely wrong or hallucinated",
         ge=1,
-        le=5
+        le=5,
     )
     reasoning: str = Field(
         description="Detailed explanation of the score and what was correct or incorrect"
     )
     factual_accuracy: str = Field(
         description="Overall accuracy assessment",
-        pattern="^(accurate|partially accurate|inaccurate)$"
+        pattern="^(accurate|partially accurate|inaccurate)$",
     )
 
 
@@ -98,7 +98,7 @@ Evaluate the AI answer against the ground truth fact and provide your assessment
                 model="gpt-4.1",
                 input=[
                     {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
+                    {"role": "user", "content": user_prompt},
                 ],
                 text_format=EvaluationResult,
             )
@@ -109,5 +109,5 @@ Evaluate the AI answer against the ground truth fact and provide your assessment
             return EvaluationResult(
                 score=0,
                 reasoning=f"Evaluation failed: {str(e)}",
-                factual_accuracy="inaccurate"
+                factual_accuracy="inaccurate",
             )

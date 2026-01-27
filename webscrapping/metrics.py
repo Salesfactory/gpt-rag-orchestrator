@@ -35,7 +35,6 @@ class CrawlerSummary:
         if url not in self.visited_urls:
             self.visited_urls.append(url)
 
-
     def get_metrics(self):
         """Get summary metrics for the crawl session."""
         DATETIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
@@ -67,4 +66,4 @@ class CrawlerSummary:
             f"processed={len(self.visited_urls)}, "
             f"success={len(self.success_pages)}, "
             f"failure={len(self.failure_pages)})"
-        ) 
+        )

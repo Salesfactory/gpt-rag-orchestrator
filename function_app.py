@@ -1,13 +1,11 @@
 import azure.functions as func
-import azure.durable_functions as df
 import logging
 import json
 import os
-import traceback
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
+from typing import List
 
 from azurefunctions.extensions.http.fastapi import Request, StreamingResponse, Response
-from scheduler.batch_processor import load_and_process_jobs
 from scheduler.create_batch_jobs import create_batch_jobs
 
 from shared.util import (
@@ -18,85 +16,129 @@ from shared.util import (
 from orc import ConversationOrchestrator, get_settings
 from shared.conversation_export import export_conversation
 from webscrapping.multipage_scrape import crawl_website
-from report_worker.processor import extract_message_metadata, process_report_job
-from shared.util import update_report_job_status
+from report_worker.processor import process_report_job, ReportJobDeterministicError
+from shared.cosmos_jobs import (
+    load_scheduled_jobs,
+    cosmos_container,
+    try_mark_job_running,
+    acquire_global_lease,
+    release_global_lease,
+    is_global_lease_active,
+    reset_stale_running_jobs,
+)
+from shared.queue_utils import enqueue_message
 
 # MULTIPAGE SCRAPING CONSTANTS
 DEFAULT_LIMIT = 30
 DEFAULT_MAX_DEPTH = 4
 DEFAULT_MAX_BREADTH = 15
 
-# Use DFApp for Durable Functions support
-app = df.DFApp(http_auth_level=func.AuthLevel.FUNCTION)
+REPORT_SCHEDULE_CRON = os.getenv("REPORT_SCHEDULE_CRON", "0 0 14 * * *")
+HOST_INSTANCE_ID = os.getenv("WEBSITE_INSTANCE_ID", "local")
 
-# Must import AFTER app is created to register durable functions
-import report_worker.activities  # GenerateReportActivity
-ENABLE_LEGACY = os.getenv("ENABLE_LEGACY_QUEUE_WORKER") == "1"
+app = func.FunctionApp(http_auth_level=func.AuthLevel.FUNCTION)
 
-if ENABLE_LEGACY:
-    @app.function_name(name="report_worker")
-    @app.queue_trigger(
-        arg_name="msg",
-        queue_name="report-jobs",
-        connection="AZURE_STORAGE_CONNECTION_STRING",
+
+@app.function_name(name="report_queue_worker")
+@app.queue_trigger(
+    arg_name="msg",
+    queue_name="report-processing",
+    connection="AzureWebJobsStorage",
+)
+async def report_queue_worker(msg: func.QueueMessage) -> None:
+    """
+    Queue worker for report generation.
+    Processes one report job at a time using a global Cosmos lease.
+    """
+    try:
+        payload = json.loads(msg.get_body().decode("utf-8"))
+    except Exception as e:
+        logging.error(f"[report-queue-worker] Invalid message body: {e}")
+        return
+
+    job_id = payload.get("job_id")
+    organization_id = payload.get("organization_id")
+    etag = payload.get("etag")
+    dequeue_count = msg.dequeue_count or 1
+
+    if not job_id or not organization_id:
+        logging.error("[report-queue-worker] Missing job_id or organization_id")
+        return
+
+    container = cosmos_container()
+    acquired = acquire_global_lease(
+        container,
+        instance_id=HOST_INSTANCE_ID,
+        ttl_minutes=45,
     )
-    async def report_worker(msg: func.QueueMessage) -> None:
-        """
-        Azure Function triggered by messages in the report-jobs queue.
+    if not acquired:
+        enqueue_message("report-processing", payload, visibility_timeout=90)
+        return
 
-        Processes report generation jobs with proper error handling and retry logic.
-        """
-        logging.info(
-            "[report-worker] Python Service Bus Queue trigger function processed a request."
-        )
-
-        job_id = None
-        organization_id = None
-        dequeue_count = 1
-
-        try:
-            # Extract message metadata and required fields
-            job_id, organization_id, dequeue_count, message_id = extract_message_metadata(
-                msg
+    try:
+        if etag and dequeue_count == 1:
+            claimed = try_mark_job_running(
+                container,
+                job_id,
+                organization_id,
+                etag,
+                processing_instance_id=HOST_INSTANCE_ID,
             )
-
-            # Return early if message parsing failed
-            if not all([job_id, organization_id]):
+            if not claimed:
+                logging.info(
+                    f"[report-queue-worker] Job {job_id} already claimed, skipping"
+                )
                 return
 
-            # Log processing start with dequeue count for monitoring
-            logging.info(f"[ReportWorker] Starting job {job_id} for organization {organization_id} (attempt {dequeue_count})")
+        await process_report_job(
+            job_id,
+            organization_id,
+            dequeue_count,
+            allow_retry=True,
+        )
+    except ReportJobDeterministicError as e:
+        logging.error(
+            f"[report-queue-worker] Deterministic error for job {job_id}: {e}"
+        )
+        return
+    except Exception as e:
+        logging.error(f"[report-queue-worker] Transient error: {e}")
+        raise
+    finally:
+        release_global_lease(container, instance_id=HOST_INSTANCE_ID)
 
-            # Check if this is a retry and log warning
-            if dequeue_count > 1:
-                logging.warning(f"[ReportWorker] Job {job_id} is being retried (attempt {dequeue_count})")
 
-            # Process the report job
-            await process_report_job(job_id, organization_id, dequeue_count)
-            logging.info(f"[ReportWorker] Successfully completed job {job_id} for organization {organization_id}")
+@app.function_name(name="report_stale_cleanup")
+@app.timer_trigger(
+    schedule="0 30 * * * *", arg_name="cleanup_timer", run_on_startup=False
+)
+async def report_stale_cleanup(cleanup_timer: func.TimerRequest) -> None:
+    """
+    Reset stale RUNNING jobs to QUEUED when no active global lease exists.
+    """
+    container = cosmos_container()
 
-        except Exception as e:
-            logging.error(
-                f"[ReportWorker] Unexpected error for job {job_id} "
-                f"(dequeue_count: {dequeue_count}): {str(e)}\n"
-                f"Traceback: {traceback.format_exc()}"
-            )
+    if is_global_lease_active(container):
+        logging.info("[report-stale-cleanup] Global lease active; skipping cleanup")
+        return
 
-            # Update job status if we have the info
-            if job_id and organization_id:
-                error_payload = {
-                    "error_type": "unexpected",
-                    "error_message": str(e),
-                    "dequeue_count": dequeue_count,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                }
-                update_report_job_status(
-                    job_id, organization_id, "FAILED", error_payload=error_payload
-                )
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=45)
+    reset_jobs = reset_stale_running_jobs(container, cutoff.isoformat())
+    for job in reset_jobs:
+        payload = {
+            "job_id": job.get("job_id"),
+            "organization_id": job.get("organization_id"),
+            "etag": job.get("etag"),
+            "enqueued_at": datetime.now(timezone.utc).isoformat(),
+        }
+        enqueue_message("report-processing", payload)
 
-            # Don't re-raise - let message go to poison queue
+    logging.info(f"[report-stale-cleanup] Reset {len(reset_jobs)} stale RUNNING job(s)")
 
-@app.route(route="health", methods=[func.HttpMethod.GET], auth_level=func.AuthLevel.ANONYMOUS)
+
+@app.route(
+    route="health", methods=[func.HttpMethod.GET], auth_level=func.AuthLevel.ANONYMOUS
+)
 async def health_check(req: Request) -> Response:
     """
     Health check endpoint for Azure App Service health monitoring.
@@ -107,43 +149,48 @@ async def health_check(req: Request) -> Response:
     """
     return Response("OK", status_code=200, media_type="text/plain")
 
-@app.route(route="start-orch", methods=[func.HttpMethod.POST])
-@app.durable_client_input(client_name="client")
-async def start_orch(req: Request, client: df.DurableOrchestrationClient):
-    body = await req.json()
-    orch = body.get("orchestrator", "OneShotOrchestrator")
-    payload = body.get("input", {})
-    instance_id = await client.start_new(orch, client_input=payload)
-    return Response(content=json.dumps({"instanceId": instance_id}), media_type="application/json")
 
-@app.timer_trigger(schedule="0 0 6 * * 0", arg_name="mytimer", run_on_startup=False)  # Every Sunday at 6:00 AM UTC
-@app.durable_client_input(client_name="client")
-async def batch_jobs_timer(mytimer: func.TimerRequest, client: df.DurableOrchestrationClient) -> None:
-    """
-    Timer trigger that runs every Sunday at 6:00 AM UTC.
-    Cron expression: "0 0 6 * * 0" means:
-    - 0 seconds
-    - 0 minutes
-    - 6 hours (6:00 AM)
-    - * any day of month
-    - * any month
-    - 0 Sunday
-    """
-    logging.info("Batch jobs timer trigger started - Sunday 6:00 AM UTC")
+@app.function_name(name="report_queue_scheduler")
+@app.timer_trigger(
+    schedule=REPORT_SCHEDULE_CRON, arg_name="mytimer", run_on_startup=False
+)
+@app.queue_output(
+    arg_name="queue_msgs",
+    queue_name="report-processing",
+    connection="AzureWebJobsStorage",
+)
+async def report_queue_scheduler(
+    mytimer: func.TimerRequest, queue_msgs: func.Out[List[str]]
+) -> None:
+    logging.info("[report-queue-scheduler] Timer trigger started")
 
     try:
-        # Step 1: Create batch jobs
         batch_result = create_batch_jobs()
-        logging.info(f"Created {batch_result.get('total_created', 0)} jobs")
+        logging.info(
+            f"[report-queue-scheduler] Created {batch_result.get('total_created', 0)} jobs"
+        )
 
-        # Step 2: Load and process jobs
-        result = await load_and_process_jobs(client)
-        logging.info(f"Started orchestration: {result.get('instance_id')}")
+        jobs = await load_scheduled_jobs()
+        if not jobs:
+            logging.info("[report-queue-scheduler] No jobs to enqueue")
+            return
 
-        logging.info("Batch jobs timer completed successfully")
+        messages = []
+        for job in jobs:
+            msg = {
+                "job_id": job["job_id"],
+                "organization_id": job["organization_id"],
+                "etag": job.get("etag"),
+                "enqueued_at": datetime.now(timezone.utc).isoformat(),
+            }
+            messages.append(json.dumps(msg))
+
+        queue_msgs.set(messages)
+        logging.info(f"[report-queue-scheduler] Enqueued {len(messages)} report jobs")
     except Exception as e:
-        logging.error(f"Batch jobs timer failed: {str(e)}")
+        logging.error(f"[report-queue-scheduler] Failed: {str(e)}")
         raise
+
 
 @app.route(route="orc", methods=[func.HttpMethod.POST])
 async def stream_response(req: Request) -> StreamingResponse:
@@ -177,7 +224,7 @@ async def stream_response(req: Request) -> StreamingResponse:
 
         logging.info(
             f"[FunctionApp] Retrieved organizationId: {organization_id} from user data"
-        ) 
+        )
 
     # print configuration settings for the user
     settings = get_settings(client_principal)
@@ -189,9 +236,7 @@ async def stream_response(req: Request) -> StreamingResponse:
     settings["model"] = settings.get("model") or "gpt-4.1"
     logging.info(f"[function_app] Validated settings: {settings}")
     if question:
-        orchestrator = ConversationOrchestrator(
-            organization_id=organization_id
-        )
+        orchestrator = ConversationOrchestrator(organization_id=organization_id)
         try:
             logging.info("[FunctionApp] Processing conversation")
             return StreamingResponse(
@@ -219,23 +264,48 @@ async def stream_response(req: Request) -> StreamingResponse:
             media_type="application/json",
         )
 
+
 @app.function_name(name="EventGridTrigger")
 @app.event_grid_trigger(arg_name="event")
 def blob_event_grid_trigger(event: func.EventGridEvent):
     """
     Event Grid trigger that triggers the search indexer when blob events are received.
     Filtering is handled at the infrastructure level.
+    Supports multiple indexers separated by commas.
     """
     try:
-        indexer_name = f'{os.getenv("AZURE_AI_SEARCH_INDEX_NAME")}-indexer'
-        logging.info(f"[blob_event_grid] Event received, triggering indexer '{indexer_name}'")
+        index_names = os.getenv("AZURE_AI_SEARCH_INDEX_NAME", "")
+        if not index_names:
+            logging.warning(
+                "[blob_event_grid] AZURE_AI_SEARCH_INDEX_NAME not configured"
+            )
+            return
 
-        indexer_success = trigger_indexer_with_retry(indexer_name, event.subject)
+        # Split by comma and strip whitespace to support multiple indexes
+        index_list = [name.strip() for name in index_names.split(",") if name.strip()]
 
-        if indexer_success:
-            logging.info(f"[blob_event_grid] Successfully triggered indexer '{indexer_name}'")
-        else:
-            logging.warning(f"[blob_event_grid] Could not trigger indexer '{indexer_name}'")
+        logging.info(
+            f"[blob_event_grid] Event received for blob: {event.subject}, triggering {len(index_list)} indexer(s)"
+        )
+
+        for index_name in index_list:
+            # Handle special case: pulse-index uses pulse-indexer (not pulse-index-indexer)
+            if index_name == "pulse-index":
+                indexer_name = "pulse-indexer"
+            else:
+                indexer_name = f"{index_name}-indexer"
+            logging.info(f"[blob_event_grid] Triggering indexer '{indexer_name}'")
+
+            indexer_success = trigger_indexer_with_retry(indexer_name, event.subject)
+
+            if indexer_success:
+                logging.info(
+                    f"[blob_event_grid] Successfully triggered indexer '{indexer_name}'"
+                )
+            else:
+                logging.warning(
+                    f"[blob_event_grid] Could not trigger indexer '{indexer_name}'"
+                )
 
     except Exception as e:
         logging.error(f"[blob_event_grid] Error: {str(e)}, Event ID: {event.id}")
@@ -261,9 +331,9 @@ async def conversations(req: Request) -> Response:
             if not user_id:
                 return Response("Missing user_id in request body", status_code=400)
 
-            if export_format not in ["html", "json", "docx"]:
+            if export_format not in ["html", "json"]:
                 return Response(
-                    "Invalid export format. Supported formats: html, json, docx",
+                    "Invalid export format. Supported formats: html, json",
                     status_code=400,
                 )
 

@@ -42,15 +42,16 @@ def break_long_urls(text: str, max_length: int = 130) -> str:
             return url
 
         # Get adaptive break percentage based on URL length
-        adaptive_percent = 1/(len(url)/ max_length)
+        adaptive_percent = 1 / (len(url) / max_length)
         break_point = int(len(url) * adaptive_percent)
 
         # Log the adaptive breaking decision
         logger.debug(
-            f"Breaking URL of length {len(url)} at {adaptive_percent*100:.0f}% (position {break_point})")
+            f"Breaking URL of length {len(url)} at {adaptive_percent*100:.0f}% (position {break_point})"
+        )
 
         # Try to break at a natural point (after / or ? or &)
-        natural_breaks = ['/', '?', '&', '=', '-', '_']
+        natural_breaks = ["/", "?", "&", "=", "-", "_"]
         best_break = break_point
 
         # Look for natural break points within 10 characters of the calculated break point
@@ -60,15 +61,20 @@ def break_long_urls(text: str, max_length: int = 130) -> str:
                 break
 
         # Insert line break
-        broken_url = url[:best_break] + '\n' + url[best_break:]
+        broken_url = url[:best_break] + "\n" + url[best_break:]
 
         # If the remaining part is still too long, break it again
         remaining = url[best_break:]
         if len(remaining) > max_length:
             # For the second break, just break at max_length
             second_break = max_length
-            broken_url = url[:best_break] + '\n' + \
-                remaining[:second_break] + '\n' + remaining[second_break:]
+            broken_url = (
+                url[:best_break]
+                + "\n"
+                + remaining[:second_break]
+                + "\n"
+                + remaining[second_break:]
+            )
 
         return broken_url
 
@@ -98,7 +104,8 @@ def html_to_pdf_xhtml2pdf(html_content: str) -> bytes:
 
         if pisa_status.err:
             raise Exception(
-                f"xhtml2pdf conversion failed with {pisa_status.err} errors")
+                f"xhtml2pdf conversion failed with {pisa_status.err} errors"
+            )
 
         # Get the PDF bytes
         pdf_bytes = pdf_buffer.getvalue()
@@ -107,8 +114,7 @@ def html_to_pdf_xhtml2pdf(html_content: str) -> bytes:
         return pdf_bytes
 
     except Exception as e:
-        logger.error(
-            f"Failed to convert HTML to PDF using xhtml2pdf: {str(e)}")
+        logger.error(f"Failed to convert HTML to PDF using xhtml2pdf: {str(e)}")
         raise Exception(f"HTML to PDF conversion failed: {str(e)}") from e
 
 
@@ -132,14 +138,16 @@ def markdown_to_html(markdown_content: str) -> str:
     processed_content = break_long_urls(markdown_content, max_length=130)
 
     # Use markdown library with extensions for better formatting
-    md = markdown.Markdown(extensions=[
-        'fenced_code',
-        'tables',
-        'toc',
-        'nl2br',  # Convert newlines to <br>
-        'sane_lists',
-        'codehilite'  # Code highlighting
-    ])
+    md = markdown.Markdown(
+        extensions=[
+            "fenced_code",
+            "tables",
+            "toc",
+            "nl2br",  # Convert newlines to <br>
+            "sane_lists",
+            "codehilite",  # Code highlighting
+        ]
+    )
 
     html_content = md.convert(processed_content)
 
@@ -318,10 +326,10 @@ def dict_to_pdf(input_dict: Dict[str, Any]) -> bytes:
         Exception: If PDF generation fails
     """
 
-    if 'content' not in input_dict:
+    if "content" not in input_dict:
         raise KeyError("Dictionary must contain a 'content' field")
 
-    markdown_content = input_dict['content']
+    markdown_content = input_dict["content"]
 
     if not isinstance(markdown_content, str):
         raise ValueError("Content field must be a string")
@@ -331,7 +339,8 @@ def dict_to_pdf(input_dict: Dict[str, Any]) -> bytes:
 
     try:
         logger.info(
-            f"Converting markdown content to PDF (length: {len(markdown_content)} chars)")
+            f"Converting markdown content to PDF (length: {len(markdown_content)} chars)"
+        )
 
         # Convert markdown to HTML
         html_content = markdown_to_html(markdown_content)
@@ -368,7 +377,7 @@ def save_dict_to_pdf_file(input_dict: Dict[str, Any], output_path: str) -> str:
         pdf_bytes = dict_to_pdf(input_dict)
 
         # Write to file
-        with open(output_path, 'wb') as f:
+        with open(output_path, "wb") as f:
             f.write(pdf_bytes)
 
         logger.info(f"PDF saved to: {output_path}")
@@ -381,7 +390,7 @@ def save_dict_to_pdf_file(input_dict: Dict[str, Any], output_path: str) -> str:
 
 if __name__ == "__main__":
     input_dict = {
-        'content': '''# Comprehensive Markdown Style Test
+        "content": '''# Comprehensive Markdown Style Test
 
 This document contains various markdown elements to test PDF conversion styling.
 
@@ -405,7 +414,7 @@ This document contains various markdown elements to test PDF conversion styling.
 
 ## Text Formatting
 
-This paragraph demonstrates **bold text**, *italic text*, and ***bold italic text***. 
+This paragraph demonstrates **bold text**, *italic text*, and ***bold italic text***.
 
 You can also use `inline code` within sentences. Here's some ~~strikethrough text~~ and some regular text.
 
@@ -489,12 +498,12 @@ const items = [
 
 ```sql
 -- SQL example
-SELECT 
+SELECT
     customer_id,
     customer_name,
     COUNT(*) as order_count,
     SUM(total_amount) as total_spent
-FROM orders 
+FROM orders
 WHERE order_date >= '2023-01-01'
 GROUP BY customer_id, customer_name
 ORDER BY total_spent DESC;
@@ -514,11 +523,11 @@ Here are some example links:
 
 ### Nested Quotes
 > This is a quote
-> 
+>
 > > This is a nested quote within the first quote
-> > 
+> >
 > > It should have different styling
-> 
+>
 > Back to the original quote level
 
 ## Special Characters and Symbols
@@ -542,16 +551,16 @@ Below this line there should be another horizontal rule.
 1. **Project Setup**
    - Install dependencies: `npm install`
    - Configure environment variables
-   
+
 2. **Database Configuration**
-   
+
    | Environment | Host | Port |
    |-------------|------|------|
    | Development | localhost | 5432 |
    | Production | prod-db.example.com | 5432 |
 
 3. **Code Implementation**
-   
+
    ```python
    # Example configuration
    config = {
@@ -602,25 +611,25 @@ def very_long_function_name_that_might_cause_overflow_issues_in_pdf_generation_w
     without causing any overflow issues in the PDF generation process.
     """
     very_long_variable_name_that_exceeds_normal_line_length_limits = "This is a very long string that might cause overflow issues in PDF generation when displayed in code blocks and should be handled gracefully by the text wrapping system"
-    
+
     another_extremely_long_variable_name_for_demonstration_purposes = {
         "very_long_key_name_that_might_cause_issues": "very_long_value_that_should_wrap_properly",
         "another_long_key_for_testing_purposes": "another_long_value_with_lots_of_text_content",
         "url_key": "https://www.example.com/very/long/url/that/might/cause/overflow/issues/in/code/blocks"
     }
-    
+
     return very_long_variable_name_that_exceeds_normal_line_length_limits, another_extremely_long_variable_name_for_demonstration_purposes
 ```
 
 ### SQL with Long Queries
 ```sql
 -- This is a very long SQL comment that explains the query in great detail and might cause overflow issues if not handled properly
-SELECT 
+SELECT
     very_long_column_name_that_exceeds_normal_limits,
     another_extremely_long_column_name_for_testing,
     yet_another_long_column_name_that_should_wrap_properly,
-    CASE 
-        WHEN very_long_condition_that_might_cause_overflow_issues_in_pdf_generation = 'very_long_value_that_should_wrap_properly' 
+    CASE
+        WHEN very_long_condition_that_might_cause_overflow_issues_in_pdf_generation = 'very_long_value_that_should_wrap_properly'
         THEN 'very_long_result_value_that_demonstrates_text_wrapping_capabilities'
         ELSE 'another_long_default_value_for_comprehensive_testing_purposes'
     END as very_long_alias_name_that_tests_wrapping
@@ -670,7 +679,7 @@ If this PDF renders correctly with all the long content properly wrapped and no 
 ---
 
 5. **Testing Results**
-   
+
    > All tests passed successfully. The application is ready for deployment.
 
 ---
@@ -679,7 +688,7 @@ If this PDF renders correctly with all the long content properly wrapped and no 
 
 **Note:** This document should render with proper formatting including headers, lists, tables, code blocks, quotes, and various text styles.
         ''',
-        'question.txt': 'Please provide an analysis of the construction adhesive market in the US'
+        "question.txt": "Please provide an analysis of the construction adhesive market in the US",
     }
 
-    save_dict_to_pdf_file(input_dict, 'test_comprehensive.pdf')
+    save_dict_to_pdf_file(input_dict, "test_comprehensive.pdf")

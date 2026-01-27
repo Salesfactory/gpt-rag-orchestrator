@@ -198,7 +198,12 @@ class AgentConfig:
             max_retries=self.DEFAULT_MAX_RETRIES,
         )
 
-    def internet_search(self, query: str, include_domains: list[str] = None, time_range: time_range = "month") -> list[dict]:
+    def internet_search(
+        self,
+        query: str,
+        include_domains: list[str] = None,
+        time_range: time_range = "month",
+    ) -> list[dict]:
         """Run a internet search
 
         Args:

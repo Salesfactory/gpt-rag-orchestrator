@@ -1,27 +1,29 @@
 # utility functions
-import html
-from dotenv import load_dotenv
-
-load_dotenv()
-import re
-import json
 import asyncio
+import html
+import json
 import logging
 import os
+import re
 import requests
-import tiktoken
 import time
+import tiktoken
 import urllib.parse
 import uuid
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional
+
+from dotenv import load_dotenv
 from azure.cosmos import CosmosClient
-from azure.keyvault.secrets import SecretClient
-from azure.identity import DefaultAzureCredential
-from tenacity import retry, wait_random_exponential, stop_after_attempt
-from .exceptions import MissingRequiredFieldError
 from azure.cosmos.exceptions import CosmosResourceNotFoundError
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
+from tenacity import retry, wait_random_exponential, stop_after_attempt
+
+from .exceptions import MissingRequiredFieldError
 from shared.cosmos_client_async import get_db, get_container
+
+load_dotenv()
 
 
 # logging level
@@ -589,6 +591,7 @@ def set_settings(client_principal, temperature, frequency_penalty, presence_pena
                 )
     else:
         logging.info("[util__module] set_settings: user_id not provided.")
+
 
 # Check if there are any users in the database
 def check_users_existance():
@@ -1250,7 +1253,7 @@ def create_invitation(invited_user_email, organization_id, role):
             "role": role,
             "active": True,
         }
-        result = container.create_item(body=invitation)
+        container.create_item(body=invitation)
         logging.info(
             f"[util__module] Successfully created new invitation for user {invited_user_email}"
         )
@@ -1537,9 +1540,7 @@ def normalize_markdown(md_raw: str) -> str:
     return md.strip()
 
 
-def get_verbosity_instruction(
-    user_settings: dict, default = None
-) -> str:
+def get_verbosity_instruction(user_settings: dict, default=None) -> str:
     """
     Get the verbosity instruction based on user settings.
 
@@ -1552,10 +1553,10 @@ def get_verbosity_instruction(
     """
     # Import here to avoid circular dependency
     from orc.unified_orchestrator.enums import VERBOSITY_PROMPTS, VerbosityLevel
-    
+
     if default is None:
         default = VerbosityLevel.BALANCED
-    
+
     verbosity_value = user_settings.get("detail_level")
 
     logging.info(f"[Util] User verbosity setting: {verbosity_value}")

@@ -18,7 +18,7 @@ Public API:
 
 Example usage:
     from orc.unified_orchestrator import ConversationOrchestrator
-    
+
     orchestrator = ConversationOrchestrator(organization_id="org123")
     async for item in orchestrator.generate_response_with_progress(
         conversation_id="conv456",

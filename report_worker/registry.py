@@ -28,7 +28,7 @@ class ReportGeneratorBase(ABC):
         "sample",
         "brand_analysis",
         "competitor_analysis",
-        "product_analysis"
+        "product_analysis",
     }
 
     def __init__(self, report_type: str):
@@ -40,7 +40,9 @@ class ReportGeneratorBase(ABC):
         self.report_type = report_type
 
     @abstractmethod
-    def generate(self, job_id: str, organization_id: str, parameters: Dict[str, Any]) -> str:
+    def generate(
+        self, job_id: str, organization_id: str, parameters: Dict[str, Any]
+    ) -> str:
         """
         Generate a report and return markdown content.
 
@@ -58,7 +60,9 @@ class ReportGeneratorBase(ABC):
 class SampleReportGenerator(ReportGeneratorBase):
     """Sample report generator for demonstration purposes"""
 
-    def generate(self, job_id: str, organization_id: str, parameters: Dict[str, Any]) -> str:
+    def generate(
+        self, job_id: str, organization_id: str, parameters: Dict[str, Any]
+    ) -> str:
         """Generate a sample report in markdown format"""
         # Generate markdown content
         markdown_content = f"""# Sample Report
@@ -105,11 +109,13 @@ The report generation system now automatically:
 class BrandAnalysisReportGenerator(ReportGeneratorBase):
     """Generate a brand analysis report"""
 
-    def generate(self, job_id: str, organization_id: str, parameters: Dict[str, Any]) -> str:
+    def generate(
+        self, job_id: str, organization_id: str, parameters: Dict[str, Any]
+    ) -> str:
         """Generate a brand analysis report"""
         # Extract brand_focus and industry_context from parameters
-        brand_focus = parameters.get('brand_focus', "")
-        industry_context = parameters.get('industry_context', "")
+        brand_focus = parameters.get("brand_focus", "")
+        industry_context = parameters.get("industry_context", "")
 
         if not brand_focus or not industry_context:
             raise ValueError("brand_focus and industry_context are required")
@@ -129,11 +135,13 @@ class BrandAnalysisReportGenerator(ReportGeneratorBase):
 class CompetitorAnalysisReportGenerator(ReportGeneratorBase):
     """Generate a competitor analysis report"""
 
-    def generate(self, job_id: str, organization_id: str, parameters: Dict[str, Any]) -> str:
+    def generate(
+        self, job_id: str, organization_id: str, parameters: Dict[str, Any]
+    ) -> str:
         """Generate a competitor analysis report"""
         # Extract categories and other parameters
-        categories = parameters.get('categories', [])
-        industry_context = parameters.get('industry_context', "")
+        categories = parameters.get("categories", [])
+        industry_context = parameters.get("industry_context", "")
 
         if not categories or not industry_context:
             raise ValueError("categories and industry_context are required")
@@ -141,8 +149,8 @@ class CompetitorAnalysisReportGenerator(ReportGeneratorBase):
         # Extract competitor brands from categories
         brands = []
         for category in categories:
-            if 'competitors' in category:
-                brands.extend(category['competitors'])
+            if "competitors" in category:
+                brands.extend(category["competitors"])
 
         # Generate dynamic query
         brands_str = ", ".join(brands)
@@ -154,16 +162,18 @@ class CompetitorAnalysisReportGenerator(ReportGeneratorBase):
 class ProductAnalysisReportGenerator(ReportGeneratorBase):
     """Generate a product analysis report"""
 
-    def generate(self, job_id: str, organization_id: str, parameters: Dict[str, Any]) -> str:
+    def generate(
+        self, job_id: str, organization_id: str, parameters: Dict[str, Any]
+    ) -> str:
         """Generate a product analysis report"""
         # Extract categories and other parameters
-        categories = parameters.get('categories', [])
+        categories = parameters.get("categories", [])
 
         # Build product list from categories
         product_lines = []
         for category in categories:
-            category_name = category.get('category', 'Unknown Category')
-            products = category.get('product', [])
+            category_name = category.get("category", "Unknown Category")
+            products = category.get("product", [])
 
             for product in products:
                 product_lines.append(f"{product} - {category_name}")
@@ -209,4 +219,7 @@ def list_available_generators() -> Dict[str, str]:
     Returns:
         Dict mapping report keys to generator class names
     """
-    return {key: generator.__class__.__name__ for key, generator in _REPORT_GENERATORS.items()}
+    return {
+        key: generator.__class__.__name__
+        for key, generator in _REPORT_GENERATORS.items()
+    }

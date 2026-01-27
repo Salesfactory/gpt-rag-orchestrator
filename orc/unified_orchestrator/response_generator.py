@@ -25,7 +25,7 @@ from shared.prompts import (
     BRAND_POSITION_STATEMENT_PROMPT,
     CREATIVE_COPYWRITER_PROMPT,
     FA_HELPDESK_PROMPT,
-    IMAGE_RENDERING_INSTRUCTIONS
+    IMAGE_RENDERING_INSTRUCTIONS,
 )
 from shared.util import get_verbosity_instruction
 
@@ -49,20 +49,14 @@ class ResponseGenerator:
     def __init__(
         self,
         claude_llm: ChatAnthropic,
-        organization_data: Dict[str, Any],
-        storage_url: str,
     ):
         """
         Initialize ResponseGenerator.
 
         Args:
             claude_llm: Anthropic Claude LLM instance
-            organization_data: Organization information
-            storage_url: Azure Storage URL for sanitization
         """
         self.claude_llm = claude_llm
-        self.organization_data = organization_data
-        self.storage_url = storage_url
         logger.info("[ResponseGenerator] Initialized")
 
     def build_system_prompt(
@@ -277,4 +271,3 @@ class ResponseGenerator:
             )
             error_message = "I apologize, but I encountered an error while generating the response. Please try again."
             yield error_message
-            

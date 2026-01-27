@@ -13,11 +13,11 @@ azure-common==1.1.28
 azure-core==1.35.0
 azure-cosmos==4.6.0
 azure-functions==1.23.0
-azure-functions-durable==1.4.0
 azure-identity==1.15.0
 azure-keyvault-secrets==4.7.0
 azure-search-documents==11.6.0b12
 azure-storage-blob==12.26.0
+azure-storage-queue==12.15.0
 azurefunctions-extensions-base==1.0.0b2
 azurefunctions-extensions-http-fastapi==1.0.1
 beautifulsoup4==4.13.4
@@ -120,7 +120,6 @@ pypdf==6.0.0
 pyphen==0.17.2
 python-bidi==0.6.6
 python-dateutil==2.9.0.post0
-python-docx==1.1.0
 python-dotenv==1.1.1
 python-multipart==0.0.20
 pytz==2025.2
