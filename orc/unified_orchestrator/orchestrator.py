@@ -22,7 +22,7 @@ from langgraph.graph import StateGraph, END, START
 from langgraph.prebuilt import ToolNode
 
 from langchain_core.messages import SystemMessage, HumanMessage, ToolMessage
-from langchain_openai import AzureChatOpenAI
+from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 
 from shared.cosmos_db import CosmosDBClient
@@ -132,29 +132,26 @@ class ConversationOrchestrator:
 
         logger.info("[ConversationOrchestrator] Initialization complete")
 
-    def _init_planning_llm(self) -> AzureChatOpenAI:
+    def _init_planning_llm(self) -> ChatOpenAI:
         """
-        Initialize Azure OpenAI LLM for planning tasks.
+        Initialize OpenAI LLM for planning tasks.
 
         Returns:
-            Configured AzureChatOpenAI instance
+            Configured ChatOpenAI instance
         """
         logger.info("[ConversationOrchestrator] Initializing planning LLM")
 
-        endpoint = os.getenv("O1_ENDPOINT")
-        api_key = os.getenv("O1_KEY")
+        api_key = os.getenv("OPENAI_API_KEY")
 
-        if not endpoint or not api_key:
-            raise ValueError("O1_ENDPOINT and O1_KEY environment variables must be set")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY environment variable must be set")
 
-        return AzureChatOpenAI(
+        return ChatOpenAI(
             temperature=self.config.planning_temperature,
-            openai_api_version=self.config.planning_api_version,
-            azure_deployment=self.config.planning_model,
+            model=self.config.planning_model,
             streaming=False,
             timeout=30,
             max_retries=3,
-            azure_endpoint=endpoint,
             api_key=api_key,
         )
 

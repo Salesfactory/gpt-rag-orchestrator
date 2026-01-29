@@ -14,7 +14,7 @@ import logging
 from typing import Dict, Any
 
 from langsmith import traceable
-from langchain_openai import AzureChatOpenAI
+from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage, HumanMessage
 
 from shared.prompts import (
@@ -37,12 +37,12 @@ class QueryPlanner:
     - Categorize queries into proper marketing categories
     """
 
-    def __init__(self, llm: AzureChatOpenAI):
+    def __init__(self, llm: ChatOpenAI):
         """
         Initialize QueryPlanner.
 
         Args:
-            llm: Azure OpenAI LLM instance for planning tasks
+            llm: OpenAI LLM instance for planning tasks
         """
         self.llm = llm
         logger.info("[QueryPlanner] Initialized")
