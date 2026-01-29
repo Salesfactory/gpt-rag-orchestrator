@@ -185,7 +185,6 @@ class AgentConfig:
             max_tokens=self.DEFAULT_MAX_TOKENS,
             max_retries=self.DEFAULT_MAX_RETRIES,
             timeout=self.DEFAULT_TIMEOUT,
-            api_version=self.DEFAULT_API_VERSION,
         )
 
     def _create_anthropic_client(self) -> ChatAnthropic:
