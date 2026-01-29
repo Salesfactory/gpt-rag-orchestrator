@@ -134,7 +134,7 @@ class ConversationOrchestrator:
 
     def _init_planning_llm(self) -> ChatOpenAI:
         """
-        Initialize Azure OpenAI LLM for planning tasks.
+        Initialize OpenAI LLM for planning tasks.
 
         Returns:
             Configured ChatOpenAI instance

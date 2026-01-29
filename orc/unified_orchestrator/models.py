@@ -61,11 +61,10 @@ class OrchestratorConfig:
     and feature flags for the orchestrator.
     """
 
-    # Planning Model Configuration (Azure OpenAI - gpt-4.1)
+    # Planning Model Configuration (OpenAI - gpt-4.1)
     # Used for: query rewriting, categorization, tool selection
     planning_model: str = "gpt-4.1"
     planning_temperature: float = 0.3
-    planning_api_version: str = "2025-04-01-preview"
 
     # Response Model Configuration (Anthropic Claude Sonnet with Extended Thinking)
     response_model: str = "claude-sonnet-4-5-20250929"
