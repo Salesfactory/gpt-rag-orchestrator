@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import AsyncMock, patch, MagicMock
 
 from orc.unified_orchestrator.mcp_client import MCPClient
-from orc.unified_orchestrator.models import OrchestratorConfig
+from orc.unified_orchestrator.models import OrchestratorConfig, UserUploadedBlobs
 from tests.unified_orchestrator.fixtures import make_state, make_tool
 
 
@@ -109,7 +109,14 @@ class TestMCPClient(unittest.IsolatedAsyncioTestCase):
 
     async def test_create_contextual_tool_data_analyst(self):
         tool = make_tool(name="data_analyst", result={"ok": True})
-        state = make_state(code_thread_id="thread-1")
+        blob_items = [{"blob_name": "data.csv", "file_id": "file-1"}]
+        state = make_state(
+            code_thread_id="thread-1",
+            user_uploaded_blobs=UserUploadedBlobs(
+                kind="spreadsheet",
+                items=blob_items,
+            ),
+        )
         context = {"organization_id": "org-123", "user_id": "user-1"}
         wrapped = self.client._create_contextual_tool(tool, state, context)
         await wrapped.coroutine()
@@ -117,11 +124,15 @@ class TestMCPClient(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(actual_args["organization_id"], "org-123")
         self.assertEqual(actual_args["user_id"], "user-1")
         self.assertEqual(actual_args["code_thread_id"], "thread-1")
+        self.assertEqual(actual_args["blob_names"], blob_items)
 
     async def test_create_contextual_tool_document_chat_cache_match(self):
         tool = make_tool(name="document_chat", result={"ok": True})
         state = make_state(
-            blob_names=["doc1.pdf"],
+            user_uploaded_blobs=UserUploadedBlobs(
+                kind="pdf",
+                items=[{"blob_name": "doc1.pdf", "file_id": None}],
+            ),
             uploaded_file_refs=[{"blob_name": "doc1.pdf"}],
         )
         wrapped = self.client._create_contextual_tool(
@@ -135,7 +146,10 @@ class TestMCPClient(unittest.IsolatedAsyncioTestCase):
     async def test_create_contextual_tool_document_chat_cache_mismatch(self):
         tool = make_tool(name="document_chat", result={"ok": True})
         state = make_state(
-            blob_names=["doc1.pdf"],
+            user_uploaded_blobs=UserUploadedBlobs(
+                kind="pdf",
+                items=[{"blob_name": "doc1.pdf", "file_id": None}],
+            ),
             uploaded_file_refs=[{"blob_name": "different.pdf"}],
         )
         wrapped = self.client._create_contextual_tool(

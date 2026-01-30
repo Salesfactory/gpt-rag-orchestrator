@@ -7,13 +7,13 @@ from unittest.mock import AsyncMock, MagicMock
 
 from langchain_core.messages import AIMessage, AIMessageChunk
 
-from orc.unified_orchestrator.models import ConversationState
+from orc.unified_orchestrator.models import ConversationState, UserUploadedBlobs
 
 
 def make_state(**overrides: Any) -> ConversationState:
     data = {
         "question": "test question",
-        "blob_names": [],
+        "user_uploaded_blobs": UserUploadedBlobs(),
         "is_data_analyst_mode": False,
         "is_agentic_search_mode": False,
         "rewritten_query": "",
@@ -25,6 +25,7 @@ def make_state(**overrides: Any) -> ConversationState:
         "code_thread_id": None,
         "last_mcp_tool_used": "",
         "uploaded_file_refs": [],
+        "cached_dochat_analyst_blobs": [],
         "conversation_summary": "",
     }
     data.update(overrides)

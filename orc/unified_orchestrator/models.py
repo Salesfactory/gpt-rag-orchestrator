@@ -17,6 +17,20 @@ from langgraph.graph.message import add_messages
 
 
 @dataclass
+class UserUploadedBlobs:
+    """Normalized view of user-uploaded blob metadata."""
+
+    kind: str = ""
+    items: List[Dict[str, Optional[str]]] = field(default_factory=list)
+
+    @property
+    def names(self) -> List[str]:
+        return [
+            item.get("blob_name", "") for item in self.items if item.get("blob_name")
+        ]
+
+
+@dataclass
 class ConversationState:
     """
     Core state object that flows through the LangGraph workflow.
@@ -27,7 +41,7 @@ class ConversationState:
 
     # Input
     question: str
-    blob_names: List[str] = field(default_factory=list)
+    user_uploaded_blobs: UserUploadedBlobs = field(default_factory=UserUploadedBlobs)
     is_data_analyst_mode: bool = False
     is_agentic_search_mode: bool = False
 
@@ -49,6 +63,9 @@ class ConversationState:
     )
     last_mcp_tool_used: str = ""
     uploaded_file_refs: List[Dict[str, str]] = field(default_factory=list)
+    cached_dochat_analyst_blobs: List[Dict[str, Optional[str]]] = field(
+        default_factory=list
+    )
     conversation_summary: str = ""
 
 

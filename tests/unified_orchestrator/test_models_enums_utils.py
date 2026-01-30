@@ -3,7 +3,11 @@
 import unittest
 from unittest.mock import patch
 
-from orc.unified_orchestrator.models import ConversationState, OrchestratorConfig
+from orc.unified_orchestrator.models import (
+    ConversationState,
+    OrchestratorConfig,
+    UserUploadedBlobs,
+)
 from orc.unified_orchestrator.enums import VerbosityLevel, VERBOSITY_PROMPTS
 from orc.unified_orchestrator import utils
 
@@ -12,7 +16,9 @@ class TestModels(unittest.TestCase):
     def test_conversation_state_defaults(self):
         state = ConversationState(question="hello")
         self.assertEqual(state.question, "hello")
-        self.assertEqual(state.blob_names, [])
+        self.assertIsInstance(state.user_uploaded_blobs, UserUploadedBlobs)
+        self.assertEqual(state.user_uploaded_blobs.items, [])
+        self.assertEqual(state.user_uploaded_blobs.kind, "")
         self.assertFalse(state.is_data_analyst_mode)
         self.assertFalse(state.is_agentic_search_mode)
         self.assertEqual(state.rewritten_query, "")
@@ -24,6 +30,7 @@ class TestModels(unittest.TestCase):
         self.assertIsNone(state.code_thread_id)
         self.assertEqual(state.last_mcp_tool_used, "")
         self.assertEqual(state.uploaded_file_refs, [])
+        self.assertEqual(state.cached_dochat_analyst_blobs, [])
         self.assertEqual(state.conversation_summary, "")
 
     def test_orchestrator_config_defaults(self):
