@@ -63,6 +63,7 @@ class StateManager:
             - code_thread_id: Data analyst thread ID (if any)
             - last_mcp_tool_used: Last MCP tool name (if any)
             - uploaded_file_refs: Cached file metadata (if any)
+            - cached_dochat_analyst_blobs: Cached spreadsheet blob metadata (if any)
         """
         logger.info(f"[StateManager] Loading conversation: {conversation_id}")
 
@@ -82,6 +83,7 @@ class StateManager:
             code_thread_id = None  # data analyst
             last_mcp_tool_used = ""  # all tools in general
             uploaded_file_refs = []  # chat w doc tool
+            cached_dochat_analyst_blobs = []  # data analyst spreadsheet cache
             conversation_summary = conversation_data.get("conversation_summary", "")
 
             history = conversation_data.get("history", [])
@@ -104,19 +106,31 @@ class StateManager:
                     ):
                         uploaded_file_refs = message["uploaded_file_refs"]
 
+                    if (
+                        "cached_dochat_analyst_blobs" in message
+                        and message["cached_dochat_analyst_blobs"]
+                    ):
+                        cached_dochat_analyst_blobs = message[
+                            "cached_dochat_analyst_blobs"
+                        ]
+
                     # Break after finding the first (most recent) assistant message
                     break
 
             logger.info(
                 f"[StateManager] Loaded conversation with {len(history)} messages, "
                 f"code_thread_id: {code_thread_id}, last_tool: {last_mcp_tool_used}, "
-                f"cached_files: {len(uploaded_file_refs)}"
+                f"cached_files: {len(uploaded_file_refs)}, "
+                f"cached_data_analyst_blobs: {len(cached_dochat_analyst_blobs)}"
             )
 
             conversation_data["history"] = history
             conversation_data["code_thread_id"] = code_thread_id
             conversation_data["last_mcp_tool_used"] = last_mcp_tool_used
             conversation_data["uploaded_file_refs"] = uploaded_file_refs
+            conversation_data["cached_dochat_analyst_blobs"] = (
+                cached_dochat_analyst_blobs
+            )
             conversation_data["conversation_summary"] = conversation_summary
 
             return conversation_data
@@ -134,6 +148,7 @@ class StateManager:
                 "code_thread_id": None,
                 "last_mcp_tool_used": "",
                 "uploaded_file_refs": [],
+                "cached_dochat_analyst_blobs": [],
                 "conversation_summary": "",
             }
 
@@ -199,6 +214,18 @@ class StateManager:
                 assistant_message["uploaded_file_refs"] = state.uploaded_file_refs
                 logger.debug(
                     f"[StateManager] Saved {len(state.uploaded_file_refs)} file refs"
+                )
+
+            if (
+                state.user_uploaded_blobs.kind == "spreadsheet"
+                and state.user_uploaded_blobs.items
+            ):
+                assistant_message["cached_dochat_analyst_blobs"] = (
+                    state.user_uploaded_blobs.items
+                )
+                logger.debug(
+                    "[StateManager] Saved cached_dochat_analyst_blobs: "
+                    f"{len(state.user_uploaded_blobs.items)}"
                 )
 
             history.append(assistant_message)

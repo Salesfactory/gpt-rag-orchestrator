@@ -194,7 +194,7 @@ class MCPClient:
 
         def _validate_blob_names() -> bool:
             """Check if current blob names match cached file refs - document chat tool only"""
-            current_blobs = set(state.blob_names)
+            current_blobs = set(state.user_uploaded_blobs.names)
             cached_blobs = set(
                 ref.get("blob_name", "") for ref in state.uploaded_file_refs
             )
@@ -230,6 +230,8 @@ class MCPClient:
                         "user_id": context["user_id"],
                     }
                 )
+                if state.user_uploaded_blobs.items:
+                    kwargs["blob_names"] = state.user_uploaded_blobs.items
                 logger.debug(
                     f"[MCPClient] Injected context for data_analyst: "
                     f"org_id={context['organization_id']}, "
@@ -239,7 +241,7 @@ class MCPClient:
 
             elif tool_name == self.TOOL_DOCUMENT_CHAT:
                 doc_kwargs = {
-                    "document_names": state.blob_names,
+                    "document_names": state.user_uploaded_blobs.names,
                 }
 
                 # Only send cached_file_info if blob names match exactly
@@ -251,14 +253,14 @@ class MCPClient:
                     )
                 else:
                     logger.info(
-                        f"[MCPClient] Processing {len(state.blob_names)} "
+                        f"[MCPClient] Processing {len(state.user_uploaded_blobs.names)} "
                         "fresh documents for document_chat"
                     )
 
                 kwargs.update(doc_kwargs)
                 logger.debug(
                     f"[MCPClient] Injected context for document_chat: "
-                    f"{len(state.blob_names)} documents"
+                    f"{len(state.user_uploaded_blobs.names)} documents"
                 )
 
             elif tool_name == self.TOOL_WEB_FETCH:

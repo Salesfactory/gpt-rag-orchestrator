@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.messages import ToolMessage
 
 from orc.unified_orchestrator.orchestrator import ConversationOrchestrator
+from orc.unified_orchestrator.models import UserUploadedBlobs
 from tests.unified_orchestrator.fixtures import make_state
 
 
@@ -75,11 +76,42 @@ class TestOrchestratorNodes(unittest.IsolatedAsyncioTestCase):
         orch.context_builder.format_conversation_history.return_value = ""
         orch.current_conversation_data = {"history": []}
 
-        state = make_state(blob_names=["doc1.pdf"])
+        state = make_state(
+            user_uploaded_blobs=UserUploadedBlobs(
+                kind="pdf",
+                items=[{"blob_name": "doc1.pdf", "file_id": None}],
+            )
+        )
         await orch._prepare_tools_node(state)
 
         self.assertEqual(len(orch.wrapped_tools), 1)
         self.assertEqual(orch.wrapped_tools[0].name, "document_chat")
+
+    async def test_prepare_tools_node_forces_data_analyst_for_spreadsheets(self):
+        orch = make_orchestrator()
+        orch.mcp_client = AsyncMock()
+        orch.mcp_client.connect = AsyncMock()
+        data_tool = MagicMock(name="data_analyst")
+        data_tool.name = "data_analyst"
+        doc_tool = MagicMock(name="document_chat")
+        doc_tool.name = "document_chat"
+        orch.mcp_client.get_wrapped_tools = AsyncMock(
+            return_value=[data_tool, doc_tool]
+        )
+        orch.context_builder = MagicMock()
+        orch.context_builder.format_conversation_history.return_value = ""
+        orch.current_conversation_data = {"history": []}
+
+        state = make_state(
+            user_uploaded_blobs=UserUploadedBlobs(
+                kind="spreadsheet",
+                items=[{"blob_name": "data.csv", "file_id": "file-1"}],
+            )
+        )
+        await orch._prepare_tools_node(state)
+
+        self.assertEqual(len(orch.wrapped_tools), 1)
+        self.assertEqual(orch.wrapped_tools[0].name, "data_analyst")
 
     async def test_prepare_tools_node_connect_failure(self):
         orch = make_orchestrator()

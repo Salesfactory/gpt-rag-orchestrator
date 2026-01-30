@@ -71,6 +71,7 @@ class FakeSession:
 class TestStreamDataAnalyst(unittest.IsolatedAsyncioTestCase):
     async def test_stream_data_analyst_prod_success(self):
         orch = make_orchestrator()
+        blob_names = [{"blob_name": "data.csv", "file_id": "file-1"}]
         artifacts = [
             {"blob_path": "path1", "filename": "file1.png", "blob_url": "url1"}
         ]
@@ -112,6 +113,7 @@ class TestStreamDataAnalyst(unittest.IsolatedAsyncioTestCase):
                 organization_id="org-1",
                 code_thread_id="thread-1",
                 user_id="user-1",
+                blob_names=blob_names,
             )
 
         self.assertTrue(result["success"])
@@ -121,6 +123,8 @@ class TestStreamDataAnalyst(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(result["blob_urls"]), 1)
         self.assertTrue(any("__THINKING__" in item for item in orch._progress_queue))
         self.assertTrue(any("__PROGRESS__" in item for item in orch._progress_queue))
+        payload = session.post_args[1]["json"]
+        self.assertEqual(payload["blob_names"], blob_names)
 
     async def test_stream_data_analyst_error_chunk(self):
         orch = make_orchestrator()
