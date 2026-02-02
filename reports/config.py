@@ -4,7 +4,7 @@ from functools import cached_property
 from dataclasses import dataclass
 from typing import Literal, Union, get_args
 from tavily import TavilyClient
-from langchain_openai import AzureChatOpenAI
+from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from dotenv import load_dotenv
 from shared.prompts import sub_research_prompt, sub_critique_prompt
@@ -14,7 +14,7 @@ load_dotenv()
 
 ModelType = Literal["o4-mini", "claude-sonnet-4-5-20250929", "gpt-4.1"]
 ReasoningEffort = Literal["low", "medium", "high"]
-ModelClient = Union[AzureChatOpenAI, ChatAnthropic]
+ModelClient = Union[ChatOpenAI, ChatAnthropic]
 time_range = Literal["day", "week", "month", "year"]
 
 logger = logging.getLogger(__name__)
@@ -156,14 +156,14 @@ class AgentConfig:
                 "Failed to initialize model client. Check configuration and credentials."
             )
 
-    def _create_reasoning_client(self) -> AzureChatOpenAI:
-        """Create and configure Azure OpenAI client."""
-        token_provider = self._get_token_provider()
-        openai_base_url = f"https://{self.reasoning_endpoint_service}.openai.azure.com/"
-        return AzureChatOpenAI(
-            azure_ad_token_provider=token_provider,
-            azure_endpoint=openai_base_url,
-            azure_deployment=self.analysis_model,
+    def _create_reasoning_client(self) -> ChatOpenAI:
+        """Create and configure OpenAI client."""
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY environment variable must be set")
+        return ChatOpenAI(
+            api_key=api_key,
+            model=self.analysis_model,
             max_retries=self.DEFAULT_MAX_RETRIES,
             reasoning_effort=self.reasoning_effort,
             timeout=self.DEFAULT_TIMEOUT,
@@ -172,20 +172,19 @@ class AgentConfig:
         )
 
     # create a gpt-4.1 client: for quick local testing only - not for production
-    def _create_non_reasoning_client(self) -> AzureChatOpenAI:
+    def _create_non_reasoning_client(self) -> ChatOpenAI:
         """Create and configure GPT-4.1 client."""
-        token_provider = self._get_token_provider()
-        endpoint = os.getenv("O1_ENDPOINT")
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY environment variable must be set")
 
-        return AzureChatOpenAI(
-            azure_ad_token_provider=token_provider,
-            azure_endpoint=endpoint,
-            azure_deployment="gpt-4.1",
+        return ChatOpenAI(
+            api_key=api_key,
+            model="gpt-4.1",
             temperature=self.DEFAULT_TEMPERATURE,
             max_tokens=self.DEFAULT_MAX_TOKENS,
             max_retries=self.DEFAULT_MAX_RETRIES,
             timeout=self.DEFAULT_TIMEOUT,
-            api_version=self.DEFAULT_API_VERSION,
         )
 
     def _create_anthropic_client(self) -> ChatAnthropic:

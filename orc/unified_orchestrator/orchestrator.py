@@ -14,7 +14,7 @@ import json
 import traceback
 import aiohttp
 import asyncio
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Set, Tuple
 
 from langsmith import traceable
 from langgraph.checkpoint.memory import MemorySaver
@@ -22,14 +22,14 @@ from langgraph.graph import StateGraph, END, START
 from langgraph.prebuilt import ToolNode
 
 from langchain_core.messages import SystemMessage, HumanMessage, ToolMessage
-from langchain_openai import AzureChatOpenAI
+from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 
 from shared.cosmos_db import CosmosDBClient
 from shared.util import get_organization, get_secret
 from shared.prompts import MCP_SYSTEM_PROMPT, CONVERSATION_SUMMARIZATION_PROMPT
 
-from .models import ConversationState, OrchestratorConfig
+from .models import ConversationState, OrchestratorConfig, UserUploadedBlobs
 from .state_manager import StateManager
 from .context_builder import ContextBuilder
 from .query_planner import QueryPlanner
@@ -54,6 +54,8 @@ logging.basicConfig(
 )
 
 logger = logging.getLogger(__name__)
+
+SPREADSHEET_EXTENSIONS = (".xlsx", ".xls", ".csv")
 
 
 class ConversationOrchestrator:
@@ -132,29 +134,104 @@ class ConversationOrchestrator:
 
         logger.info("[ConversationOrchestrator] Initialization complete")
 
-    def _init_planning_llm(self) -> AzureChatOpenAI:
+    @staticmethod
+    def _normalize_blob_inputs(
+        blob_names: Any,
+    ) -> UserUploadedBlobs:
+        """Normalize blob input into a structured user-uploaded blob payload."""
+        items: List[Dict[str, Optional[str]]] = []
+
+        if not isinstance(blob_names, list):
+            return UserUploadedBlobs()
+
+        for entry in blob_names:
+            if isinstance(entry, str):
+                if not entry:
+                    continue
+                items.append({"blob_name": entry, "file_id": None})
+            elif isinstance(entry, dict):
+                blob_name = entry.get("blob_name")
+                if not blob_name:
+                    continue
+                items.append({"blob_name": blob_name, "file_id": entry.get("file_id")})
+
+        kind = ConversationOrchestrator._infer_blob_kind(
+            [item.get("blob_name", "") for item in items if item.get("blob_name")]
+        )
+        return UserUploadedBlobs(kind=kind, items=items)
+
+    @staticmethod
+    def _infer_blob_kind(blob_names: List[str]) -> str:
+        """Determine whether blobs are PDFs or spreadsheets based on extension."""
+        if not blob_names:
+            return ""
+
+        has_pdf = False
+        has_sheet = False
+
+        for name in blob_names:
+            lowered = name.lower()
+            if lowered.endswith(".pdf"):
+                has_pdf = True
+            elif lowered.endswith(SPREADSHEET_EXTENSIONS):
+                has_sheet = True
+
+        if has_sheet:
+            if has_pdf:
+                logger.warning(
+                    "[ConversationOrchestrator] Mixed file types detected; "
+                    "defaulting to spreadsheet handling"
+                )
+            return "spreadsheet"
+
+        if has_pdf:
+            return "pdf"
+
+        return "unknown"
+
+    @staticmethod
+    def _blob_items_match(
+        items_a: List[Dict[str, Optional[str]]],
+        items_b: List[Dict[str, Optional[str]]],
+    ) -> bool:
+        """Compare blob item lists ignoring ordering."""
+
+        def _normalize(
+            items: List[Dict[str, Optional[str]]],
+        ) -> Set[Tuple[str, str]]:
+            normalized: Set[Tuple[str, str]] = set()
+            for item in items or []:
+                if not isinstance(item, dict):
+                    continue
+                name = item.get("blob_name")
+                if not name:
+                    continue
+                file_id = item.get("file_id") or ""
+                normalized.add((name, file_id))
+            return normalized
+
+        return _normalize(items_a) == _normalize(items_b)
+
+    def _init_planning_llm(self) -> ChatOpenAI:
         """
-        Initialize Azure OpenAI LLM for planning tasks.
+        Initialize OpenAI LLM for planning tasks.
 
         Returns:
-            Configured AzureChatOpenAI instance
+            Configured ChatOpenAI instance
         """
         logger.info("[ConversationOrchestrator] Initializing planning LLM")
 
-        endpoint = os.getenv("O1_ENDPOINT")
-        api_key = os.getenv("O1_KEY")
+        api_key = os.getenv("OPENAI_API_KEY")
 
-        if not endpoint or not api_key:
-            raise ValueError("O1_ENDPOINT and O1_KEY environment variables must be set")
+        if not api_key:
+            raise ValueError("OPENAI_API_KEY environment variable must be set")
 
-        return AzureChatOpenAI(
+        return ChatOpenAI(
             temperature=self.config.planning_temperature,
-            openai_api_version=self.config.planning_api_version,
-            azure_deployment=self.config.planning_model,
+            model=self.config.planning_model,
             streaming=False,
             timeout=30,
             max_retries=3,
-            azure_endpoint=endpoint,
             api_key=api_key,
         )
 
@@ -264,6 +341,7 @@ class ConversationOrchestrator:
         organization_id: str,
         code_thread_id: Optional[str],
         user_id: Optional[str],
+        blob_names: Optional[List[Dict[str, Optional[str]]]] = None,
     ) -> Dict[str, Any]:
         """
         Call data_analyst streaming endpoint and emit thinking tokens.
@@ -296,6 +374,8 @@ class ConversationOrchestrator:
             "code_thread_id": code_thread_id,
             "user_id": user_id,
         }
+        if blob_names:
+            payload["blob_names"] = blob_names
 
         # Add function key for production
         headers = {"Content-Type": "application/json"}
@@ -462,7 +542,21 @@ class ConversationOrchestrator:
             code_thread_id = conversation_data.get("code_thread_id")
             last_mcp_tool_used = conversation_data.get("last_mcp_tool_used", "")
             uploaded_file_refs = conversation_data.get("uploaded_file_refs", [])
+            cached_dochat_analyst_blobs = conversation_data.get(
+                "cached_dochat_analyst_blobs", []
+            )
             conversation_summary = conversation_data.get("conversation_summary", "")
+
+            if state.user_uploaded_blobs.kind == "spreadsheet":
+                if not self._blob_items_match(
+                    state.user_uploaded_blobs.items, cached_dochat_analyst_blobs
+                ):
+                    if code_thread_id:
+                        logger.info(
+                            "[Initialize Node] Spreadsheet blobs changed; "
+                            "invalidating code_thread_id"
+                        )
+                    code_thread_id = None
 
             logger.info(
                 f"[Initialize Node] Loaded conversation with code_thread_id: {code_thread_id}, "
@@ -483,6 +577,7 @@ class ConversationOrchestrator:
                 "code_thread_id": code_thread_id,
                 "last_mcp_tool_used": last_mcp_tool_used,
                 "uploaded_file_refs": uploaded_file_refs,
+                "cached_dochat_analyst_blobs": cached_dochat_analyst_blobs,
                 "conversation_summary": conversation_summary,
             }
 
@@ -518,12 +613,14 @@ class ConversationOrchestrator:
                 "code_thread_id": None,
                 "last_mcp_tool_used": "",
                 "uploaded_file_refs": [],
+                "cached_dochat_analyst_blobs": [],
                 "conversation_summary": "",
             }
             return {
                 "code_thread_id": None,
                 "last_mcp_tool_used": "",
                 "uploaded_file_refs": [],
+                "cached_dochat_analyst_blobs": [],
                 "conversation_summary": "",
             }
 
@@ -724,7 +821,10 @@ class ConversationOrchestrator:
         """
         log_info("[Prepare Tools Node] Connecting to MCP and building wrapped tools")
 
-        if state.blob_names:
+        is_spreadsheet = state.user_uploaded_blobs.kind == "spreadsheet"
+        if is_spreadsheet:
+            message = "Preparing data analysis tools..."
+        elif state.user_uploaded_blobs.names:
             message = "Preparing document analysis tools..."
         else:
             message = "Preparing tools..."
@@ -756,7 +856,9 @@ class ConversationOrchestrator:
 
         # Get wrapped tools
         try:
-            exclude_doc_chat = len(state.blob_names) == 0
+            exclude_doc_chat = (
+                len(state.user_uploaded_blobs.names) == 0 or is_spreadsheet
+            )
             self.wrapped_tools = await self.mcp_client.get_wrapped_tools(
                 state=state,
                 conversation_history=conversation_history,
@@ -764,12 +866,20 @@ class ConversationOrchestrator:
             )
 
             # Force document_chat if documents uploaded
-            if state.blob_names:
+            if state.user_uploaded_blobs.names and not is_spreadsheet:
                 self.wrapped_tools = [
                     t for t in self.wrapped_tools if t.name == "document_chat"
                 ]
                 logger.info(
-                    f"[Prepare Tools Node] Forced document_chat for {len(state.blob_names)} documents"
+                    f"[Prepare Tools Node] Forced document_chat for {len(state.user_uploaded_blobs.names)} documents"
+                )
+            # Force data_analyst for spreadsheet uploads
+            elif is_spreadsheet:
+                self.wrapped_tools = [
+                    t for t in self.wrapped_tools if t.name == "data_analyst"
+                ]
+                logger.info(
+                    f"[Prepare Tools Node] Forced data_analyst for {len(state.user_uploaded_blobs.names)} spreadsheets"
                 )
             # Force data_analyst if data analyst mode is active
             elif state.is_data_analyst_mode:
@@ -1049,6 +1159,7 @@ class ConversationOrchestrator:
                     organization_id=org_id,
                     code_thread_id=code_thread_id,
                     user_id=user_id,
+                    blob_names=state.user_uploaded_blobs.items or None,
                 )
 
                 tool_message = ToolMessage(
@@ -1774,7 +1885,7 @@ class ConversationOrchestrator:
         user_info: Dict[str, Any],
         user_settings: Optional[Dict[str, Any]] = None,
         user_timezone: Optional[str] = None,
-        blob_names: Optional[List[str]] = None,
+        blob_names: Optional[List[Any]] = None,
         is_data_analyst_mode: Optional[bool] = None,
         is_agentic_search_mode: Optional[bool] = None,
     ):
@@ -1794,7 +1905,7 @@ class ConversationOrchestrator:
             user_info: User information (id, name)
             user_settings: User preferences (temperature, model, detail_level)
             user_timezone: User's timezone
-            blob_names: List of uploaded file names
+            blob_names: List of uploaded file names or blob info dicts
             is_data_analyst_mode: Whether data analyst mode is active
             is_agentic_search_mode: Whether agentic search mode is active
 
@@ -1803,7 +1914,7 @@ class ConversationOrchestrator:
         """
         start_time = time.time()
         conversation_id = conversation_id or str(uuid.uuid4())
-        blob_names = blob_names or []
+        user_uploaded_blobs = self._normalize_blob_inputs(blob_names or [])
         user_settings = user_settings or {}
         is_data_analyst_mode = is_data_analyst_mode or False
         is_agentic_search_mode = is_agentic_search_mode or False
@@ -1867,7 +1978,7 @@ class ConversationOrchestrator:
 
             initial_state = ConversationState(
                 question=question,
-                blob_names=blob_names,
+                user_uploaded_blobs=user_uploaded_blobs,
                 is_data_analyst_mode=is_data_analyst_mode,
                 is_agentic_search_mode=is_agentic_search_mode,
             )
@@ -1884,7 +1995,7 @@ class ConversationOrchestrator:
                 extra={
                     "conversation_id": conversation_id,
                     "thread_id": conversation_id,
-                    "blob_names_count": len(blob_names),
+                    "blob_names_count": len(user_uploaded_blobs.names),
                 },
             )
 

@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 from orc.unified_orchestrator.state_manager import StateManager
 from tests.unified_orchestrator.fixtures import make_state
+from orc.unified_orchestrator.models import UserUploadedBlobs
 
 
 class TestStateManager(unittest.TestCase):
@@ -19,6 +20,9 @@ class TestStateManager(unittest.TestCase):
                     "code_thread_id": "thread-1",
                     "last_mcp_tool_used": "agentic_search",
                     "uploaded_file_refs": [{"blob_name": "file1"}],
+                    "cached_dochat_analyst_blobs": [
+                        {"blob_name": "data.csv", "file_id": "file-1"}
+                    ],
                 },
             ],
             "conversation_summary": "summary",
@@ -29,6 +33,10 @@ class TestStateManager(unittest.TestCase):
         self.assertEqual(data["code_thread_id"], "thread-1")
         self.assertEqual(data["last_mcp_tool_used"], "agentic_search")
         self.assertEqual(data["uploaded_file_refs"], [{"blob_name": "file1"}])
+        self.assertEqual(
+            data["cached_dochat_analyst_blobs"],
+            [{"blob_name": "data.csv", "file_id": "file-1"}],
+        )
         self.assertEqual(data["conversation_summary"], "summary")
 
     def test_load_conversation_handles_missing_history(self):
@@ -45,6 +53,7 @@ class TestStateManager(unittest.TestCase):
         data = manager.load_conversation("conv-1")
         self.assertEqual(data["history"], [])
         self.assertEqual(data["last_mcp_tool_used"], "")
+        self.assertEqual(data["cached_dochat_analyst_blobs"], [])
 
     def test_save_conversation_updates_history_and_interaction(self):
         cosmos_client = MagicMock()
@@ -75,6 +84,10 @@ class TestStateManager(unittest.TestCase):
             last_mcp_tool_used="agentic_search",
             code_thread_id="thread-1",
             uploaded_file_refs=[{"blob_name": "file1"}],
+            user_uploaded_blobs=UserUploadedBlobs(
+                kind="spreadsheet",
+                items=[{"blob_name": "data.csv", "file_id": "file-1"}],
+            ),
         )
 
         manager.save_conversation(
@@ -92,6 +105,10 @@ class TestStateManager(unittest.TestCase):
         self.assertEqual(assistant_msg["code_thread_id"], "thread-1")
         self.assertEqual(assistant_msg["last_mcp_tool_used"], "agentic_search")
         self.assertEqual(assistant_msg["uploaded_file_refs"], [{"blob_name": "file1"}])
+        self.assertEqual(
+            assistant_msg["cached_dochat_analyst_blobs"],
+            [{"blob_name": "data.csv", "file_id": "file-1"}],
+        )
         self.assertEqual(conversation_data["conversation_summary"], "summary text")
 
     def test_save_conversation_handles_exception(self):

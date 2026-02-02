@@ -22,10 +22,8 @@ class TestOrchestratorInit(unittest.TestCase):
 
     def test_init_planning_llm_success(self):
         orch = self._make_uninitialized()
-        with patch.dict(os.environ, {"O1_ENDPOINT": "endpoint", "O1_KEY": "key"}):
-            with patch(
-                "orc.unified_orchestrator.orchestrator.AzureChatOpenAI"
-            ) as mock_llm:
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "key"}):
+            with patch("orc.unified_orchestrator.orchestrator.ChatOpenAI") as mock_llm:
                 result = orch._init_planning_llm()
         self.assertIs(result, mock_llm.return_value)
 
