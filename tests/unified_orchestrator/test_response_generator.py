@@ -6,6 +6,7 @@ from unittest.mock import MagicMock
 
 from orc.unified_orchestrator.response_generator import ResponseGenerator
 from orc.unified_orchestrator.context_builder import ContextBuilder
+from shared.prompts import WEB_SEARCH_TOOL_INSTRUCTIONS
 from tests.unified_orchestrator.fixtures import (
     make_state,
     make_org_data,
@@ -35,6 +36,9 @@ class TestResponseGenerator(unittest.IsolatedAsyncioTestCase):
         )
         prompt = normalize_prompt(prompt)
 
+        # Verify web search instructions are always present
+        self.assertIn(WEB_SEARCH_TOOL_INSTRUCTIONS.strip(), prompt)
+
         assert_section_order(
             prompt,
             [
@@ -58,6 +62,11 @@ class TestResponseGenerator(unittest.IsolatedAsyncioTestCase):
             user_settings={},
         )
         prompt = normalize_prompt(prompt)
+
+        # Verify web search instructions are always present (not optional)
+        self.assertIn(WEB_SEARCH_TOOL_INSTRUCTIONS.strip(), prompt)
+
+        # Verify optional sections are absent
         assert_section_absent(prompt, "<----------- CONVERSATION SUMMARY ------------>")
         assert_section_absent(
             prompt, "<----------- PROVIDED CHAT HISTORY ------------>"
@@ -113,7 +122,7 @@ class TestResponseGenerator(unittest.IsolatedAsyncioTestCase):
 
     async def test_generate_streaming_response_mid_stream_error(self):
         class FailingLLM:
-            async def astream(self, messages):
+            async def astream(self, messages, **kwargs):
                 yield type("Chunk", (), {"content": "hello"})()
                 yield type("Chunk", (), {"content": "world"})()
                 raise Exception("LLM died")
@@ -127,6 +136,31 @@ class TestResponseGenerator(unittest.IsolatedAsyncioTestCase):
             "I apologize, but I encountered an error while generating the response. Please try again.",
         )
         self.assertEqual(chunks[:2], ["hello", "world"])
+
+    async def test_generate_streaming_response_passes_web_search_tool(self):
+        """Verify web_search tool is configured in astream call."""
+        tools_received = []
+
+        class MockLLM:
+            async def astream(self, messages, **kwargs):
+                # Capture the tools parameter
+                tools_received.append(kwargs.get("tools"))
+                yield type("Chunk", (), {"content": "test response"})()
+
+        generator = ResponseGenerator(MockLLM())
+        chunks = await collect_async(
+            generator.generate_streaming_response("system", "user")
+        )
+
+        # Verify the response was generated
+        self.assertEqual(chunks, ["test response"])
+
+        # Verify tools parameter was passed with correct configuration
+        self.assertEqual(len(tools_received), 1)
+        self.assertEqual(
+            tools_received[0],
+            [{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
+        )
 
 
 if __name__ == "__main__":
