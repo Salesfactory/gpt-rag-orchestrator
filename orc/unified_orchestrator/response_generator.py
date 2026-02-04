@@ -26,6 +26,7 @@ from shared.prompts import (
     CREATIVE_COPYWRITER_PROMPT,
     FA_HELPDESK_PROMPT,
     IMAGE_RENDERING_INSTRUCTIONS,
+    WEB_SEARCH_TOOL_INSTRUCTIONS,
 )
 from shared.util import get_verbosity_instruction
 
@@ -90,6 +91,10 @@ class ResponseGenerator:
 
         # base prompt
         system_prompt = MARKETING_ANSWER_PROMPT
+
+        # Add web search tool instructions
+        system_prompt += f"\n\n{WEB_SEARCH_TOOL_INSTRUCTIONS}"
+        logger.debug("[ResponseGenerator] Added web search tool instructions")
 
         # Add organization context
         org_context = context_builder.build_organization_context()
@@ -244,7 +249,12 @@ class ResponseGenerator:
                 "[ResponseGenerator] Invoking Claude with extended thinking and streaming enabled"
             )
             # Don't pass temperature to astream() - already set in LLM init (must be 1.0 for thinking)
-            async for chunk in self.claude_llm.astream(messages):
+            async for chunk in self.claude_llm.astream(
+                messages,
+                tools=[
+                    {"type": "web_search_20250305", "name": "web_search", "max_uses": 3}
+                ],
+            ):
                 if hasattr(chunk, "content"):
                     # Content can be a string or a list of content blocks
                     if isinstance(chunk.content, str) and chunk.content:
