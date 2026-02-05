@@ -227,7 +227,7 @@ class ResponseGenerator:
         Generate streaming response from Claude with extended thinking.
 
         Uses Anthropic Claude (claude-sonnet-4-5-20250929) for streaming.
-        Enables extended thinking but only yields text content (reasoning blocks are hidden).
+        Enables extended thinking and streams both thinking and text content.
         Temperature is fixed at 1.0 (set in LLM init) as required for extended thinking.
 
         Args:
@@ -235,7 +235,7 @@ class ResponseGenerator:
             user_prompt: User prompt
 
         Yields:
-            Response text tokens
+            Tuples of (token_type, content) where token_type is "thinking" or "text"
         """
         logger.info("[ResponseGenerator] Starting streaming response generation")
 
@@ -258,20 +258,29 @@ class ResponseGenerator:
                 if hasattr(chunk, "content"):
                     # Content can be a string or a list of content blocks
                     if isinstance(chunk.content, str) and chunk.content:
-                        yield chunk.content
+                        yield ("text", chunk.content)
                     elif isinstance(chunk.content, list):
-                        # Handle content blocks (reasoning/thinking, text, etc.)
+                        # Handle content blocks (thinking, text, etc.)
                         for block in chunk.content:
                             if isinstance(block, dict):
                                 block_type = block.get("type")
 
-                                # Only yield text blocks (skip reasoning blocks)
-                                if block_type == "text":
+                                # Yield thinking blocks
+                                if block_type == "thinking":
+                                    thinking_content = block.get("thinking", "")
+                                    if thinking_content:
+                                        yield ("thinking", thinking_content)
+                                        logger.debug(
+                                            f"[ResponseGenerator] Yielded thinking token: {len(thinking_content)} chars"
+                                        )
+
+                                # Yield final answer blocks
+                                elif block_type == "text":
                                     text_content = block.get("text", "")
                                     if text_content:
-                                        yield text_content
+                                        yield ("text", text_content)
                             elif isinstance(block, str) and block:
-                                yield block
+                                yield ("text", block)
 
             logger.info("[ResponseGenerator] Completed streaming response generation")
 
@@ -280,4 +289,4 @@ class ResponseGenerator:
                 f"[ResponseGenerator] Error during streaming response generation: {e}"
             )
             error_message = "I apologize, but I encountered an error while generating the response. Please try again."
-            yield error_message
+            yield ("text", error_message)
