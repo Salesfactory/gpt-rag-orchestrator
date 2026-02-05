@@ -88,6 +88,27 @@ class OrchestratorConfig:
     response_temperature: float = 1.0  # Must be 1.0 for extended thinking
     response_max_tokens: int = 64000
     thinking_budget: int = 3000
+    # these are for claude skills, don't modify
+    response_betas: List[str] = field(
+        default_factory=lambda: ["code-execution-2025-08-25", "skills-2025-10-02"]
+    )
+    response_container: Dict[str, Any] = field(
+        default_factory=lambda: {
+            "skills": [
+                {
+                    "type": "custom",
+                    "skill_id": "skill_011Tb8JtnPLG4g2Ym64fB6a2",  # creative brief
+                    "version": "latest",
+                }
+            ]
+        }
+    )
+    response_tools: List[Dict[str, Any]] = field(
+        default_factory=lambda: [
+            {"type": "web_search_20250305", "name": "web_search", "max_uses": 3},
+            {"type": "code_execution_20250825", "name": "code_execution"},
+        ]
+    )
 
     # Tool Calling Model Configuration (Anthropic Claude Haiku - faster/cheaper)
     tool_calling_model: str = "claude-haiku-4-5"

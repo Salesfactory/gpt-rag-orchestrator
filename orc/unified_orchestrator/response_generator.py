@@ -12,7 +12,7 @@ Responsibilities:
 """
 
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional, List
 
 from langsmith import traceable
 from langchain_anthropic import ChatAnthropic
@@ -26,7 +26,7 @@ from shared.prompts import (
     CREATIVE_COPYWRITER_PROMPT,
     FA_HELPDESK_PROMPT,
     IMAGE_RENDERING_INSTRUCTIONS,
-    WEB_SEARCH_TOOL_INSTRUCTIONS,
+    ANTHROPIC_TOOL_INSTRUCTIONS,
 )
 from shared.util import get_verbosity_instruction
 
@@ -50,14 +50,17 @@ class ResponseGenerator:
     def __init__(
         self,
         claude_llm: ChatAnthropic,
+        response_tools: Optional[List[Dict[str, Any]]] = None,
     ):
         """
         Initialize ResponseGenerator.
 
         Args:
             claude_llm: Anthropic Claude LLM instance
+            response_tools: Tool definitions passed to astream for native tool use
         """
         self.claude_llm = claude_llm
+        self.response_tools = response_tools or []
         logger.info("[ResponseGenerator] Initialized")
 
     def build_system_prompt(
@@ -92,9 +95,9 @@ class ResponseGenerator:
         # base prompt
         system_prompt = MARKETING_ANSWER_PROMPT
 
-        # Add web search tool instructions
-        system_prompt += f"\n\n{WEB_SEARCH_TOOL_INSTRUCTIONS}"
-        logger.debug("[ResponseGenerator] Added web search tool instructions")
+        # Add Anthropic tool instructions
+        system_prompt += f"\n\n{ANTHROPIC_TOOL_INSTRUCTIONS}"
+        logger.debug("[ResponseGenerator] Added Anthropic tool instructions")
 
         # Add organization context
         org_context = context_builder.build_organization_context()
@@ -251,9 +254,7 @@ class ResponseGenerator:
             # Don't pass temperature to astream() - already set in LLM init (must be 1.0 for thinking)
             async for chunk in self.claude_llm.astream(
                 messages,
-                tools=[
-                    {"type": "web_search_20250305", "name": "web_search", "max_uses": 3}
-                ],
+                tools=self.response_tools,
             ):
                 if hasattr(chunk, "content"):
                     # Content can be a string or a list of content blocks
