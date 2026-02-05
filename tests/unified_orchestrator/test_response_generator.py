@@ -98,19 +98,19 @@ class TestResponseGenerator(unittest.IsolatedAsyncioTestCase):
         chunks = await collect_async(
             generator.generate_streaming_response("system", "user")
         )
-        self.assertEqual(chunks, ["a", "b"])
+        self.assertEqual(chunks, [("text", "a"), ("text", "b")])
 
     async def test_generate_streaming_response_blocks(self):
         llm = make_llm(
             stream_chunks=[
-                [{"type": "text", "text": "hi"}, {"type": "thinking", "text": "skip"}]
+                [{"type": "text", "text": "hi"}, {"type": "other", "data": "skip"}]
             ]
         )
         generator = ResponseGenerator(llm)
         chunks = await collect_async(
             generator.generate_streaming_response("system", "user")
         )
-        self.assertEqual(chunks, ["hi"])
+        self.assertEqual(chunks, [("text", "hi")])
 
     async def test_generate_streaming_response_string_blocks(self):
         llm = make_llm(stream_chunks=[[{"type": "text", "text": "hi"}, "tail"]])
@@ -118,7 +118,7 @@ class TestResponseGenerator(unittest.IsolatedAsyncioTestCase):
         chunks = await collect_async(
             generator.generate_streaming_response("system", "user")
         )
-        self.assertEqual(chunks, ["hi", "tail"])
+        self.assertEqual(chunks, [("text", "hi"), ("text", "tail")])
 
     async def test_generate_streaming_response_mid_stream_error(self):
         class FailingLLM:
@@ -133,9 +133,12 @@ class TestResponseGenerator(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             chunks[-1],
-            "I apologize, but I encountered an error while generating the response. Please try again.",
+            (
+                "text",
+                "I apologize, but I encountered an error while generating the response. Please try again.",
+            ),
         )
-        self.assertEqual(chunks[:2], ["hello", "world"])
+        self.assertEqual(chunks[:2], [("text", "hello"), ("text", "world")])
 
     async def test_generate_streaming_response_passes_web_search_tool(self):
         """Verify web_search tool is configured in astream call."""
@@ -153,13 +156,39 @@ class TestResponseGenerator(unittest.IsolatedAsyncioTestCase):
         )
 
         # Verify the response was generated
-        self.assertEqual(chunks, ["test response"])
+        self.assertEqual(chunks, [("text", "test response")])
 
         # Verify tools parameter was passed with correct configuration
         self.assertEqual(len(tools_received), 1)
         self.assertEqual(
             tools_received[0],
             [{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
+        )
+
+    async def test_generate_streaming_response_thinking_blocks(self):
+        """Verify thinking blocks are yielded with correct type."""
+        llm = make_llm(
+            stream_chunks=[
+                [
+                    {"type": "thinking", "thinking": "Let me think..."},
+                    {"type": "thinking", "thinking": "Step by step..."},
+                    {"type": "text", "text": "Here is my answer."},
+                ]
+            ]
+        )
+        generator = ResponseGenerator(llm)
+        chunks = await collect_async(
+            generator.generate_streaming_response("system", "user")
+        )
+
+        # Verify thinking blocks are yielded as ("thinking", content)
+        self.assertEqual(
+            chunks,
+            [
+                ("thinking", "Let me think..."),
+                ("thinking", "Step by step..."),
+                ("text", "Here is my answer."),
+            ],
         )
 
 
