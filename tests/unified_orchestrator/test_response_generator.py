@@ -133,7 +133,10 @@ class TestResponseGenerator(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             chunks[-1],
-            ("text", "I apologize, but I encountered an error while generating the response. Please try again."),
+            (
+                "text",
+                "I apologize, but I encountered an error while generating the response. Please try again.",
+            ),
         )
         self.assertEqual(chunks[:2], [("text", "hello"), ("text", "world")])
 

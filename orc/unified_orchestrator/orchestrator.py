@@ -1357,7 +1357,10 @@ class ConversationOrchestrator:
         response_text = ""
         thinking_chars = 0
         try:
-            async for token_type, token in self.response_generator.generate_streaming_response(
+            async for (
+                token_type,
+                token,
+            ) in self.response_generator.generate_streaming_response(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
             ):
