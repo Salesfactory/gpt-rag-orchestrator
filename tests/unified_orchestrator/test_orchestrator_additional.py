@@ -271,8 +271,8 @@ class TestOrchestratorAdditional(unittest.IsolatedAsyncioTestCase):
         orch.response_generator.build_user_prompt.return_value = "user"
 
         async def fake_stream(*args, **kwargs):
-            yield "A"
-            yield "B"
+            yield ("text", "A")
+            yield ("text", "B")
 
         orch.response_generator.generate_streaming_response = fake_stream
         orch._progress_queue = []
