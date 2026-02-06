@@ -6,7 +6,8 @@ from unittest.mock import MagicMock
 
 from orc.unified_orchestrator.response_generator import ResponseGenerator
 from orc.unified_orchestrator.context_builder import ContextBuilder
-from shared.prompts import WEB_SEARCH_TOOL_INSTRUCTIONS
+from orc.unified_orchestrator.models import OrchestratorConfig
+from shared.prompts import ANTHROPIC_TOOL_INSTRUCTIONS
 from tests.unified_orchestrator.fixtures import (
     make_state,
     make_org_data,
@@ -36,8 +37,8 @@ class TestResponseGenerator(unittest.IsolatedAsyncioTestCase):
         )
         prompt = normalize_prompt(prompt)
 
-        # Verify web search instructions are always present
-        self.assertIn(WEB_SEARCH_TOOL_INSTRUCTIONS.strip(), prompt)
+        # Verify tool instructions are always present
+        self.assertIn(ANTHROPIC_TOOL_INSTRUCTIONS.strip(), prompt)
 
         assert_section_order(
             prompt,
@@ -63,8 +64,8 @@ class TestResponseGenerator(unittest.IsolatedAsyncioTestCase):
         )
         prompt = normalize_prompt(prompt)
 
-        # Verify web search instructions are always present (not optional)
-        self.assertIn(WEB_SEARCH_TOOL_INSTRUCTIONS.strip(), prompt)
+        # Verify tool instructions are always present (not optional)
+        self.assertIn(ANTHROPIC_TOOL_INSTRUCTIONS.strip(), prompt)
 
         # Verify optional sections are absent
         assert_section_absent(prompt, "<----------- CONVERSATION SUMMARY ------------>")
@@ -143,6 +144,7 @@ class TestResponseGenerator(unittest.IsolatedAsyncioTestCase):
     async def test_generate_streaming_response_passes_web_search_tool(self):
         """Verify web_search tool is configured in astream call."""
         tools_received = []
+        config = OrchestratorConfig()
 
         class MockLLM:
             async def astream(self, messages, **kwargs):
@@ -150,7 +152,7 @@ class TestResponseGenerator(unittest.IsolatedAsyncioTestCase):
                 tools_received.append(kwargs.get("tools"))
                 yield type("Chunk", (), {"content": "test response"})()
 
-        generator = ResponseGenerator(MockLLM())
+        generator = ResponseGenerator(MockLLM(), response_tools=config.response_tools)
         chunks = await collect_async(
             generator.generate_streaming_response("system", "user")
         )
@@ -160,10 +162,7 @@ class TestResponseGenerator(unittest.IsolatedAsyncioTestCase):
 
         # Verify tools parameter was passed with correct configuration
         self.assertEqual(len(tools_received), 1)
-        self.assertEqual(
-            tools_received[0],
-            [{"type": "web_search_20250305", "name": "web_search", "max_uses": 3}],
-        )
+        self.assertEqual(tools_received[0], config.response_tools)
 
     async def test_generate_streaming_response_thinking_blocks(self):
         """Verify thinking blocks are yielded with correct type."""

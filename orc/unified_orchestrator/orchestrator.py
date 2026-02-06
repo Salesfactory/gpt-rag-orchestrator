@@ -256,6 +256,8 @@ class ConversationOrchestrator:
             temperature=self.config.response_temperature,
             streaming=True,
             api_key=api_key,
+            betas=self.config.response_betas,
+            container=self.config.response_container,
             max_tokens=self.config.response_max_tokens,
             max_retries=3,
             thinking={"type": "enabled", "budget_tokens": self.config.thinking_budget},
@@ -1981,6 +1983,7 @@ class ConversationOrchestrator:
 
             self.response_generator = ResponseGenerator(
                 claude_llm=self.response_llm,
+                response_tools=self.config.response_tools,
             )
 
             logger.info(
