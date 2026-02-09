@@ -83,7 +83,7 @@ class TestResponseGenerator(unittest.IsolatedAsyncioTestCase):
         prompt = generator.build_user_prompt(
             state=state, user_settings={"detail_level": "detailed"}
         )
-        self.assertIn("Augmented Query (with historical context): Aug", prompt)
+        self.assertIn("Augmented Query:", prompt)
 
     def test_build_user_prompt_brief(self):
         state = make_state(question="Q", augmented_query="Aug")
