@@ -210,7 +210,7 @@ class ResponseGenerator:
 
         # Include augmented query only for "detailed" setting
         if detail_level == "detailed" and state.augmented_query:
-            user_prompt += f"\n\nAugmented Query (with historical context): {state.augmented_query}"
+            user_prompt += f"\n\nAugmented Query: {state.augmented_query}"
             logger.debug(
                 "[ResponseGenerator] Included augmented query in user prompt (detail_level: detailed)"
             )
