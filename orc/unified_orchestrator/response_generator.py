@@ -12,7 +12,7 @@ Responsibilities:
 """
 
 import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional, List
 
 from langsmith import traceable
 from langchain_anthropic import ChatAnthropic
@@ -26,6 +26,7 @@ from shared.prompts import (
     CREATIVE_COPYWRITER_PROMPT,
     FA_HELPDESK_PROMPT,
     IMAGE_RENDERING_INSTRUCTIONS,
+    ANTHROPIC_TOOL_INSTRUCTIONS,
 )
 from shared.util import get_verbosity_instruction
 
@@ -49,14 +50,17 @@ class ResponseGenerator:
     def __init__(
         self,
         claude_llm: ChatAnthropic,
+        response_tools: Optional[List[Dict[str, Any]]] = None,
     ):
         """
         Initialize ResponseGenerator.
 
         Args:
             claude_llm: Anthropic Claude LLM instance
+            response_tools: Tool definitions passed to astream for native tool use
         """
         self.claude_llm = claude_llm
+        self.response_tools = response_tools or []
         logger.info("[ResponseGenerator] Initialized")
 
     def build_system_prompt(
@@ -90,6 +94,10 @@ class ResponseGenerator:
 
         # base prompt
         system_prompt = MARKETING_ANSWER_PROMPT
+
+        # Add Anthropic tool instructions
+        system_prompt += f"\n\n{ANTHROPIC_TOOL_INSTRUCTIONS}"
+        logger.debug("[ResponseGenerator] Added Anthropic tool instructions")
 
         # Add organization context
         org_context = context_builder.build_organization_context()
@@ -202,7 +210,7 @@ class ResponseGenerator:
 
         # Include augmented query only for "detailed" setting
         if detail_level == "detailed" and state.augmented_query:
-            user_prompt += f"\n\nAugmented Query (with historical context): {state.augmented_query}"
+            user_prompt += f"\n\nAugmented Query: {state.augmented_query}"
             logger.debug(
                 "[ResponseGenerator] Included augmented query in user prompt (detail_level: detailed)"
             )
@@ -222,7 +230,7 @@ class ResponseGenerator:
         Generate streaming response from Claude with extended thinking.
 
         Uses Anthropic Claude (claude-sonnet-4-5-20250929) for streaming.
-        Enables extended thinking but only yields text content (reasoning blocks are hidden).
+        Enables extended thinking and streams both thinking and text content.
         Temperature is fixed at 1.0 (set in LLM init) as required for extended thinking.
 
         Args:
@@ -230,7 +238,7 @@ class ResponseGenerator:
             user_prompt: User prompt
 
         Yields:
-            Response text tokens
+            Tuples of (token_type, content) where token_type is "thinking" or "text"
         """
         logger.info("[ResponseGenerator] Starting streaming response generation")
 
@@ -244,24 +252,36 @@ class ResponseGenerator:
                 "[ResponseGenerator] Invoking Claude with extended thinking and streaming enabled"
             )
             # Don't pass temperature to astream() - already set in LLM init (must be 1.0 for thinking)
-            async for chunk in self.claude_llm.astream(messages):
+            async for chunk in self.claude_llm.astream(
+                messages,
+                tools=self.response_tools,
+            ):
                 if hasattr(chunk, "content"):
                     # Content can be a string or a list of content blocks
                     if isinstance(chunk.content, str) and chunk.content:
-                        yield chunk.content
+                        yield ("text", chunk.content)
                     elif isinstance(chunk.content, list):
-                        # Handle content blocks (reasoning/thinking, text, etc.)
+                        # Handle content blocks (thinking, text, etc.)
                         for block in chunk.content:
                             if isinstance(block, dict):
                                 block_type = block.get("type")
 
-                                # Only yield text blocks (skip reasoning blocks)
-                                if block_type == "text":
+                                # Yield thinking blocks
+                                if block_type == "thinking":
+                                    thinking_content = block.get("thinking", "")
+                                    if thinking_content:
+                                        yield ("thinking", thinking_content)
+                                        logger.debug(
+                                            f"[ResponseGenerator] Yielded thinking token: {len(thinking_content)} chars"
+                                        )
+
+                                # Yield final answer blocks
+                                elif block_type == "text":
                                     text_content = block.get("text", "")
                                     if text_content:
-                                        yield text_content
+                                        yield ("text", text_content)
                             elif isinstance(block, str) and block:
-                                yield block
+                                yield ("text", block)
 
             logger.info("[ResponseGenerator] Completed streaming response generation")
 
@@ -270,4 +290,4 @@ class ResponseGenerator:
                 f"[ResponseGenerator] Error during streaming response generation: {e}"
             )
             error_message = "I apologize, but I encountered an error while generating the response. Please try again."
-            yield error_message
+            yield ("text", error_message)

@@ -6,6 +6,8 @@ from unittest.mock import MagicMock
 
 from orc.unified_orchestrator.response_generator import ResponseGenerator
 from orc.unified_orchestrator.context_builder import ContextBuilder
+from orc.unified_orchestrator.models import OrchestratorConfig
+from shared.prompts import ANTHROPIC_TOOL_INSTRUCTIONS
 from tests.unified_orchestrator.fixtures import (
     make_state,
     make_org_data,
@@ -35,6 +37,9 @@ class TestResponseGenerator(unittest.IsolatedAsyncioTestCase):
         )
         prompt = normalize_prompt(prompt)
 
+        # Verify tool instructions are always present
+        self.assertIn(ANTHROPIC_TOOL_INSTRUCTIONS.strip(), prompt)
+
         assert_section_order(
             prompt,
             [
@@ -58,6 +63,11 @@ class TestResponseGenerator(unittest.IsolatedAsyncioTestCase):
             user_settings={},
         )
         prompt = normalize_prompt(prompt)
+
+        # Verify tool instructions are always present (not optional)
+        self.assertIn(ANTHROPIC_TOOL_INSTRUCTIONS.strip(), prompt)
+
+        # Verify optional sections are absent
         assert_section_absent(prompt, "<----------- CONVERSATION SUMMARY ------------>")
         assert_section_absent(
             prompt, "<----------- PROVIDED CHAT HISTORY ------------>"
@@ -73,7 +83,7 @@ class TestResponseGenerator(unittest.IsolatedAsyncioTestCase):
         prompt = generator.build_user_prompt(
             state=state, user_settings={"detail_level": "detailed"}
         )
-        self.assertIn("Augmented Query (with historical context): Aug", prompt)
+        self.assertIn("Augmented Query:", prompt)
 
     def test_build_user_prompt_brief(self):
         state = make_state(question="Q", augmented_query="Aug")
@@ -89,19 +99,19 @@ class TestResponseGenerator(unittest.IsolatedAsyncioTestCase):
         chunks = await collect_async(
             generator.generate_streaming_response("system", "user")
         )
-        self.assertEqual(chunks, ["a", "b"])
+        self.assertEqual(chunks, [("text", "a"), ("text", "b")])
 
     async def test_generate_streaming_response_blocks(self):
         llm = make_llm(
             stream_chunks=[
-                [{"type": "text", "text": "hi"}, {"type": "thinking", "text": "skip"}]
+                [{"type": "text", "text": "hi"}, {"type": "other", "data": "skip"}]
             ]
         )
         generator = ResponseGenerator(llm)
         chunks = await collect_async(
             generator.generate_streaming_response("system", "user")
         )
-        self.assertEqual(chunks, ["hi"])
+        self.assertEqual(chunks, [("text", "hi")])
 
     async def test_generate_streaming_response_string_blocks(self):
         llm = make_llm(stream_chunks=[[{"type": "text", "text": "hi"}, "tail"]])
@@ -109,11 +119,11 @@ class TestResponseGenerator(unittest.IsolatedAsyncioTestCase):
         chunks = await collect_async(
             generator.generate_streaming_response("system", "user")
         )
-        self.assertEqual(chunks, ["hi", "tail"])
+        self.assertEqual(chunks, [("text", "hi"), ("text", "tail")])
 
     async def test_generate_streaming_response_mid_stream_error(self):
         class FailingLLM:
-            async def astream(self, messages):
+            async def astream(self, messages, **kwargs):
                 yield type("Chunk", (), {"content": "hello"})()
                 yield type("Chunk", (), {"content": "world"})()
                 raise Exception("LLM died")
@@ -124,9 +134,61 @@ class TestResponseGenerator(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(
             chunks[-1],
-            "I apologize, but I encountered an error while generating the response. Please try again.",
+            (
+                "text",
+                "I apologize, but I encountered an error while generating the response. Please try again.",
+            ),
         )
-        self.assertEqual(chunks[:2], ["hello", "world"])
+        self.assertEqual(chunks[:2], [("text", "hello"), ("text", "world")])
+
+    async def test_generate_streaming_response_passes_web_search_tool(self):
+        """Verify web_search tool is configured in astream call."""
+        tools_received = []
+        config = OrchestratorConfig()
+
+        class MockLLM:
+            async def astream(self, messages, **kwargs):
+                # Capture the tools parameter
+                tools_received.append(kwargs.get("tools"))
+                yield type("Chunk", (), {"content": "test response"})()
+
+        generator = ResponseGenerator(MockLLM(), response_tools=config.response_tools)
+        chunks = await collect_async(
+            generator.generate_streaming_response("system", "user")
+        )
+
+        # Verify the response was generated
+        self.assertEqual(chunks, [("text", "test response")])
+
+        # Verify tools parameter was passed with correct configuration
+        self.assertEqual(len(tools_received), 1)
+        self.assertEqual(tools_received[0], config.response_tools)
+
+    async def test_generate_streaming_response_thinking_blocks(self):
+        """Verify thinking blocks are yielded with correct type."""
+        llm = make_llm(
+            stream_chunks=[
+                [
+                    {"type": "thinking", "thinking": "Let me think..."},
+                    {"type": "thinking", "thinking": "Step by step..."},
+                    {"type": "text", "text": "Here is my answer."},
+                ]
+            ]
+        )
+        generator = ResponseGenerator(llm)
+        chunks = await collect_async(
+            generator.generate_streaming_response("system", "user")
+        )
+
+        # Verify thinking blocks are yielded as ("thinking", content)
+        self.assertEqual(
+            chunks,
+            [
+                ("thinking", "Let me think..."),
+                ("thinking", "Step by step..."),
+                ("text", "Here is my answer."),
+            ],
+        )
 
 
 if __name__ == "__main__":

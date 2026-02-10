@@ -190,7 +190,6 @@ class QueryPlanner:
         Categorize query into marketing categories.
 
         Uses Claude with conversation history for context to classify queries into:
-        - Creative Brief
         - Marketing Plan
         - Brand Positioning Statement
         - Creative Copywriter
@@ -214,7 +213,6 @@ class QueryPlanner:
         category_prompt = f"""
             You are a senior marketing strategist. Your task is to classify the user's question into one of the following categories:
 
-            - Creative Brief
             - Marketing Plan
             - Help Desk
             - Brand Positioning Statement
@@ -226,7 +224,6 @@ class QueryPlanner:
 
             To help you make an accurate decision, consider these cues for each category:
 
-            - **Creative Brief**: Look for project kickoffs, campaign overviews, client objectives, audience targeting, timelines, deliverables, or communication goals.
             - **Marketing Plan**: Look for references to strategy, goals, budget, channels, timelines, performance metrics, or ROI.
             - **Brand Positioning Statement**: Watch for messages about defining brand essence, values, personality, competitive differentiation, or target audience perception.
             - **Creative Copywriter**: Use this category when users ask meta-questions about your fundamental functions, purpose, or identity. This applies to inquiries such as "What can you do?", "What are your capabilities?", or "How do you work?". This category is distinct from standard user commands or requests for technical support.

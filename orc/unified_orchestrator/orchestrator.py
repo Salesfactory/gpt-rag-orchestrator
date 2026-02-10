@@ -256,6 +256,8 @@ class ConversationOrchestrator:
             temperature=self.config.response_temperature,
             streaming=True,
             api_key=api_key,
+            betas=self.config.response_betas,
+            container=self.config.response_container,
             max_tokens=self.config.response_max_tokens,
             max_retries=3,
             thinking={"type": "enabled", "budget_tokens": self.config.thinking_budget},
@@ -1355,16 +1357,32 @@ class ConversationOrchestrator:
         )
 
         response_text = ""
+        thinking_chars = 0
         try:
-            async for token in self.response_generator.generate_streaming_response(
+            async for (
+                token_type,
+                token,
+            ) in self.response_generator.generate_streaming_response(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
             ):
-                response_text += token
-                self._progress_queue.append(token)
+                if token_type == "thinking":
+                    thinking_data = {
+                        "type": "thinking",
+                        "content": token,
+                        "timestamp": time.time(),
+                    }
+                    self._progress_queue.append(
+                        f"__THINKING__{json.dumps(thinking_data)}__THINKING__\n"
+                    )
+                    thinking_chars += len(token)
+                elif token_type == "text":
+                    response_text += token
+                    self._progress_queue.append(token)
 
             logger.info(
-                f"[Generate Response Node] Generated {len(response_text)} characters"
+                f"[Generate Response Node] Generated {len(response_text)} characters "
+                f"(thinking: {thinking_chars} chars)"
             )
 
         except Exception as e:
@@ -1965,6 +1983,7 @@ class ConversationOrchestrator:
 
             self.response_generator = ResponseGenerator(
                 claude_llm=self.response_llm,
+                response_tools=self.config.response_tools,
             )
 
             logger.info(
