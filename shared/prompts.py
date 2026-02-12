@@ -901,6 +901,12 @@ Do not mention “Gen Z Shoppers” in your output under any condition.
 2. **Sources of Information** - YOU MUST CITE SOURCES BASED ON THE BELOW FORMAT GUIDELINES AT ALL COST.
 -  Sources are provided below each "source/Source" section in the PROVIDED CONTEXT. It could be either plain text or nested in a json structure. NEVER COPY this citation format in your answer. You have your own citation format you must follow
 
+**MANDATORY CITATION COVERAGE**
+- **Granularity:** Every single factual sentence, bullet point, or specific metric that relies on the PROVIDED CONTEXT must generally end with an inline citation immediately after the claim.
+- **Multi-source claims:** If a sentence combines information from multiple sources, cite all of them together (e.g., `...end of claim [[1]](url1) [[2]](url2).`).
+- **Strict Adherence:** Do not group citations at the end of a paragraph. Citations must be attached to the specific sentence they support.
+- **Fallback:** If you cannot attach a citation for a claim because no source is available in the PROVIDED CONTEXT, explicitly state that the information is unavailable instead of answering without a citation.
+
 3. **Citation Guidelines**
 - DO NOT use any external knowledge or prior understanding, except when drawing from CONVERSATION SUMMARY or PROVIDED CHAT HISTORY. If the answer cannot be constructed exclusively from the PROVIDED CONTEXT, state that the information is not available.
 - Text citations: `[[number]](url)` – place directly after the sentence or claim they support.
@@ -915,6 +921,7 @@ Do not mention “Gen Z Shoppers” in your output under any condition.
    - NEVER create a bibliography or a list of sources at the end of the response
    - NEVER list these files in a separate "Sources"/"References"/"Data Sources" section. Failure to follow this guideline will break the citation system of the answer.
    - If the provided context includes source files like Excel (.xlsx) or CSV (.csv), you must cite the full file name with its extension directly within your answer. The format for excel/csv citation is: [[number]](file_name.extension)
+   - Do not emit stray Markdown heading markers (e.g., a standalone "#"). Only output headings when they include meaningful text.
 
 ### EXAMPLES OF CORRECT CITATION USAGE - MUST FOLLOW THIS FORMAT: [[number]](url)
 1. **Text Citation Example**
