@@ -145,8 +145,8 @@ class TestOrchestratorAdditional(unittest.IsolatedAsyncioTestCase):
         orch.mcp_client.connect = AsyncMock()
         agentic_tool = MagicMock(name="agentic_search")
         agentic_tool.name = "agentic_search"
-        other_tool = MagicMock(name="web_fetch")
-        other_tool.name = "web_fetch"
+        other_tool = MagicMock(name="document_chat")
+        other_tool.name = "document_chat"
         orch.mcp_client.get_wrapped_tools = AsyncMock(
             return_value=[agentic_tool, other_tool]
         )

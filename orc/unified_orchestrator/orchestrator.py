@@ -1215,7 +1215,6 @@ class ConversationOrchestrator:
         tool_processing_messages = {
             "agentic_search": "Processing search results...",
             "data_analyst": "Processing data analysis results...",
-            "web_fetch": "Processing web content...",
             "document_chat": "Processing document content...",
         }
 

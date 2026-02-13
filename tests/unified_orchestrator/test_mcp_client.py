@@ -160,16 +160,6 @@ class TestMCPClient(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(actual_args["document_names"], ["doc1.pdf"])
         self.assertNotIn("cached_file_info", actual_args)
 
-    async def test_create_contextual_tool_web_fetch(self):
-        tool = make_tool(name="web_fetch", result={"ok": True})
-        state = make_state()
-        wrapped = self.client._create_contextual_tool(
-            tool, state, {"organization_id": "org-123", "user_id": "user-1"}
-        )
-        await wrapped.coroutine(query="hello")
-        actual_args = tool.ainvoke.call_args[0][0]
-        self.assertEqual(actual_args, {"query": "hello"})
-
     async def test_create_contextual_tool_unknown_tool(self):
         tool = make_tool(name="mystery_tool", result="ok")
         state = make_state()
@@ -181,7 +171,7 @@ class TestMCPClient(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(actual_args, {"foo": "bar"})
 
     async def test_create_contextual_tool_truncates_long_result_preview(self):
-        tool = make_tool(name="web_fetch", result="x" * 250)
+        tool = make_tool(name="agentic_search", result="x" * 250)
         state = make_state()
         wrapped = self.client._create_contextual_tool(
             tool, state, {"organization_id": "org-123", "user_id": "user-1"}
@@ -193,7 +183,7 @@ class TestMCPClient(unittest.IsolatedAsyncioTestCase):
         tool1 = MagicMock()
         tool1.name = "agentic_search"
         tool2 = MagicMock()
-        tool2.name = "web_fetch"
+        tool2.name = "document_chat"
         with patch.object(
             self.client,
             "get_available_tools",

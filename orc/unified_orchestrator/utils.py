@@ -97,7 +97,7 @@ def get_tool_progress_message(tool_name: str, stage: str) -> str:
 
     Args:
         tool_name: Name of the MCP tool (e.g., "agentic_search", "data_analyst",
-                   "web_fetch", "document_chat")
+                   "document_chat")
         stage: Stage of execution ("planning" or "executing")
 
     Returns:
@@ -119,10 +119,6 @@ def get_tool_progress_message(tool_name: str, stage: str) -> str:
         "data_analyst": {
             "planning": "Planning data analysis...",
             "executing": "Analyzing your data...",
-        },
-        "web_fetch": {
-            "planning": "Planning web content fetch...",
-            "executing": "Fetching web content...",
         },
         "document_chat": {
             "planning": "Preparing document analysis...",

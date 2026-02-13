@@ -127,32 +127,6 @@ class TestContextBuilder(unittest.TestCase):
         self.assertEqual(file_refs, [])
         self.assertTrue(any("path/to/blob" in str(doc) for doc in context_docs))
 
-    def test_extract_context_from_web_fetch_missing_content(self):
-        builder = ContextBuilder(make_org_data())
-        payload = {"other": "value"}
-        messages = [
-            ToolMessage(content=json.dumps(payload), tool_call_id="1", name="web_fetch")
-        ]
-        context_docs, blob_urls, file_refs = builder.extract_context_from_messages(
-            messages
-        )
-        self.assertEqual(context_docs, [payload])
-        self.assertEqual(blob_urls, [])
-        self.assertEqual(file_refs, [])
-
-    def test_extract_context_from_web_fetch(self):
-        builder = ContextBuilder(make_org_data())
-        payload = {"content": "web content"}
-        messages = [
-            ToolMessage(content=json.dumps(payload), tool_call_id="1", name="web_fetch")
-        ]
-        context_docs, blob_urls, file_refs = builder.extract_context_from_messages(
-            messages
-        )
-        self.assertEqual(context_docs, ["web content"])
-        self.assertEqual(blob_urls, [])
-        self.assertEqual(file_refs, [])
-
     def test_extract_context_handles_invalid_json(self):
         builder = ContextBuilder(make_org_data())
         messages = [
