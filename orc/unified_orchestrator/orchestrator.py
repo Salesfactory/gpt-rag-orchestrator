@@ -716,6 +716,15 @@ class ConversationOrchestrator:
             f"[Augment Node] Starting - Rewritten: {state.rewritten_query[:100]}..."
         )
 
+        detail_level = (self.current_user_settings or {}).get(
+            "detail_level", "balanced"
+        )
+        if detail_level != "detailed":
+            logger.info(
+                f"[Augment Node] Skipping augmentation for detail_level='{detail_level}'"
+            )
+            return {"augmented_query": state.rewritten_query or state.question}
+
         try:
             progress_data = {
                 "type": "progress",

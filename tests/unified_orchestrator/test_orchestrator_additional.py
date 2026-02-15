@@ -104,10 +104,47 @@ class TestOrchestratorAdditional(unittest.IsolatedAsyncioTestCase):
         orch.current_conversation_data = {"history": []}
         orch.current_conversation_id = "conv-1"
         orch.current_user_info = {"id": "user-1"}
+        orch.current_user_settings = {"detail_level": "detailed"}
         state = make_state(rewritten_query="rewritten")
 
         result = await orch._augment_node(state)
         self.assertEqual(result["augmented_query"], "rewritten")
+
+    async def test_augment_node_skips_when_not_detailed(self):
+        orch = make_orchestrator()
+        orch.query_planner = AsyncMock()
+        orch.query_planner.augment_query = AsyncMock(
+            return_value={"augmented_query": "should-not-be-used"}
+        )
+        orch.context_builder = MagicMock()
+        orch.current_conversation_data = {"history": []}
+        orch.current_conversation_id = "conv-1"
+        orch.current_user_info = {"id": "user-1"}
+        orch.current_user_settings = {"detail_level": "balanced"}
+        state = make_state(question="Q", rewritten_query="rewritten")
+
+        result = await orch._augment_node(state)
+
+        self.assertEqual(result["augmented_query"], "rewritten")
+        orch.query_planner.augment_query.assert_not_called()
+
+    async def test_augment_node_calls_planner_when_detailed(self):
+        orch = make_orchestrator()
+        orch.query_planner = AsyncMock()
+        orch.query_planner.augment_query = AsyncMock(
+            return_value={"augmented_query": "augmented"}
+        )
+        orch.context_builder = MagicMock()
+        orch.current_conversation_data = {"history": []}
+        orch.current_conversation_id = "conv-1"
+        orch.current_user_info = {"id": "user-1"}
+        orch.current_user_settings = {"detail_level": "detailed"}
+        state = make_state(question="Q", rewritten_query="rewritten")
+
+        result = await orch._augment_node(state)
+
+        self.assertEqual(result["augmented_query"], "augmented")
+        orch.query_planner.augment_query.assert_called_once()
 
     async def test_categorize_node_error_fallback(self):
         orch = make_orchestrator()
