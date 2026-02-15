@@ -129,10 +129,20 @@ class ConversationOrchestrator:
         self.current_response_text = ""
         self.current_blob_urls = []
         self.current_start_time = 0
-        self._progress_queue = []
+        self._progress_queue: asyncio.Queue[Any] = asyncio.Queue()
         self.wrapped_tools = None  # Wrapped tools for bind_tools (built at runtime)
 
         logger.info("[ConversationOrchestrator] Initialization complete")
+
+    def _reset_progress_queue(self) -> None:
+        """Reset per-request progress queue."""
+        self._progress_queue = asyncio.Queue()
+
+    def _emit_progress_item(self, item: str) -> None:
+        """Emit progress/thinking/text item to the streaming queue."""
+        if not isinstance(self._progress_queue, asyncio.Queue):
+            raise RuntimeError("Progress queue is not initialized as asyncio.Queue")
+        self._progress_queue.put_nowait(item)
 
     @staticmethod
     def _normalize_blob_inputs(
@@ -436,7 +446,7 @@ class ConversationOrchestrator:
                                         "content": chunk_data.get("content", ""),
                                         "timestamp": time.time(),
                                     }
-                                    self._progress_queue.append(
+                                    self._emit_progress_item(
                                         f"__THINKING__{json.dumps(thinking_data)}__THINKING__\n"
                                     )
 
@@ -447,7 +457,7 @@ class ConversationOrchestrator:
                                         "content": chunk_data.get("content", ""),
                                         "timestamp": time.time(),
                                     }
-                                    self._progress_queue.append(
+                                    self._emit_progress_item(
                                         f"__PROGRESS__{json.dumps(content_data)}__PROGRESS__\n"
                                     )
 
@@ -531,7 +541,7 @@ class ConversationOrchestrator:
                 "progress": 5,
                 "timestamp": time.time(),
             }
-            self._progress_queue.append(
+            self._emit_progress_item(
                 f"__PROGRESS__{json.dumps(progress_data)}__PROGRESS__\n"
             )
 
@@ -602,7 +612,7 @@ class ConversationOrchestrator:
                 "message": "Failed to load conversation history. Starting fresh conversation.",
                 "timestamp": time.time(),
             }
-            self._progress_queue.append(
+            self._emit_progress_item(
                 f"__PROGRESS__{json.dumps(error_data)}__PROGRESS__\n"
             )
 
@@ -651,7 +661,7 @@ class ConversationOrchestrator:
                 "progress": 15,
                 "timestamp": time.time(),
             }
-            self._progress_queue.append(
+            self._emit_progress_item(
                 f"__PROGRESS__{json.dumps(progress_data)}__PROGRESS__\n"
             )
 
@@ -714,7 +724,7 @@ class ConversationOrchestrator:
                 "progress": 25,
                 "timestamp": time.time(),
             }
-            self._progress_queue.append(
+            self._emit_progress_item(
                 f"__PROGRESS__{json.dumps(progress_data)}__PROGRESS__\n"
             )
 
@@ -838,7 +848,7 @@ class ConversationOrchestrator:
             "progress": 35,
             "timestamp": time.time(),
         }
-        self._progress_queue.append(
+        self._emit_progress_item(
             f"__PROGRESS__{json.dumps(progress_data)}__PROGRESS__\n"
         )
 
@@ -1010,7 +1020,7 @@ class ConversationOrchestrator:
             "progress": 45,
             "timestamp": time.time(),
         }
-        self._progress_queue.append(
+        self._emit_progress_item(
             f"__PROGRESS__{json.dumps(progress_data)}__PROGRESS__\n"
         )
 
@@ -1077,7 +1087,7 @@ class ConversationOrchestrator:
                         "timestamp": time.time(),
                         "tool": tool_name,
                     }
-                    self._progress_queue.append(
+                    self._emit_progress_item(
                         f"__PROGRESS__{json.dumps(planning_progress)}__PROGRESS__\n"
                     )
             else:
@@ -1141,7 +1151,7 @@ class ConversationOrchestrator:
                 "timestamp": time.time(),
             }
 
-        self._progress_queue.append(
+        self._emit_progress_item(
             f"__PROGRESS__{json.dumps(progress_data)}__PROGRESS__\n"
         )
 
@@ -1205,12 +1215,12 @@ class ConversationOrchestrator:
         """
         log_info("[Extract Context Node] Extracting context from tool result messages")
 
-        # Detect which tool was executed to show tool-specific processing message
-        tool_name = None
-        for msg in state.messages:
-            if hasattr(msg, "name"):
-                tool_name = msg.name
-                break
+        # Detect tool messages only (ignore non-tool messages with optional "name" attrs)
+        tool_messages = [
+            msg for msg in state.messages if isinstance(msg, ToolMessage) and msg.name
+        ]
+        latest_tool_message = tool_messages[-1] if tool_messages else None
+        tool_name = latest_tool_message.name if latest_tool_message else None
 
         tool_processing_messages = {
             "agentic_search": "Processing search results...",
@@ -1234,7 +1244,7 @@ class ConversationOrchestrator:
         if tool_name:
             progress_data["tool"] = tool_name
 
-        self._progress_queue.append(
+        self._emit_progress_item(
             f"__PROGRESS__{json.dumps(progress_data)}__PROGRESS__\n"
         )
 
@@ -1244,39 +1254,44 @@ class ConversationOrchestrator:
             )
 
             # Extract metadata
-            last_mcp_tool_used = ""
+            last_mcp_tool_used = state.last_mcp_tool_used or ""
             code_thread_id = state.code_thread_id
             has_images = False
 
-            for msg in state.messages:
-                if hasattr(msg, "name"):
-                    last_mcp_tool_used = msg.name
+            if latest_tool_message:
+                last_mcp_tool_used = latest_tool_message.name
+            elif last_mcp_tool_used:
+                logger.info(
+                    "[Extract Context Node] No tool message found in current turn; "
+                    "preserving previous last_mcp_tool_used"
+                )
 
-                    # Extract code_thread_id from data_analyst
-                    if msg.name == "data_analyst" and hasattr(msg, "content"):
-                        content = msg.content
-                        if isinstance(content, str):
-                            try:
-                                if (result_dict := json.loads(content)) and isinstance(
-                                    result_dict, dict
-                                ):
-                                    code_thread_id = result_dict.get(
-                                        "code_thread_id", code_thread_id
-                                    )
-
-                                    # Check for images in images_processed
-                                    images = result_dict.get("images_processed", [])
-                                    has_images = (
-                                        isinstance(images, list) and len(images) > 0
-                                    )
-                                    if has_images:
-                                        logger.info(
-                                            f"[Extract Context Node] Detected {len(images)} images in data_analyst results"
-                                        )
-                            except json.JSONDecodeError as e:
-                                logger.warning(
-                                    f"[Extract Context Node] Failed to parse data_analyst content as JSON: {e}"
+            for msg in tool_messages:
+                # Extract code_thread_id from data_analyst
+                if msg.name == "data_analyst" and hasattr(msg, "content"):
+                    content = msg.content
+                    if isinstance(content, str):
+                        try:
+                            if (result_dict := json.loads(content)) and isinstance(
+                                result_dict, dict
+                            ):
+                                code_thread_id = result_dict.get(
+                                    "code_thread_id", code_thread_id
                                 )
+
+                                # Check for images in images_processed
+                                images = result_dict.get("images_processed", [])
+                                has_images = (
+                                    isinstance(images, list) and len(images) > 0
+                                )
+                                if has_images:
+                                    logger.info(
+                                        f"[Extract Context Node] Detected {len(images)} images in data_analyst results"
+                                    )
+                        except json.JSONDecodeError as e:
+                            logger.warning(
+                                f"[Extract Context Node] Failed to parse data_analyst content as JSON: {e}"
+                            )
 
             # Store blob URLs for metadata emission
             self.current_blob_urls = blob_urls
@@ -1304,7 +1319,7 @@ class ConversationOrchestrator:
             return {
                 "context_docs": [],
                 "code_thread_id": state.code_thread_id,
-                "last_mcp_tool_used": "",
+                "last_mcp_tool_used": state.last_mcp_tool_used,
                 "uploaded_file_refs": state.uploaded_file_refs,
                 "has_images": False,
             }
@@ -1332,7 +1347,7 @@ class ConversationOrchestrator:
             "progress": 70,
             "timestamp": time.time(),
         }
-        self._progress_queue.append(
+        self._emit_progress_item(
             f"__PROGRESS__{json.dumps(progress_data)}__PROGRESS__\n"
         )
 
@@ -1371,13 +1386,13 @@ class ConversationOrchestrator:
                         "content": token,
                         "timestamp": time.time(),
                     }
-                    self._progress_queue.append(
+                    self._emit_progress_item(
                         f"__THINKING__{json.dumps(thinking_data)}__THINKING__\n"
                     )
                     thinking_chars += len(token)
                 elif token_type == "text":
                     response_text += token
-                    self._progress_queue.append(token)
+                    self._emit_progress_item(token)
 
             logger.info(
                 f"[Generate Response Node] Generated {len(response_text)} characters "
@@ -1387,7 +1402,7 @@ class ConversationOrchestrator:
         except Exception as e:
             logger.error(f"[Generate Response Node] Error generating response: {e}")
             response_text = "I apologize, but I encountered an error while generating the response. Please try again."
-            self._progress_queue.append(response_text)
+            self._emit_progress_item(response_text)
 
         self.current_response_text = response_text
 
@@ -1595,7 +1610,7 @@ class ConversationOrchestrator:
                 "thoughts": thoughts,
                 "images_blob_urls": self.current_blob_urls,
             }
-            self._progress_queue.append(
+            self._emit_progress_item(
                 f"__METADATA__{json.dumps(metadata)}__METADATA__\n"
             )
             logger.debug(
@@ -1656,7 +1671,7 @@ class ConversationOrchestrator:
             "progress": 100,
             "timestamp": time.time(),
         }
-        self._progress_queue.append(
+        self._emit_progress_item(
             f"__PROGRESS__{json.dumps(progress_data)}__PROGRESS__\n"
         )
         asyncio.create_task(
@@ -1790,27 +1805,26 @@ class ConversationOrchestrator:
         )
 
         try:
-            output_queue = asyncio.Queue()
-            graph_done = asyncio.Event()
+            if not isinstance(self._progress_queue, asyncio.Queue):
+                raise RuntimeError(
+                    "Progress queue must be asyncio.Queue before streaming execution"
+                )
 
-            async def progress_monitor():
-                """Monitor progress queue and forward items."""
+            output_queue: asyncio.Queue[Tuple[str, Any]] = asyncio.Queue()
+            progress_done_sentinel = object()
+
+            async def progress_forwarder():
+                """Forward emitted progress items to output queue in FIFO order."""
                 try:
-                    while not graph_done.is_set():
-                        while self._progress_queue:
-                            item = self._progress_queue.pop(0)
-                            await output_queue.put(("progress", item))
-
-                        # Small delay to avoid busy waiting
-                        await asyncio.sleep(0.05)
-
-                    # Final flush after graph completes
-                    while self._progress_queue:
-                        item = self._progress_queue.pop(0)
+                    while True:
+                        item = await self._progress_queue.get()
+                        if item is progress_done_sentinel:
+                            break
                         await output_queue.put(("progress", item))
-
                 except Exception as e:
-                    logger.error(f"Progress monitor error: {e}", exc_info=True)
+                    await output_queue.put(("error", e))
+                finally:
+                    await output_queue.put(("progress_done", None))
 
             async def graph_executor():
                 """Execute graph and forward events."""
@@ -1834,44 +1848,37 @@ class ConversationOrchestrator:
                 except Exception as e:
                     await output_queue.put(("error", e))
                 finally:
-                    graph_done.set()
-                    await output_queue.put(("done", None))
+                    self._progress_queue.put_nowait(progress_done_sentinel)
+                    await output_queue.put(("graph_done", None))
 
             # Start both tasks
-            monitor_task = asyncio.create_task(progress_monitor())
+            forwarder_task = asyncio.create_task(progress_forwarder())
             graph_task = asyncio.create_task(graph_executor())
 
-            # Yield items as they become available
-            while True:
-                try:
-                    item_type, item_data = await asyncio.wait_for(
-                        output_queue.get(), timeout=0.1
-                    )
+            graph_done = False
+            progress_done = False
+
+            try:
+                while not (graph_done and progress_done):
+                    item_type, item_data = await output_queue.get()
 
                     if item_type == "progress":
                         yield item_data
                     elif item_type == "error":
                         raise item_data
-                    elif item_type == "done":
-                        break
+                    elif item_type == "graph_done":
+                        graph_done = True
+                    elif item_type == "progress_done":
+                        progress_done = True
+            except Exception:
+                for task in (graph_task, forwarder_task):
+                    if not task.done():
+                        task.cancel()
+                await asyncio.gather(graph_task, forwarder_task, return_exceptions=True)
+                raise
 
-                except asyncio.TimeoutError:
-                    if graph_done.is_set() and output_queue.empty():
-                        break
-                    continue
-
-            # Ensure both tasks complete
             await graph_task
-            monitor_task.cancel()
-            try:
-                await monitor_task
-            except asyncio.CancelledError:
-                pass
-
-            # Yield any remaining items in the progress queue
-            while self._progress_queue:
-                item = self._progress_queue.pop(0)
-                yield item
+            await forwarder_task
 
             logger.info(
                 "[ConversationOrchestrator] Graph execution completed successfully",
@@ -1949,7 +1956,7 @@ class ConversationOrchestrator:
         self.current_start_time = start_time
         self.current_response_text = ""
         self.current_blob_urls = []
-        self._progress_queue = []
+        self._reset_progress_queue()
         self.current_question = question  # Store for error handling
 
         # Override config temperature with user setting if provided

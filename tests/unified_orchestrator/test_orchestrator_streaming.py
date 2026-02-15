@@ -4,7 +4,11 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from orc.unified_orchestrator.orchestrator import ConversationOrchestrator
-from tests.unified_orchestrator.fixtures import make_state, collect_async
+from tests.unified_orchestrator.fixtures import (
+    make_state,
+    collect_async,
+    make_progress_queue,
+)
 
 
 def make_orchestrator():
@@ -37,7 +41,7 @@ class FakeGraph:
 class TestOrchestratorStreaming(unittest.IsolatedAsyncioTestCase):
     async def test_progress_queue_ordering(self):
         orch = make_orchestrator()
-        orch._progress_queue = ["item1", "item2", "item3"]
+        orch._progress_queue = make_progress_queue(["item1", "item2", "item3"])
         orch.current_conversation_id = "conv"
         orch.current_user_info = {"id": "user"}
         orch.organization_id = "org"
