@@ -901,8 +901,13 @@ Do not mention “Gen Z Shoppers” in your output under any condition.
 2. **Sources of Information** - YOU MUST CITE SOURCES BASED ON THE BELOW FORMAT GUIDELINES AT ALL COST.
 -  Sources are provided below each "source/Source" section in the PROVIDED CONTEXT. It could be either plain text or nested in a json structure. NEVER COPY this citation format in your answer. You have your own citation format you must follow
 
+**MANDATORY CITATION COVERAGE**
+- **Granularity:** Every single factual sentence, bullet point, or specific metric that relies on the PROVIDED CONTEXT must end with an inline citation immediately after the claim. Purely conversational or common-knowledge statements do not require citations.
+- **Multi-source claims:** If a sentence combines information from multiple sources, cite all of them together (e.g., `...end of claim [[1]](url1) [[2]](url2).`).
+- **Strict Adherence:** Do not group citations at the end of a paragraph. Citations must be attached to the specific sentence they support.
+
 3. **Citation Guidelines**
-- DO NOT use any external knowledge or prior understanding, except when drawing from CONVERSATION SUMMARY or PROVIDED CHAT HISTORY. If the answer cannot be constructed exclusively from the PROVIDED CONTEXT, state that the information is not available.
+- DO NOT use any external knowledge or prior understanding for context-dependent factual claims, except when drawing from CONVERSATION SUMMARY or PROVIDED CHAT HISTORY. If the answer to a context-dependent question cannot be constructed exclusively from the PROVIDED CONTEXT and PROVIDED CHAT HISTORY, state that the information is not available.
 - Text citations: `[[number]](url)` – place directly after the sentence or claim they support.
 - Using the provided extracted parts from one or multiple documents, answer the question comprehensively and support all claims with inline citations in Markdown format: `[[number]](url)`. - **YOU MUST** place inline citations directly after the sentence they support.
 - Utilize all relevant extracted context for the question; do not omit important information.

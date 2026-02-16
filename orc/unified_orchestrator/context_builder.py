@@ -295,16 +295,6 @@ class ContextBuilder:
                                         f"[ContextBuilder] Added blob URL from message: {blob_path}"
                                     )
 
-                elif tool_name == "web_fetch" and isinstance(result, dict):
-                    web_content = result.get("content")
-                    if web_content:
-                        context_docs.append(web_content)
-                    else:
-                        context_docs.append(result)
-                    logger.debug(
-                        "[ContextBuilder] Added web_fetch content from message"
-                    )
-
                 elif tool_name == "document_chat" and isinstance(result, dict):
                     answer = result.get("answer", result)
                     context_docs.append(answer)

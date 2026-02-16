@@ -31,7 +31,6 @@ class MCPClient:
 
     TOOL_AGENTIC_SEARCH = "agentic_search"
     TOOL_DATA_ANALYST = "data_analyst"
-    TOOL_WEB_FETCH = "web_fetch"
     TOOL_DOCUMENT_CHAT = "document_chat"
 
     def __init__(self, organization_id: str, user_id: str, config: OrchestratorConfig):
@@ -262,9 +261,6 @@ class MCPClient:
                     f"[MCPClient] Injected context for document_chat: "
                     f"{len(state.user_uploaded_blobs.names)} documents"
                 )
-
-            elif tool_name == self.TOOL_WEB_FETCH:
-                logger.debug("[MCPClient] web_fetch will use query provided by Claude")
 
             else:
                 logger.warning(
