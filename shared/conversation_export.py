@@ -666,7 +666,9 @@ def upload_to_blob_storage(content, filename, user_id, content_type="text/html")
                 account_url=storage_account_url, credential=credential
             )
         if not account_name:
-            match = re.match(r"https?://([^.]+)\.blob\.core\.windows\.net", storage_account_url)
+            match = re.match(
+                r"https?://([^.]+)\.blob\.core\.windows\.net", storage_account_url
+            )
             account_name = match.group(1) if match else None
 
         container_name = "shared-conversations"
