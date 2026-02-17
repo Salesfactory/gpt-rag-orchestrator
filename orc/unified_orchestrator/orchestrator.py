@@ -1618,6 +1618,7 @@ class ConversationOrchestrator:
                 response_time=response_time,
                 response_text=self.current_response_text,
                 thoughts=thoughts,
+                user_timezone=self.current_user_timezone,
             )
 
             logger.info(
