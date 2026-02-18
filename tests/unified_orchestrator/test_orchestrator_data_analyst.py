@@ -6,6 +6,10 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from orc.unified_orchestrator.orchestrator import ConversationOrchestrator
+from tests.unified_orchestrator.fixtures import (
+    make_progress_queue,
+    drain_progress_queue,
+)
 
 
 def make_orchestrator():
@@ -23,7 +27,7 @@ def make_orchestrator():
         ):
             orchestrator = ConversationOrchestrator("org-1")
             orchestrator.cosmos_client = mock_cosmos.return_value
-            orchestrator._progress_queue = []
+            orchestrator._progress_queue = make_progress_queue()
             return orchestrator
 
 
@@ -121,8 +125,9 @@ class TestStreamDataAnalyst(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["last_agent_message"], "done")
         self.assertEqual(len(result["images_processed"]), 1)
         self.assertEqual(len(result["blob_urls"]), 1)
-        self.assertTrue(any("__THINKING__" in item for item in orch._progress_queue))
-        self.assertTrue(any("__PROGRESS__" in item for item in orch._progress_queue))
+        progress_items = drain_progress_queue(orch._progress_queue)
+        self.assertTrue(any("__THINKING__" in item for item in progress_items))
+        self.assertTrue(any("__PROGRESS__" in item for item in progress_items))
         payload = session.post_args[1]["json"]
         self.assertEqual(payload["blob_names"], blob_names)
 
