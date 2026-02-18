@@ -7,6 +7,7 @@ persistence with Cosmos DB and tracking conversation metadata.
 
 import logging
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from typing import Dict, Any, Optional
 
 from shared.cosmos_db import CosmosDBClient
@@ -162,6 +163,7 @@ class StateManager:
         response_text: str,
         thoughts: Dict[str, Any],
         conversation_summary: Optional[str] = None,
+        user_timezone: Optional[str] = None,
     ) -> None:
         """
         Save conversation data to Cosmos DB.
@@ -183,6 +185,20 @@ class StateManager:
         logger.info(f"[StateManager] Saving conversation: {conversation_id}")
 
         try:
+            tz = timezone.utc
+            if user_timezone:
+                try:
+                    tz = ZoneInfo(user_timezone)
+                except Exception:
+                    logger.warning(
+                        f"[StateManager] Unknown timezone '{user_timezone}', defaulting to UTC"
+                    )
+
+            # Refresh start_date so older conversations bubble up when they get new activity
+            conversation_data["start_date"] = datetime.now(tz).strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+
             history = conversation_data.get("history", [])
 
             user_message = {

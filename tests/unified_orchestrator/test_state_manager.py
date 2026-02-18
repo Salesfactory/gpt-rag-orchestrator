@@ -1,7 +1,9 @@
 """Unit tests for StateManager."""
 
 import unittest
-from unittest.mock import MagicMock
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from unittest.mock import MagicMock, patch
 
 from orc.unified_orchestrator.state_manager import StateManager
 from tests.unified_orchestrator.fixtures import make_state
@@ -110,6 +112,48 @@ class TestStateManager(unittest.TestCase):
             [{"blob_name": "data.csv", "file_id": "file-1"}],
         )
         self.assertEqual(conversation_data["conversation_summary"], "summary text")
+
+    def test_save_conversation_refreshes_start_date(self):
+        cosmos_client = MagicMock()
+        manager = StateManager("org-1", "user-1", cosmos_client)
+        original_date = "2000-01-01 00:00:00"
+        conversation_data = {"history": [], "start_date": original_date}
+        state = make_state(question="Q")
+
+        manager.save_conversation(
+            conversation_id="conv-1",
+            conversation_data=conversation_data,
+            state=state,
+            user_info={"id": "user-1", "name": "User"},
+            response_time=1.23,
+            response_text="Answer",
+            thoughts={"k": "v"},
+        )
+
+        self.assertNotEqual(conversation_data["start_date"], original_date)
+
+    @patch("orc.unified_orchestrator.state_manager.datetime")
+    def test_save_conversation_uses_user_timezone(self, mock_datetime):
+        fixed_dt = datetime(2024, 1, 2, 3, 4, 5, tzinfo=ZoneInfo("America/Mexico_City"))
+        mock_datetime.now.return_value = fixed_dt
+
+        cosmos_client = MagicMock()
+        manager = StateManager("org-1", "user-1", cosmos_client)
+        conversation_data = {"history": []}
+        state = make_state(question="Q")
+
+        manager.save_conversation(
+            conversation_id="conv-1",
+            conversation_data=conversation_data,
+            state=state,
+            user_info={"id": "user-1", "name": "User"},
+            response_time=1.23,
+            response_text="Answer",
+            thoughts={"k": "v"},
+            user_timezone="America/Mexico_City",
+        )
+
+        self.assertEqual(conversation_data["start_date"], "2024-01-02 03:04:05")
 
     def test_save_conversation_handles_exception(self):
         cosmos_client = MagicMock()
