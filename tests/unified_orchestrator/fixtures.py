@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Iterable, List, Dict, Optional
 from unittest.mock import AsyncMock, MagicMock
 
@@ -103,4 +104,21 @@ async def collect_async(async_iterable: Any) -> List[Any]:
     items: List[Any] = []
     async for item in async_iterable:
         items.append(item)
+    return items
+
+
+def make_progress_queue(items: Optional[List[str]] = None) -> asyncio.Queue:
+    queue: asyncio.Queue = asyncio.Queue()
+    for item in items or []:
+        queue.put_nowait(item)
+    return queue
+
+
+def drain_progress_queue(queue_obj: Any) -> List[Any]:
+    items: List[Any] = []
+    while True:
+        try:
+            items.append(queue_obj.get_nowait())
+        except asyncio.QueueEmpty:
+            break
     return items

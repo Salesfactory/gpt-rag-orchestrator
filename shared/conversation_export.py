@@ -635,58 +635,88 @@ def upload_to_blob_storage(content, filename, user_id, content_type="text/html")
     try:
         # Get Azure Storage connection
         storage_account_url = os.environ.get("AZURE_STORAGE_ACCOUNT_URL")
-        if not storage_account_url:
-            raise ValueError("AZURE_STORAGE_ACCOUNT_URL environment variable not set")
+        connection_string = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
+        if not storage_account_url and not connection_string:
+            raise ValueError(
+                "AZURE_STORAGE_ACCOUNT_URL or AZURE_STORAGE_CONNECTION_STRING must be set"
+            )
 
-        # Use managed identity for authentication
-        credential = DefaultAzureCredential()
-        blob_service_client = BlobServiceClient(
-            account_url=storage_account_url, credential=credential
-        )
+        # Prefer connection string / account key to allow long-lived SAS (user delegation caps at 7 days)
+        account_key = None
+        account_name = None
+        blob_service_client = None
 
-        # Container for shared conversations
+        if connection_string:
+            # Parse account name/key from connection string
+            parts = dict(
+                item.split("=", 1)
+                for item in connection_string.split(";")
+                if "=" in item
+            )
+            account_key = parts.get("AccountKey")
+            account_name = parts.get("AccountName")
+            blob_service_client = BlobServiceClient.from_connection_string(
+                connection_string
+            )
+            if not storage_account_url:
+                storage_account_url = blob_service_client.url
+        if not blob_service_client:
+            credential = DefaultAzureCredential()
+            blob_service_client = BlobServiceClient(
+                account_url=storage_account_url, credential=credential
+            )
+        if not account_name:
+            match = re.match(
+                r"https?://([^.]+)\.blob\.core\.windows\.net", storage_account_url
+            )
+            account_name = match.group(1) if match else None
+
         container_name = "shared-conversations"
+        blob_path = f"{user_id}/{filename}"
 
-        # Create container if it doesn't exist
         try:
             blob_service_client.create_container(container_name)
         except Exception:
             pass  # Container might already exist
 
-        # Upload the file
         blob_client = blob_service_client.get_blob_client(
-            container=container_name, blob=f"{user_id}/{filename}"
+            container=container_name, blob=blob_path
         )
-
         blob_client.upload_blob(
             content,
             overwrite=True,
             content_settings=ContentSettings(content_type=content_type),
         )
 
-        # Get a user delegation key to sign the SAS token, valid for 10 years
-        delegation_key_start_time = datetime.now(timezone.utc)
-        delegation_key_expiry_time = delegation_key_start_time + timedelta(days=7)
+        if account_key and account_name:
+            sas_expiration = datetime.now(timezone.utc) + timedelta(days=3652)
+            sas_token = generate_blob_sas(
+                account_name=account_name,
+                container_name=container_name,
+                blob_name=blob_path,
+                account_key=account_key,
+                permission=BlobSasPermissions(read=True),
+                expiry=sas_expiration,
+            )
+        else:
+            # Managed identity fallback → limited by 7-day user delegation key
+            delegation_key_start_time = datetime.now(timezone.utc)
+            delegation_key_expiry_time = delegation_key_start_time + timedelta(days=7)
+            user_delegation_key = blob_service_client.get_user_delegation_key(
+                key_start_time=delegation_key_start_time,
+                key_expiry_time=delegation_key_expiry_time,
+            )
+            sas_expiration = delegation_key_start_time + timedelta(days=3652)
+            sas_token = generate_blob_sas(
+                account_name=blob_service_client.account_name,
+                container_name=container_name,
+                blob_name=blob_path,
+                user_delegation_key=user_delegation_key,
+                permission=BlobSasPermissions(read=True),
+                expiry=sas_expiration,
+            )
 
-        user_delegation_key = blob_service_client.get_user_delegation_key(
-            key_start_time=delegation_key_start_time,
-            key_expiry_time=delegation_key_expiry_time,
-        )
-
-        sas_expiration = delegation_key_start_time + timedelta(days=3652)
-        # Generate a user-delegation SAS token for the blob
-        sas_token = generate_blob_sas(
-            account_name=blob_service_client.account_name,
-            container_name=container_name,
-            blob_name=f"{user_id}/{filename}",
-            user_delegation_key=user_delegation_key,
-            permission=BlobSasPermissions(read=True),
-            expiry=sas_expiration,
-        )
-
-        # Construct the full URL with SAS token
         blob_url_with_sas = f"{blob_client.url}?{sas_token}"
-
         return blob_url_with_sas
 
     except Exception as e:

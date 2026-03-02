@@ -1,12 +1,17 @@
 """Additional unit tests for ConversationOrchestrator internals."""
 
+import json
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain_core.messages import ToolMessage
 
 from orc.unified_orchestrator.orchestrator import ConversationOrchestrator
-from tests.unified_orchestrator.fixtures import make_state
+from tests.unified_orchestrator.fixtures import (
+    make_state,
+    make_progress_queue,
+    drain_progress_queue,
+)
 
 
 def make_orchestrator():
@@ -61,7 +66,7 @@ class TestOrchestratorAdditional(unittest.IsolatedAsyncioTestCase):
         orch.current_conversation_id = "conv-1"
         orch.current_user_info = {"id": "user-1"}
         orch.current_user_timezone = "UTC"
-        orch._progress_queue = []
+        orch._progress_queue = make_progress_queue()
 
         state = make_state()
         result = await orch._initialize_node(state)
@@ -71,7 +76,8 @@ class TestOrchestratorAdditional(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["uploaded_file_refs"], [{"blob_name": "b1"}])
         self.assertEqual(result["conversation_summary"], "summary text")
         self.assertEqual(orch.current_conversation_data["code_thread_id"], "thread-1")
-        self.assertTrue(any("__PROGRESS__" in item for item in orch._progress_queue))
+        progress_items = drain_progress_queue(orch._progress_queue)
+        self.assertTrue(any("__PROGRESS__" in item for item in progress_items))
 
     async def test_initialize_node_failure(self):
         orch = make_orchestrator()
@@ -79,7 +85,7 @@ class TestOrchestratorAdditional(unittest.IsolatedAsyncioTestCase):
         orch.state_manager.load_conversation.side_effect = Exception("boom")
         orch.current_conversation_id = "conv-1"
         orch.current_user_info = {"id": "user-1"}
-        orch._progress_queue = []
+        orch._progress_queue = make_progress_queue()
 
         with patch.object(orch, "_store_error") as mock_store:
             result = await orch._initialize_node(make_state())
@@ -98,10 +104,47 @@ class TestOrchestratorAdditional(unittest.IsolatedAsyncioTestCase):
         orch.current_conversation_data = {"history": []}
         orch.current_conversation_id = "conv-1"
         orch.current_user_info = {"id": "user-1"}
+        orch.current_user_settings = {"detail_level": "detailed"}
         state = make_state(rewritten_query="rewritten")
 
         result = await orch._augment_node(state)
         self.assertEqual(result["augmented_query"], "rewritten")
+
+    async def test_augment_node_skips_when_not_detailed(self):
+        orch = make_orchestrator()
+        orch.query_planner = AsyncMock()
+        orch.query_planner.augment_query = AsyncMock(
+            return_value={"augmented_query": "should-not-be-used"}
+        )
+        orch.context_builder = MagicMock()
+        orch.current_conversation_data = {"history": []}
+        orch.current_conversation_id = "conv-1"
+        orch.current_user_info = {"id": "user-1"}
+        orch.current_user_settings = {"detail_level": "balanced"}
+        state = make_state(question="Q", rewritten_query="rewritten")
+
+        result = await orch._augment_node(state)
+
+        self.assertEqual(result["augmented_query"], "rewritten")
+        orch.query_planner.augment_query.assert_not_called()
+
+    async def test_augment_node_calls_planner_when_detailed(self):
+        orch = make_orchestrator()
+        orch.query_planner = AsyncMock()
+        orch.query_planner.augment_query = AsyncMock(
+            return_value={"augmented_query": "augmented"}
+        )
+        orch.context_builder = MagicMock()
+        orch.current_conversation_data = {"history": []}
+        orch.current_conversation_id = "conv-1"
+        orch.current_user_info = {"id": "user-1"}
+        orch.current_user_settings = {"detail_level": "detailed"}
+        state = make_state(question="Q", rewritten_query="rewritten")
+
+        result = await orch._augment_node(state)
+
+        self.assertEqual(result["augmented_query"], "augmented")
+        orch.query_planner.augment_query.assert_called_once()
 
     async def test_categorize_node_error_fallback(self):
         orch = make_orchestrator()
@@ -220,7 +263,7 @@ class TestOrchestratorAdditional(unittest.IsolatedAsyncioTestCase):
     async def test_execute_tools_node_without_tool_calls(self):
         orch = make_orchestrator()
         orch.wrapped_tools = [MagicMock(name="agentic_search")]
-        orch._progress_queue = []
+        orch._progress_queue = make_progress_queue()
         last_message = MagicMock()
         last_message.tool_calls = []
         state = make_state(messages=[last_message])
@@ -232,7 +275,8 @@ class TestOrchestratorAdditional(unittest.IsolatedAsyncioTestCase):
             result = await orch._execute_tools_node(state)
 
         self.assertEqual(result["messages"], ["ok"])
-        self.assertTrue(any("Executing tools" in item for item in orch._progress_queue))
+        progress_items = drain_progress_queue(orch._progress_queue)
+        self.assertTrue(any("Executing tools" in item for item in progress_items))
 
     async def test_extract_context_node_invalid_json(self):
         orch = make_orchestrator()
@@ -247,6 +291,44 @@ class TestOrchestratorAdditional(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["last_mcp_tool_used"], "data_analyst")
         self.assertEqual(result["code_thread_id"], "thread-1")
         self.assertFalse(result["has_images"])
+
+    async def test_extract_context_node_preserves_previous_tool_without_tool_messages(
+        self,
+    ):
+        orch = make_orchestrator()
+        orch.context_builder = MagicMock()
+        orch.context_builder.extract_context_from_messages.return_value = ([], [], [])
+        orch._progress_queue = make_progress_queue()
+
+        state = make_state(
+            messages=[MagicMock()],
+            last_mcp_tool_used="agentic_search",
+            code_thread_id="thread-1",
+        )
+        result = await orch._extract_context_node(state)
+
+        self.assertEqual(result["last_mcp_tool_used"], "agentic_search")
+        self.assertEqual(result["code_thread_id"], "thread-1")
+
+    async def test_extract_context_node_progress_uses_tool_message_name(self):
+        orch = make_orchestrator()
+        orch.context_builder = MagicMock()
+        orch.context_builder.extract_context_from_messages.return_value = ([], [], [])
+        orch._progress_queue = make_progress_queue()
+
+        message = ToolMessage(content="{}", tool_call_id="1", name="data_analyst")
+        state = make_state(messages=[MagicMock(), message])
+        await orch._extract_context_node(state)
+
+        progress_items = drain_progress_queue(orch._progress_queue)
+        context_progress = next(
+            item
+            for item in progress_items
+            if "__PROGRESS__" in item and "context_extraction" in item
+        )
+        payload = context_progress.split("__PROGRESS__")[1]
+        progress_data = json.loads(payload)
+        self.assertEqual(progress_data["tool"], "data_analyst")
 
     async def test_extract_context_node_handles_exception(self):
         orch = make_orchestrator()
@@ -275,14 +357,15 @@ class TestOrchestratorAdditional(unittest.IsolatedAsyncioTestCase):
             yield ("text", "B")
 
         orch.response_generator.generate_streaming_response = fake_stream
-        orch._progress_queue = []
+        orch._progress_queue = make_progress_queue()
 
         result = await orch._generate_response_node(make_state())
 
         self.assertEqual(result, {})
         self.assertEqual(orch.current_response_text, "AB")
-        self.assertIn("A", orch._progress_queue)
-        self.assertIn("B", orch._progress_queue)
+        progress_items = drain_progress_queue(orch._progress_queue)
+        self.assertIn("A", progress_items)
+        self.assertIn("B", progress_items)
 
     async def test_generate_response_node_error(self):
         orch = make_orchestrator()
@@ -298,12 +381,13 @@ class TestOrchestratorAdditional(unittest.IsolatedAsyncioTestCase):
             yield "unreachable"
 
         orch.response_generator.generate_streaming_response = failing_stream
-        orch._progress_queue = []
+        orch._progress_queue = make_progress_queue()
 
         await orch._generate_response_node(make_state())
 
         self.assertIn("I apologize", orch.current_response_text)
-        self.assertTrue(any("I apologize" in item for item in orch._progress_queue))
+        progress_items = drain_progress_queue(orch._progress_queue)
+        self.assertTrue(any("I apologize" in item for item in progress_items))
 
     async def test_summarize_and_save_background_success(self):
         orch = make_orchestrator()
@@ -365,7 +449,7 @@ class TestOrchestratorAdditional(unittest.IsolatedAsyncioTestCase):
         orch.current_response_text = "answer"
         orch.current_start_time = 0
         orch.current_blob_urls = []
-        orch._progress_queue = []
+        orch._progress_queue = make_progress_queue()
 
         state = make_state(
             question="Q",
@@ -401,7 +485,7 @@ class TestOrchestratorAdditional(unittest.IsolatedAsyncioTestCase):
         orch.current_response_text = "answer"
         orch.current_start_time = 0
         orch.current_blob_urls = []
-        orch._progress_queue = []
+        orch._progress_queue = make_progress_queue()
 
         captured = {}
 
@@ -415,7 +499,8 @@ class TestOrchestratorAdditional(unittest.IsolatedAsyncioTestCase):
         ):
             await orch._save_node(make_state(question="Q"))
 
-        self.assertTrue(any('"progress": 100' in item for item in orch._progress_queue))
+        progress_items = drain_progress_queue(orch._progress_queue)
+        self.assertTrue(any('"progress": 100' in item for item in progress_items))
         mock_store.assert_called_once()
         captured["coro"].close()
 

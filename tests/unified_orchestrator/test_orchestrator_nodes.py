@@ -8,7 +8,11 @@ from langchain_core.messages import ToolMessage
 
 from orc.unified_orchestrator.orchestrator import ConversationOrchestrator
 from orc.unified_orchestrator.models import UserUploadedBlobs
-from tests.unified_orchestrator.fixtures import make_state
+from tests.unified_orchestrator.fixtures import (
+    make_state,
+    make_progress_queue,
+    drain_progress_queue,
+)
 
 
 def make_orchestrator():
@@ -186,13 +190,14 @@ class TestOrchestratorNodes(unittest.IsolatedAsyncioTestCase):
         model_with_tools = MagicMock()
         model_with_tools.ainvoke = AsyncMock(return_value=response)
         orch.tool_calling_llm.bind_tools.return_value = model_with_tools
-        orch._progress_queue = []
+        orch._progress_queue = make_progress_queue()
 
         state = make_state(messages=[MagicMock()])
         result = await orch._plan_tools_node(state)
 
         self.assertEqual(len(result["messages"]), 2)
-        self.assertIn("__PROGRESS__", orch._progress_queue[-1])
+        progress_items = drain_progress_queue(orch._progress_queue)
+        self.assertIn("__PROGRESS__", progress_items[-1])
 
     async def test_execute_tools_node_data_analyst(self):
         orch = make_orchestrator()
@@ -307,7 +312,7 @@ class TestOrchestratorNodes(unittest.IsolatedAsyncioTestCase):
         orch.current_response_text = "answer"
         orch.current_start_time = 0
         orch.current_blob_urls = ["blob1"]
-        orch._progress_queue = []
+        orch._progress_queue = make_progress_queue()
 
         captured = {}
 
@@ -322,8 +327,9 @@ class TestOrchestratorNodes(unittest.IsolatedAsyncioTestCase):
         ):
             await orch._save_node(state)
 
-        self.assertTrue(any("__METADATA__" in item for item in orch._progress_queue))
-        self.assertTrue(any('"progress": 100' in item for item in orch._progress_queue))
+        progress_items = drain_progress_queue(orch._progress_queue)
+        self.assertTrue(any("__METADATA__" in item for item in progress_items))
+        self.assertTrue(any('"progress": 100' in item for item in progress_items))
         self.assertIn("coro", captured)
         # Prevent unawaited coroutine warnings
         captured["coro"].close()
