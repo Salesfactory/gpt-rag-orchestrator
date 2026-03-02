@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from langchain_core.messages import ToolMessage
 
 from orc.unified_orchestrator.orchestrator import ConversationOrchestrator
+from orc.unified_orchestrator.models import UserUploadedBlobs
 from tests.unified_orchestrator.fixtures import (
     make_state,
     make_progress_queue,
@@ -68,7 +69,12 @@ class TestOrchestratorAdditional(unittest.IsolatedAsyncioTestCase):
         orch.current_user_timezone = "UTC"
         orch._progress_queue = make_progress_queue()
 
-        state = make_state()
+        # State with uploaded blobs to preserve cache
+        state = make_state(
+            user_uploaded_blobs=UserUploadedBlobs(
+                kind="pdf", items=[{"blob_name": "b1", "file_id": None}]
+            )
+        )
         result = await orch._initialize_node(state)
 
         self.assertEqual(result["code_thread_id"], "thread-1")
@@ -95,6 +101,37 @@ class TestOrchestratorAdditional(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["uploaded_file_refs"], [])
         self.assertEqual(result["conversation_summary"], "")
         mock_store.assert_called_once()
+
+    async def test_initialize_node_clears_cache_when_no_documents(self):
+        """Test that document cache is cleared when user removes all documents."""
+        orch = make_orchestrator()
+        orch.state_manager = MagicMock()
+        orch.state_manager.load_conversation.return_value = {
+            "history": [],
+            "code_thread_id": "thread-1",
+            "last_mcp_tool_used": "document_chat",
+            "uploaded_file_refs": [{"file_id": "file-1", "blob_name": "doc.pdf"}],
+            "cached_dochat_analyst_blobs": [
+                {"blob_name": "data.csv", "file_id": "file-2"}
+            ],
+            "conversation_summary": "summary text",
+        }
+        orch.current_conversation_id = "conv-1"
+        orch.current_user_info = {"id": "user-1"}
+        orch.current_user_timezone = "UTC"
+        orch._progress_queue = make_progress_queue()
+
+        # State with no uploaded blobs (user removed documents)
+        state = make_state(user_uploaded_blobs=UserUploadedBlobs(kind="", items=[]))
+        result = await orch._initialize_node(state)
+
+        # Cache should be cleared
+        self.assertEqual(result["uploaded_file_refs"], [])
+        self.assertEqual(result["cached_dochat_analyst_blobs"], [])
+        # Other fields should remain
+        self.assertEqual(result["code_thread_id"], "thread-1")
+        self.assertEqual(result["last_mcp_tool_used"], "document_chat")
+        self.assertEqual(result["conversation_summary"], "summary text")
 
     async def test_augment_node_error_fallback(self):
         orch = make_orchestrator()

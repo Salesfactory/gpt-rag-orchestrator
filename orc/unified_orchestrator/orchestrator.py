@@ -559,6 +559,16 @@ class ConversationOrchestrator:
             )
             conversation_summary = conversation_data.get("conversation_summary", "")
 
+            # Clear document cache if user explicitly removed attached docs
+            if not state.user_uploaded_blobs.items:
+                if uploaded_file_refs or cached_dochat_analyst_blobs:
+                    logger.info(
+                        "[Initialize Node] No documents in current request; "
+                        "clearing cached file refs and spreadsheet blobs"
+                    )
+                uploaded_file_refs = []
+                cached_dochat_analyst_blobs = []
+
             if state.user_uploaded_blobs.kind == "spreadsheet":
                 if not self._blob_items_match(
                     state.user_uploaded_blobs.items, cached_dochat_analyst_blobs
