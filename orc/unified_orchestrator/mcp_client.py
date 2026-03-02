@@ -32,6 +32,7 @@ class MCPClient:
     TOOL_AGENTIC_SEARCH = "agentic_search"
     TOOL_DATA_ANALYST = "data_analyst"
     TOOL_DOCUMENT_CHAT = "document_chat"
+    TOOL_SQL_AGENT = "trade_sql_query"
 
     def __init__(self, organization_id: str, user_id: str, config: OrchestratorConfig):
         """
@@ -236,6 +237,13 @@ class MCPClient:
                     f"org_id={context['organization_id']}, "
                     f"user_id={context['user_id']}, "
                     f"code_thread_id={state.code_thread_id}"
+                )
+
+            elif tool_name == self.TOOL_SQL_AGENT:
+                kwargs.update({"query": state.rewritten_query})
+                logger.debug(
+                    f"[MCPClient] Injected context for sql_agent: "
+                    f"rewritten_query={state.rewritten_query}"
                 )
 
             elif tool_name == self.TOOL_DOCUMENT_CHAT:

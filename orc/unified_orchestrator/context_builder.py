@@ -295,6 +295,9 @@ class ContextBuilder:
                                         f"[ContextBuilder] Added blob URL from message: {blob_path}"
                                     )
 
+                elif tool_name == "trade_sql_query" and isinstance(result, dict):
+                    context_docs.append(result.get("result", result))
+
                 elif tool_name == "document_chat" and isinstance(result, dict):
                     answer = result.get("answer", result)
                     context_docs.append(answer)
