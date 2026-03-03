@@ -64,7 +64,7 @@ class StateManager:
             - code_thread_id: Data analyst thread ID (if any)
             - last_mcp_tool_used: Last MCP tool name (if any)
             - uploaded_file_refs: Cached file metadata (if any)
-            - cached_dochat_analyst_blobs: Cached spreadsheet blob metadata (if any)
+            - cached_dochat_analyst_blobs: Cached spreadsheet/document blob metadata (if any)
         """
         logger.info(f"[StateManager] Loading conversation: {conversation_id}")
 
@@ -84,7 +84,7 @@ class StateManager:
             code_thread_id = None  # data analyst
             last_mcp_tool_used = ""  # all tools in general
             uploaded_file_refs = []  # chat w doc tool
-            cached_dochat_analyst_blobs = []  # data analyst spreadsheet cache
+            cached_dochat_analyst_blobs = []  # data analyst spreadsheet/document cache
             conversation_summary = conversation_data.get("conversation_summary", "")
 
             history = conversation_data.get("history", [])
@@ -233,7 +233,7 @@ class StateManager:
                 )
 
             if (
-                state.user_uploaded_blobs.kind == "spreadsheet"
+                state.user_uploaded_blobs.kind in ("spreadsheet", "document")
                 and state.user_uploaded_blobs.items
             ):
                 assistant_message["cached_dochat_analyst_blobs"] = (

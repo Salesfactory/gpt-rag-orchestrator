@@ -56,6 +56,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 SPREADSHEET_EXTENSIONS = (".xlsx", ".xls", ".csv")
+DOCUMENT_EXTENSIONS = (".docx", ".doc") 
 
 
 class ConversationOrchestrator:
@@ -172,12 +173,13 @@ class ConversationOrchestrator:
 
     @staticmethod
     def _infer_blob_kind(blob_names: List[str]) -> str:
-        """Determine whether blobs are PDFs or spreadsheets based on extension."""
+        """Determine whether blobs are PDFs, spreadsheets, or documents based on extension."""
         if not blob_names:
             return ""
 
         has_pdf = False
         has_sheet = False
+        has_doc = False
 
         for name in blob_names:
             lowered = name.lower()
@@ -185,14 +187,24 @@ class ConversationOrchestrator:
                 has_pdf = True
             elif lowered.endswith(SPREADSHEET_EXTENSIONS):
                 has_sheet = True
+            elif lowered.endswith(DOCUMENT_EXTENSIONS):
+                has_doc = True
 
         if has_sheet:
-            if has_pdf:
+            if has_pdf or has_doc:
                 logger.warning(
                     "[ConversationOrchestrator] Mixed file types detected; "
                     "defaulting to spreadsheet handling"
                 )
             return "spreadsheet"
+
+        if has_doc:
+            if has_pdf:
+                logger.warning(
+                    "[ConversationOrchestrator] Mixed file types detected; "
+                    "defaulting to document handling"
+                )
+            return "document"
 
         if has_pdf:
             return "pdf"
@@ -559,13 +571,14 @@ class ConversationOrchestrator:
             )
             conversation_summary = conversation_data.get("conversation_summary", "")
 
-            if state.user_uploaded_blobs.kind == "spreadsheet":
+            if state.user_uploaded_blobs.kind in ("spreadsheet", "document"):
                 if not self._blob_items_match(
                     state.user_uploaded_blobs.items, cached_dochat_analyst_blobs
                 ):
                     if code_thread_id:
+                        file_type = state.user_uploaded_blobs.kind
                         logger.info(
-                            "[Initialize Node] Spreadsheet blobs changed; "
+                            f"[Initialize Node] {file_type.capitalize()} blobs changed; "
                             "invalidating code_thread_id"
                         )
                     code_thread_id = None
@@ -843,7 +856,8 @@ class ConversationOrchestrator:
         log_info("[Prepare Tools Node] Connecting to MCP and building wrapped tools")
 
         is_spreadsheet = state.user_uploaded_blobs.kind == "spreadsheet"
-        if is_spreadsheet:
+        is_document = state.user_uploaded_blobs.kind == "document"
+        if is_spreadsheet or is_document:
             message = "Preparing data analysis tools..."
         elif state.user_uploaded_blobs.names:
             message = "Preparing document analysis tools..."
@@ -878,7 +892,7 @@ class ConversationOrchestrator:
         # Get wrapped tools
         try:
             exclude_doc_chat = (
-                len(state.user_uploaded_blobs.names) == 0 or is_spreadsheet
+                len(state.user_uploaded_blobs.names) == 0 or is_spreadsheet or is_document
             )
             self.wrapped_tools = await self.mcp_client.get_wrapped_tools(
                 state=state,
@@ -886,21 +900,22 @@ class ConversationOrchestrator:
                 exclude_document_chat=exclude_doc_chat,
             )
 
-            # Force document_chat if documents uploaded
-            if state.user_uploaded_blobs.names and not is_spreadsheet:
+            # Force document_chat if documents uploaded (only for PDFs)
+            if state.user_uploaded_blobs.names and not is_spreadsheet and not is_document:
                 self.wrapped_tools = [
                     t for t in self.wrapped_tools if t.name == "document_chat"
                 ]
                 logger.info(
                     f"[Prepare Tools Node] Forced document_chat for {len(state.user_uploaded_blobs.names)} documents"
                 )
-            # Force data_analyst for spreadsheet uploads
-            elif is_spreadsheet:
+            # Force data_analyst for spreadsheet or document uploads
+            elif is_spreadsheet or is_document:
                 self.wrapped_tools = [
                     t for t in self.wrapped_tools if t.name == "data_analyst"
                 ]
+                file_type = "spreadsheets" if is_spreadsheet else "documents"
                 logger.info(
-                    f"[Prepare Tools Node] Forced data_analyst for {len(state.user_uploaded_blobs.names)} spreadsheets"
+                    f"[Prepare Tools Node] Forced data_analyst for {len(state.user_uploaded_blobs.names)} {file_type}"
                 )
             # Force data_analyst if data analyst mode is active
             elif state.is_data_analyst_mode:
