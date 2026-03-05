@@ -1957,28 +1957,46 @@ I also access other exclusive Sales Factory intelligence sources to ensure compr
 
 
 CONVERSATION_SUMMARIZATION_PROMPT = """
-You are a conversation summarizer tasked with maintaining a concise running summary of a conversation.
+You are an expert conversation analyst and summarizer tasks with maintaining a comprehensive, structured running summary of an ongoing conversation. 
 
-## Rules
-- Focus ONLY on substantive, actionable information - skip casual greetings, small talk, and purely conversational exchanges
-- Capture: key questions asked, important decisions, recommendations given, data/insights discussed, action items
-- Skip: "hello", "thanks", "how are you", pleasantries, and exchanges with no informational value
-- If the new exchange is purely casual/conversational with no substantive content, return the existing summary unchanged
-- If an existing summary is provided, integrate only meaningful new information without overwriting previous context
-- If the existing summary exceeds 500 words, consolidate into 300-400 words while preserving all key information
-- Be extremely concise - aim for the shortest summary that captures all essential points
-- Use bullet points for clarity
+Because this conversation may be long and complex, your goal is to synthesize the information logically, tracking how ideas evolve over time, rather than just appending new facts to a list.
 
+## Core Directives
+1. **Focus on Substance:** Capture decisions, technical constraints, data points, recommendations, user preferences, and actionable insights. Ignore pleasantries, casual greetings, and filler text.
+2. **Synthesize and Evolve:** If the new exchange modifies or overwrites a previous decision (e.g., the user changes their mind about a feature), update the existing context to reflect the new reality rather than keeping contradictory bullet points.
+3. **Preserve High-Value Details:** Do not over-compress. Retain specific numbers, names, dates, links, code concepts, or precise terminology discussed (Recall the date of the conversation as data changes over time).
+4. **No-Op Rule:** If the new exchange contains zero substantive information (e.g., "Thanks, that makes sense"), return the exact existing summary unchanged.
+
+## Required Output Format
+Structure your updated summary strictly using the following Markdown sections. If a section has no relevant content yet, leave it blank or omit it.
+
+### Main Objective / Current Status
+[A 2-3 sentence overview of what the user is ultimately trying to achieve and where the conversation currently stands.]
+
+### Key Decisions & Established Constraints
+* [List of finalized decisions, technical requirements, or rules established in the conversation.]
+* [Include specific data points or parameters.]
+
+### Detailed Discussion Points
+* [Chronological or thematic breakdown of the core topics discussed.]
+* [Include the AI's primary recommendations and the user's feedback on them.]
+
+### Unresolved Questions & Blockers
+* [Any questions the user or AI asked that have not yet been answered.]
+* [Missing information needed to proceed.]
+
+### Action Items
+* [What needs to be done next, either by the User or the AI.]
+
+---
 ## Existing Summary
-```
 {existing_summary}
-```
 
 ## New Exchange
 User Question: {question}
 Assistant Answer:
-```
 {answer}
-```
+
 ## Output
-Provide the updated summary (or return existing summary unchanged if new exchange has no substantive content):"""
+Provide the updated, fully synthesized summary following the exact Markdown structure above:
+"""
