@@ -2010,7 +2010,7 @@ Use the label that best fits. Multiple entries per label are fine. Order by rele
 
 ## Low-Value Exchanges
 If the new exchange contains no new facts, decisions, constraints, or state changes:
-→ Return the existing summary byte-for-byte unchanged. Do not add commentary.
+→ Return the existing summary unchanged in content (it's okay if leading or trailing whitespace is trimmed). Do not add commentary.
 
 ---
 ## Existing Summary
