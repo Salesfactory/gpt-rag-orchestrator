@@ -1371,7 +1371,7 @@ class ConversationOrchestrator:
         )
 
         conversation_history = self.context_builder.format_conversation_history(
-            self.current_conversation_data.get("history", [])
+            self.current_conversation_data.get("history", []), max_messages=10
         )
 
         system_prompt = self.response_generator.build_system_prompt(
