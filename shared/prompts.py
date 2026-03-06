@@ -2022,5 +2022,5 @@ Assistant Answer:
 {answer}
 
 ## Output
-Provide the updated, fully synthesized summary following the exact Markdown structure above:
+Provide ONLY the updated, fully synthesized summary consisting of the labeled memory entries (GOAL, CONSTRAINT, DECIDED, OPEN, FACT, PENDING, ERROR, CONTEXT) in the same Markdown list format as in the "Existing Summary" section. Do NOT repeat any of the headings, instructions, or other scaffold text from this prompt:
 """
