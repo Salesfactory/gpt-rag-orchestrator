@@ -131,7 +131,7 @@ class ContextBuilder:
         return context
 
     def format_conversation_history(
-        self, history: List[Dict[str, Any]], max_messages: int = 10
+        self, history: List[Dict[str, Any]], max_messages: int = 6
     ) -> str:
         """
         Format conversation history for LLM consumption.
@@ -143,7 +143,7 @@ class ContextBuilder:
 
         Args:
             history: List of conversation messages (dicts with 'role' and 'content')
-            max_messages: Maximum number of messages to include (default: 15)
+            max_messages: Maximum number of messages to include (default: 6)
 
         Returns:
             Formatted conversation history string
