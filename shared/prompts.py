@@ -1984,24 +1984,6 @@ The reading agent needs to:
 - Information already present in the existing summary
 - Reasoning the agent can trivially re-derive from facts
 
-## Output Format
-Write in terse, declarative statements. No prose narrative. No filler. Use flat structure unless hierarchy genuinely aids parsing.
-
-Prefer this style:
-- GOAL: [concise statement]
-- CONSTRAINT: [specific constraint]
-- DECIDED: [what] — reason: [why]
-- REJECTED: [what] — reason: [why]
-- TRIED: [what] — result: [outcome]
-- PENDING: [what]
-- OPEN: [unresolved question or ambiguity]
-- PREFERENCE: [inferred or stated user preference]
-- FACT: [key data point, value, or technical detail]
-- ERROR: [error encountered] — resolution: [how resolved, or UNRESOLVED]
-- CONTEXT: [background info the agent needs]
-
-Use the label that best fits. Multiple entries per label are fine. Order by relevance to current task state, not chronologically.
-
 ## Consolidation Rules
 - No hard word limit — include all facts the reading agent would need to avoid re-asking questions or repeating work
 - When the summary grows large (>700 words): compress resolved, closed threads (completed tasks, answered questions) into single FACT or DECIDED entries; preserve full detail on anything still active or open
