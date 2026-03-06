@@ -1959,8 +1959,7 @@ I also access other exclusive Sales Factory intelligence sources to ensure compr
 CONVERSATION_SUMMARIZATION_PROMPT = """
 You are a conversation memory manager for an AI agent system. Your output will be consumed by another agent as its source of long term memory. Optimize ruthlessly for agent utility: precision, density, and completeness of recoverable context.
 
-## Agent Consumer Requirements
-The reading agent needs to:
+## Purpose
 - Reconstruct full intent and constraints without access to the original conversation
 - Know exactly what has been tried, succeeded, failed, and why
 - Understand what is decided vs. still open
@@ -1984,6 +1983,8 @@ The reading agent needs to:
 - Information already present in the existing summary
 - Reasoning the agent can trivially re-derive from facts
 
+Use the label that best fits. Multiple entries per label are fine. Order by relevance to current task state, not chronologically.
+
 ## Consolidation Rules
 - No hard word limit — include all facts the reading agent would need to avoid re-asking questions or repeating work
 - When the summary grows large (>700 words): compress resolved, closed threads (completed tasks, answered questions) into single FACT or DECIDED entries; preserve full detail on anything still active or open
@@ -1996,13 +1997,17 @@ If the new exchange contains no new facts, decisions, constraints, or state chan
 
 ---
 ## Existing Summary
+```
 {existing_summary}
+```
 
 ## New Exchange
 User Question: {question}
 Assistant Answer:
+```
 {answer}
+```
 
 ## Output
-Provide ONLY the updated, fully synthesized summary consisting of the labeled memory entries (GOAL, CONSTRAINT, DECIDED, OPEN, FACT, PENDING, ERROR, CONTEXT) in the same Markdown list format as in the "Existing Summary" section. Do NOT repeat any of the headings, instructions, or other scaffold text from this prompt:
+Provide ONLY the updated, fully synthesized summary consisting of the labeled memory entries, and action items in the same format as in the "Existing Summary" section. Do NOT repeat any of the headings, instructions, or other scaffold text from this prompt:
 """
