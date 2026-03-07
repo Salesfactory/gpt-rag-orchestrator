@@ -190,6 +190,27 @@ class TestResponseGenerator(unittest.IsolatedAsyncioTestCase):
             ],
         )
 
+    async def test_generate_streaming_response_content_blocks(self):
+        class MockLLM:
+            async def astream(self, messages, **kwargs):
+                yield type(
+                    "Chunk",
+                    (),
+                    {
+                        "content_blocks": [
+                            {"type": "thinking", "thinking": "Reasoning"},
+                            {"type": "text", "text": "Answer"},
+                        ],
+                        "content": [],
+                    },
+                )()
+
+        generator = ResponseGenerator(MockLLM())
+        chunks = await collect_async(
+            generator.generate_streaming_response("system", "user")
+        )
+        self.assertEqual(chunks, [("thinking", "Reasoning"), ("text", "Answer")])
+
 
 if __name__ == "__main__":
     unittest.main()
