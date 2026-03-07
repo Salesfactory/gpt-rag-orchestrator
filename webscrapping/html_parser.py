@@ -8,7 +8,7 @@ for web scraping operations.
 import re
 import logging
 from bs4 import BeautifulSoup
-from langchain.text_splitter import MarkdownTextSplitter
+from langchain_text_splitters import MarkdownTextSplitter
 from .config import CrawlerConfig
 
 _logger = logging.getLogger(__name__)
@@ -100,7 +100,7 @@ class HtmlParser:
         return content
 
     def custom_markdown_chunking(self, content):
-        """Split content using MarkdownTextSplitter from LangChain."""
+        """Split content using MarkdownTextSplitter from langchain-text-splitters."""
         # Check if content is already plain text or HTML
         if self.configuration.html and self.configuration.html.striptags:
             # Content is already plain text, split it directly

@@ -26,6 +26,7 @@ class TestOrchestratorInit(unittest.TestCase):
             with patch("orc.unified_orchestrator.orchestrator.ChatOpenAI") as mock_llm:
                 result = orch._init_planning_llm()
         self.assertIs(result, mock_llm.return_value)
+        self.assertEqual(mock_llm.call_args.kwargs["output_version"], "v0")
 
     def test_init_response_llm_requires_env(self):
         orch = self._make_uninitialized()

@@ -16,7 +16,7 @@ import json
 import logging
 from typing import List, Optional, Dict, Any
 
-from langchain_core.messages import BaseMessage
+from langchain_core.messages import BaseMessage, ToolMessage
 
 logger = logging.getLogger(__name__)
 
@@ -198,9 +198,7 @@ class ContextBuilder:
         """
         Extract context from LangChain messages (used with bind_tools approach).
 
-        When using bind_tools, tool calls and results are embedded in message objects.
-        This method extracts the actual tool results from AIMessage tool_calls and
-        ToolMessage objects.
+        Extracts tool results from ToolMessage objects in the message list.
 
         Args:
             messages: List of LangChain messages from tool execution
@@ -218,97 +216,103 @@ class ContextBuilder:
 
         # Find tool-related messages
         for msg in messages:
-            # Check for ToolMessage (contains tool results)
-            if hasattr(msg, "content") and hasattr(msg, "name"):
-                tool_name = getattr(msg, "name", "")
-                content = msg.content
+            if not isinstance(msg, ToolMessage):
+                continue
 
-                # Parse JSON content if it's a string
-                result = content
-                if isinstance(content, str):
-                    try:
-                        result = json.loads(content)
-                    except Exception:
-                        pass
+            tool_name = msg.name or ""
+            content = msg.content
 
-                logger.debug(
-                    f"[ContextBuilder] Processing tool message from {tool_name}"
+            # Normalize content: newer LangChain may return a list of content blocks
+            if isinstance(content, list):
+                content = "".join(
+                    block.get("text", "") if isinstance(block, dict) else str(block)
+                    for block in content
                 )
 
-                # Extract based on tool type
-                if tool_name == "agentic_search" and isinstance(result, dict):
-                    search_results = result.get("results", result)
+            # Parse JSON content if it's a string
+            result = content
+            if isinstance(content, str):
+                try:
+                    result = json.loads(content)
+                except Exception:
+                    pass
 
-                    filtered_docs = []
+            logger.debug(f"[ContextBuilder] Processing tool message from {tool_name}")
 
-                    if isinstance(search_results, dict):
-                        for subquery_key, subquery_data in search_results.items():
-                            if (
-                                isinstance(subquery_data, dict)
-                                and "documents" in subquery_data
-                            ):
-                                documents = subquery_data.get("documents", [])
-                                if isinstance(documents, list):
-                                    for doc in documents:
-                                        if isinstance(doc, dict):
-                                            filtered_docs.append(
-                                                {
-                                                    "content": doc.get("content"),
-                                                    "source": doc.get("source"),
-                                                }
-                                            )
+            # Extract based on tool type
+            if tool_name == "agentic_search" and isinstance(result, dict):
+                search_results = result.get("results", result)
 
-                    if filtered_docs:
-                        context_docs.append(filtered_docs)
-                        logger.debug(
-                            f"[ContextBuilder] Added {len(filtered_docs)} filtered documents from agentic_search"
-                        )
-                    else:
-                        # If not a list, append as-is (fallback)
-                        context_docs.append(search_results)
-                        logger.debug(
-                            "[ContextBuilder] Added agentic_search results (non-list format)"
-                        )
+                filtered_docs = []
 
-                elif tool_name == "data_analyst" and isinstance(result, dict):
-                    last_message = result.get("last_agent_message", result)
-                    context_docs.append(last_message)
+                if isinstance(search_results, dict):
+                    for subquery_key, subquery_data in search_results.items():
+                        if (
+                            isinstance(subquery_data, dict)
+                            and "documents" in subquery_data
+                        ):
+                            documents = subquery_data.get("documents", [])
+                            if isinstance(documents, list):
+                                for doc in documents:
+                                    if isinstance(doc, dict):
+                                        filtered_docs.append(
+                                            {
+                                                "content": doc.get("content"),
+                                                "source": doc.get("source"),
+                                            }
+                                        )
 
-                    # Extract blob URLs
-                    result_blob_urls = result.get("blob_urls", [])
-                    if isinstance(result_blob_urls, list) and result_blob_urls:
-                        for blob_item in result_blob_urls:
-                            if isinstance(blob_item, dict):
-                                blob_path = blob_item.get("blob_path")
-                                if blob_path:
-                                    blob_urls.append(blob_path)
-                                    context_docs.append(
-                                        f"""
-                                        Below is the graph/visualization link - This link is used to render a UI image. Do not change any character in this link, or the image rendering will break.
-                                        In this scenario, if the link is a power point presentation (.pptx), cite it the same way as an image citation. This is a special case.
-                                        <link>
-                                        {blob_path}
-                                        </link>
-                                        """
-                                    )
-                                    logger.debug(
-                                        f"[ContextBuilder] Added blob URL from message: {blob_path}"
-                                    )
+                if filtered_docs:
+                    context_docs.append(filtered_docs)
+                    logger.debug(
+                        f"[ContextBuilder] Added {len(filtered_docs)} filtered documents from agentic_search"
+                    )
+                else:
+                    # If not a list, append as-is (fallback)
+                    context_docs.append(search_results)
+                    logger.debug(
+                        "[ContextBuilder] Added agentic_search results (non-list format)"
+                    )
 
-                elif tool_name == "trade_sql_query" and isinstance(result, dict):
-                    context_docs.append(result.get("result", result))
+            elif tool_name == "data_analyst" and isinstance(result, dict):
+                last_message = result.get("last_agent_message", result)
+                context_docs.append(last_message)
 
-                elif tool_name == "document_chat" and isinstance(result, dict):
-                    answer = result.get("answer", result)
-                    context_docs.append(answer)
+                # Extract blob URLs
+                result_blob_urls = result.get("blob_urls", [])
+                if isinstance(result_blob_urls, list) and result_blob_urls:
+                    for blob_item in result_blob_urls:
+                        if isinstance(blob_item, dict):
+                            blob_path = blob_item.get("blob_path")
+                            if blob_path:
+                                blob_urls.append(blob_path)
+                                context_docs.append(
+                                    f"""
+                                    Below is the graph/visualization link - This link is used to render a UI image. Do not change any character in this link, or the image rendering will break.
+                                    In this scenario, if the link is a power point presentation (.pptx), cite it the same way as an image citation. This is a special case.
+                                    <link>
+                                    {blob_path}
+                                    </link>
+                                    """
+                                )
+                                logger.debug(
+                                    f"[ContextBuilder] Added blob URL from message: {blob_path}"
+                                )
 
-                    # Extract file references - caching uploaded files (openai expired in 1 hour)
-                    files = result.get("files", [])
-                    if files and isinstance(files, list):
-                        uploaded_file_refs = files
-                        logger.debug(
-                            f"[ContextBuilder] Extracted {len(files)} file references from message"
-                        )
+            elif tool_name == "trade_sql_query" and isinstance(result, dict):
+                context_docs.append(result.get("result", result))
+
+            elif tool_name == "document_chat" and isinstance(result, dict):
+                answer = result.get("answer", result)
+                context_docs.append(answer)
+
+                # Extract file references - caching uploaded files (openai expired in 1 hour)
+                files = result.get("files", [])
+                if files and isinstance(files, list):
+                    uploaded_file_refs = files
+                    logger.debug(
+                        f"[ContextBuilder] Extracted {len(files)} file references from message"
+                    )
 
         logger.info(
             f"[ContextBuilder] Extracted from messages: {len(context_docs)} context docs, "

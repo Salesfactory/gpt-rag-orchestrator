@@ -243,6 +243,7 @@ class ConversationOrchestrator:
             timeout=30,
             max_retries=3,
             api_key=api_key,
+            output_version="v0",
         )
 
     def _init_response_llm(self) -> ChatAnthropic:
@@ -270,7 +271,8 @@ class ConversationOrchestrator:
             container=self.config.response_container,
             max_tokens=self.config.response_max_tokens,
             max_retries=3,
-            thinking={"type": "enabled", "budget_tokens": self.config.thinking_budget},
+            thinking={"type": "adaptive"},
+            output_config={"effort": "medium"},
         )
 
     def _init_tool_calling_llm(self) -> ChatAnthropic:

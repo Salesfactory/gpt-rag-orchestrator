@@ -224,12 +224,35 @@ class ResponseGenerator:
         )
         return user_prompt
 
+    @staticmethod
+    def _yield_content_blocks(blocks: List[Any]):
+        """Yield normalized token tuples from block-based model output."""
+        for block in blocks:
+            if isinstance(block, dict):
+                block_type = block.get("type")
+                if block_type == "thinking":
+                    # Raw Anthropic format (from chunk.content)
+                    thinking_content = block.get("thinking", "")
+                    if thinking_content:
+                        yield ("thinking", thinking_content)
+                elif block_type == "reasoning":
+                    # LangChain format (from chunk.content_blocks)
+                    reasoning_content = block.get("reasoning", "")
+                    if reasoning_content:
+                        yield ("thinking", reasoning_content)
+                elif block_type == "text":
+                    text_content = block.get("text", "")
+                    if text_content:
+                        yield ("text", text_content)
+            elif isinstance(block, str) and block:
+                yield ("text", block)
+
     @traceable(run_type="llm", name="claude_generate_response")
     async def generate_streaming_response(self, system_prompt: str, user_prompt: str):
         """
         Generate streaming response from Claude with extended thinking.
 
-        Uses Anthropic Claude (claude-sonnet-4-5-20250929) for streaming.
+        Uses Anthropic Claude (claude-sonnet-4-6) for streaming.
         Enables extended thinking and streams both thinking and text content.
         Temperature is fixed at 1.0 (set in LLM init) as required for extended thinking.
 
@@ -251,37 +274,28 @@ class ResponseGenerator:
             logger.debug(
                 "[ResponseGenerator] Invoking Claude with extended thinking and streaming enabled"
             )
-            # Don't pass temperature to astream() - already set in LLM init (must be 1.0 for thinking)
+
             async for chunk in self.claude_llm.astream(
                 messages,
                 tools=self.response_tools,
             ):
-                if hasattr(chunk, "content"):
-                    # Content can be a string or a list of content blocks
-                    if isinstance(chunk.content, str) and chunk.content:
-                        yield ("text", chunk.content)
-                    elif isinstance(chunk.content, list):
-                        # Handle content blocks (thinking, text, etc.)
-                        for block in chunk.content:
-                            if isinstance(block, dict):
-                                block_type = block.get("type")
+                if not hasattr(chunk, "content"):
+                    continue
 
-                                # Yield thinking blocks
-                                if block_type == "thinking":
-                                    thinking_content = block.get("thinking", "")
-                                    if thinking_content:
-                                        yield ("thinking", thinking_content)
-                                        logger.debug(
-                                            f"[ResponseGenerator] Yielded thinking token: {len(thinking_content)} chars"
-                                        )
-
-                                # Yield final answer blocks
-                                elif block_type == "text":
-                                    text_content = block.get("text", "")
-                                    if text_content:
-                                        yield ("text", text_content)
-                            elif isinstance(block, str) and block:
-                                yield ("text", block)
+                if isinstance(chunk.content, list) and chunk.content:
+                    for token_type, token_content in self._yield_content_blocks(
+                        chunk.content
+                    ):
+                        yield (token_type, token_content)
+                elif isinstance(chunk.content, str) and chunk.content:
+                    yield ("text", chunk.content)
+                else:
+                    content_blocks = getattr(chunk, "content_blocks", None)
+                    if isinstance(content_blocks, list) and content_blocks:
+                        for token_type, token_content in self._yield_content_blocks(
+                            content_blocks
+                        ):
+                            yield (token_type, token_content)
 
             logger.info("[ResponseGenerator] Completed streaming response generation")
 
