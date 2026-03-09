@@ -169,6 +169,7 @@ class AgentConfig:
             timeout=self.DEFAULT_TIMEOUT,
             max_completion_tokens=self.DEFAULT_MAX_TOKENS,
             api_version=self.DEFAULT_API_VERSION,
+            output_version="v0",
         )
 
     # create a gpt-4.1 client: for quick local testing only - not for production
@@ -185,6 +186,7 @@ class AgentConfig:
             max_tokens=self.DEFAULT_MAX_TOKENS,
             max_retries=self.DEFAULT_MAX_RETRIES,
             timeout=self.DEFAULT_TIMEOUT,
+            output_version="v0",
         )
 
     def _create_anthropic_client(self) -> ChatAnthropic:

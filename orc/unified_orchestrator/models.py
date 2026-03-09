@@ -84,10 +84,9 @@ class OrchestratorConfig:
     planning_temperature: float = 0.3
 
     # Response Model Configuration (Anthropic Claude Sonnet with Extended Thinking)
-    response_model: str = "claude-sonnet-4-5-20250929"
+    response_model: str = "claude-sonnet-4-6"
     response_temperature: float = 1.0  # Must be 1.0 for extended thinking
     response_max_tokens: int = 64000
-    thinking_budget: int = 3000
     # these are for claude skills, don't modify
     response_betas: List[str] = field(
         default_factory=lambda: ["code-execution-2025-08-25", "skills-2025-10-02"]
