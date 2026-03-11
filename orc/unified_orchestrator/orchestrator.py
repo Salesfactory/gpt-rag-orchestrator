@@ -15,7 +15,7 @@ import traceback
 import aiohttp
 import asyncio
 from typing import List, Optional, Dict, Any, Set, Tuple
-from pydantic import BaseModel, Field 
+from pydantic import BaseModel, Field
 
 from langsmith import traceable
 from langgraph.checkpoint.memory import MemorySaver
@@ -1074,7 +1074,7 @@ class ConversationOrchestrator:
             tool_names = [t.name for t in self.wrapped_tools]
             logger.info(f"[Plan Tools Node] Available tools: {tool_names}")
 
-            is_ambiguous = False # used to check if a tool selection is certain or not 
+            is_ambiguous = False  # used to check if a tool selection is certain or not
             llm_preferred = None
 
             if (
@@ -1112,7 +1112,9 @@ class ConversationOrchestrator:
                 tool_descriptions = "\n".join(
                     [f"- {t.name}: {t.description}" for t in self.wrapped_tools]
                 )
-                selection_llm = self.tool_calling_llm.with_structured_output(ToolSelectionResult)
+                selection_llm = self.tool_calling_llm.with_structured_output(
+                    ToolSelectionResult
+                )
                 selection = await selection_llm.ainvoke(state.messages)
                 llm_preferred = selection.tool_name
                 is_ambiguous = selection.is_ambiguous
@@ -1122,21 +1124,21 @@ class ConversationOrchestrator:
                 )
                 response = AIMessage(
                     content="",
-                    tool_calls=[{
-                        "id": str(uuid.uuid4()),
-                        "name": llm_preferred,
-                        "args": {"query": query},
-                        "type": "tool_call",
-                    }],
+                    tool_calls=[
+                        {
+                            "id": str(uuid.uuid4()),
+                            "name": llm_preferred,
+                            "args": {"query": query},
+                            "type": "tool_call",
+                        }
+                    ],
                 )
 
             if hasattr(response, "tool_calls") and response.tool_calls:
                 selected_tools = [
                     tc.get("name", "unknown") for tc in response.tool_calls
                 ]
-                logger.info(
-                    f"[Plan Tools Node] Tool calls: {selected_tools}"
-                )
+                logger.info(f"[Plan Tools Node] Tool calls: {selected_tools}")
                 tool_name = selected_tools[0]
                 planning_progress = {
                     "type": "progress",
