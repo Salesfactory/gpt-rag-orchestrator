@@ -1156,10 +1156,8 @@ class ConversationOrchestrator:
                 )
 
             # HITL Phase 1: pause when LLM is genuinely ambiguous about tool choice
-            enable_hitl = os.getenv("ENABLE_HITL", "false").lower() == "true"
             if (
-                enable_hitl
-                and len(self.wrapped_tools) > 1
+                len(self.wrapped_tools) > 1
                 and is_ambiguous
                 and not self._hitl_forced_tool
             ):
