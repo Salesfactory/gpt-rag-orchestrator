@@ -1109,9 +1109,6 @@ class ConversationOrchestrator:
                 response = await model_with_tools.ainvoke(state.messages)
             else:
                 query = state.rewritten_query or state.question
-                tool_descriptions = "\n".join(
-                    [f"- {t.name}: {t.description}" for t in self.wrapped_tools]
-                )
                 selection_llm = self.tool_calling_llm.with_structured_output(
                     ToolSelectionResult
                 )
