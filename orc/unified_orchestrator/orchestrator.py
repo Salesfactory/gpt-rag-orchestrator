@@ -58,7 +58,7 @@ class HITLPauseSignal(Exception):
 class ToolSelectionResult(BaseModel):
     tool_name: str = Field(..., description="Name of the selected tool")
     is_ambiguous: bool
-    tool_reasoning: str = Field(..., description="LLM's reasoning for tool selection. 1 short sentence only.")
+    # tool_reasoning: str = Field(..., description="LLM's reasoning for tool selection. 1 short sentence only.")
 
 
 # Configure logging
