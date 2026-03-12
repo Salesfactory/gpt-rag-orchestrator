@@ -890,11 +890,11 @@ IMAGE_RENDERING_INSTRUCTIONS = """
 
 ## **IMAGE AND GRAPH RENDERING INSTRUCTIONS**
 
-**CRITICAL: You have images/graphs available in the PROVIDED CONTEXT that MUST be included in your response.**
+**CRITICAL: You have images/graphs available in the REFERENCE FRAME that MUST be included in your response.**
 
-- You **must** include all relevant information from the provided context or chat history in your answer. If there's an image in the provided context, YOU MUST INCLUDE THAT IMAGE PATH/LINK AT THE END OF YOUR FINAL ANSWER - THIS IS CRITICAL.
+- You **must** include all relevant information from the REFERENCE FRAME or chat history in your answer. If there's an image in the REFERENCE FRAME, YOU MUST INCLUDE THAT IMAGE PATH/LINK AT THE END OF YOUR FINAL ANSWER - THIS IS CRITICAL.
 - Image/Graph citations: `![ALT TEXT](Image URL)` – use this Markdown format only for images or graphs referenced in the context (accept file extensions like .jpeg, .jpg, .png).
-- For images or graphs present in the PROVIDED CONTEXT (identified by file extensions in the context such as .jpeg, .jpg, .png), you must cite the image strictly using this Markdown format: `![ALT TEXT](Image URL)`. Deviating from this format will result in the image failing to display.
+- For images or graphs present in the REFERENCE FRAME (identified by file extensions in the context such as .jpeg, .jpg, .png), you must cite the image strictly using this Markdown format: `![ALT TEXT](Image URL)`. Deviating from this format will result in the image failing to display.
 - When responding, always check if an image link is included in the context. If an image link is present, embed it using Markdown image syntax with the leading exclamation mark: ![ALT TEXT](Image URL). Never omit the !, or it will render as a text link instead of an embedded image.
 
 ### **Image/Graph Citation Examples**
@@ -915,7 +915,7 @@ ANTHROPIC_TOOL_INSTRUCTIONS = """
 
 ### When to Use Web Search:
 
-1. **Context Lacks Information:** When PROVIDED CONTEXT, CONVERSATION SUMMARY, and CHAT HISTORY absolutely lack the information needed to answer the user's question
+1. **Context Lacks Information:** When REFERENCE FRAME, CONVERSATION SUMMARY, and CHAT HISTORY absolutely lack the information needed to answer the user's question
 2. **URLs in Messages:** When you see a URL in the user's message - you should search/fetch that URL to understand its content
 3. **Follow-up Questions About Links:** When a user previously provided a link and asks follow-up questions about it, conduct a web search using that same link to retrieve the information
 4. **Current Events or Real-Time Data:** When the question requires up-to-date information that may not be in your knowledge base
@@ -930,8 +930,8 @@ ANTHROPIC_TOOL_INSTRUCTIONS = """
 
 ### Important Notes:
 
-- Web search is a supplement to PROVIDED CONTEXT, not a replacement
-- Always prioritize information from PROVIDED CONTEXT when available
+- Web search is a supplement to REFERENCE FRAME, not a replacement
+- Always prioritize information from REFERENCE FRAME when available
 - Use web search strategically - don't search when the answer is already in the context
 - When both context and web search provide information, synthesize them coherently
 
