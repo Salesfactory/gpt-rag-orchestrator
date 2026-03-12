@@ -143,6 +143,7 @@ class StateManager:
             return {
                 "start_date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
                 "history": [],
+                "memory_data": "",
                 "interaction": {},
                 "type": "default",
                 "code_thread_id": None,
@@ -163,7 +164,6 @@ class StateManager:
         thoughts: Dict[str, Any],
         conversation_summary: Optional[str] = None,
         user_timezone: Optional[str] = None,
-        skip_user_message: bool = False,
     ) -> None:
         """
         Save conversation data to Cosmos DB.
@@ -201,17 +201,12 @@ class StateManager:
 
             history = conversation_data.get("history", [])
 
-            if skip_user_message:
-                logger.debug("[StateManager] Skipping user message save (HITL resume)")
-            else:
-                user_message = {
-                    "role": "user",
-                    "content": state.question,
-                }
-                history.append(user_message)
-                logger.debug(
-                    f"[StateManager] Added user message: {state.question[:50]}..."
-                )
+            user_message = {
+                "role": "user",
+                "content": state.question,
+            }
+            history.append(user_message)
+            logger.debug(f"[StateManager] Added user message: {state.question[:50]}...")
 
             assistant_message = {
                 "role": "assistant",
