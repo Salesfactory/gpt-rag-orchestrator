@@ -129,9 +129,25 @@ class ResponseGenerator:
         if state.context_docs:
             context_str = "\n\n".join(str(doc) for doc in state.context_docs)
             system_prompt += f"""
-                <----------- PROVIDED CONTEXT ------------>
+            The Following section is the Reference Frame it contains a compilation of all the sources recolected by the SalesFactory AI own tools, you should use it to answer your question following the citation guidelines and instructions already provided to you. (IF SOMETHING THAT COMES FROM YOUR OWN KNOWLEDGE IS SIMILAR TO THE INFORMATION ON THE REFERENCE FRAME YOU HAVE TO ALWAYS PRIORITIZE THE REFERENCE FRAME AS IT HAVE RELIABLE SOURCES AND IS BACK UP FOR SALESFACTORY AI)
+                <----------- REFERENCE FRAME ------------>
                 {context_str}
-                <----------- END OF PROVIDED CONTEXT ------------>
+                <----------- END OF REFERENCE FRAME ------------>
+                ## CITATION RULES — MANDATORY TO USE THE REFERENCE FRAME
+                **Format:** `[[number]](url)` — place immediately after the sentence or claim it supports.
+
+                **Example of correct usage:**
+                AI has improved diagnostic accuracy by 28% [[1]](https://healthtech.org/article.pdf). 
+                Recovery times dropped by 30% in AI-assisted surgeries [[2]](https://surgical-innovations.com/study).
+
+                **Rules:**
+                1. Every factual sentence pulled from the REFERENCE FRAME must end with an inline citation.
+                2. If a claim draws from multiple sources, cite all of them: [[1]](url1) [[2]](url2).
+                3. Citations go directly after the specific sentence they support — never grouped, never at the end.
+                4. For Excel or CSV sources, cite the full filename: [[1]](data_file.xlsx).
+                5. NEVER create a References, Sources, or Bibliography section at the end.
+                6. NEVER modify URLs — copy them exactly as they appear in the REFERENCE FRAME.
+                7. Purely conversational or common-knowledge statements do not require citations.
                 """
             logger.debug(
                 f"[ResponseGenerator] Added {len(state.context_docs)} context documents to system prompt"
