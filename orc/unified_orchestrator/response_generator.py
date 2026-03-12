@@ -137,7 +137,7 @@ class ResponseGenerator:
                 **Format:** `[[number]](url)` — place immediately after the sentence or claim it supports.
 
                 **Example of correct usage:**
-                AI has improved diagnostic accuracy by 28% [[1]](https://healthtech.org/article.pdf). 
+                AI has improved diagnostic accuracy by 28% [[1]](https://healthtech.org/article.pdf).
                 Recovery times dropped by 30% in AI-assisted surgeries [[2]](https://surgical-innovations.com/study).
 
                 **Rules:**
