@@ -109,8 +109,8 @@ class OrchestratorConfig:
         ]
     )
 
-    # Tool Calling Model Configuration (Anthropic Claude Haiku - faster/cheaper)
-    tool_calling_model: str = "claude-haiku-4-5"
+    # Tool Calling Model Configuration
+    tool_calling_model: str = "claude-sonnet-4-6"
     tool_calling_temperature: float = 0.0
     tool_calling_max_tokens: int = 5000
 
