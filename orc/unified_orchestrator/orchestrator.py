@@ -15,21 +15,13 @@ import traceback
 import aiohttp
 import asyncio
 from typing import List, Optional, Dict, Any, Set, Tuple
-from pydantic import BaseModel, Field
 
 from langsmith import traceable
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph, END, START
 from langgraph.prebuilt import ToolNode
 
-from langchain_core.messages import (
-    SystemMessage,
-    HumanMessage,
-    ToolMessage,
-    AIMessage,
-    messages_from_dict,
-    message_to_dict,
-)
+from langchain_core.messages import SystemMessage, HumanMessage, ToolMessage
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 
@@ -49,16 +41,6 @@ from .utils import (
     transform_artifacts_to_blobs,
     get_tool_progress_message,
 )
-
-
-class HITLPauseSignal(Exception):
-    """Raised when HITL requires pausing for human tool selection."""
-
-
-class ToolSelectionResult(BaseModel):
-    tool_name: str = Field(..., description="Name of the selected tool")
-    is_ambiguous: bool
-    # tool_reasoning: str = Field(..., description="LLM's reasoning for tool selection. 1 short sentence only.")
 
 
 # Configure logging
@@ -149,9 +131,6 @@ class ConversationOrchestrator:
         self.current_start_time = 0
         self._progress_queue: asyncio.Queue[Any] = asyncio.Queue()
         self.wrapped_tools = None  # Wrapped tools for bind_tools (built at runtime)
-        self._hitl_forced_tool: Optional[str] = (
-            None  # Only set during HITL Phase 2 resume
-        )
 
         logger.info("[ConversationOrchestrator] Initialization complete")
 
@@ -298,13 +277,15 @@ class ConversationOrchestrator:
 
     def _init_tool_calling_llm(self) -> ChatAnthropic:
         """
-        Initialize LLM for tool calling decisions.
+        Initialize Anthropic Claude Haiku LLM for tool calling.
+
+        Uses Haiku for faster and cheaper tool selection decisions.
 
         Returns:
             Configured ChatAnthropic instance
         """
         logger.info(
-            "[ConversationOrchestrator] Initializing tool calling LLM (Claude Sonnet)"
+            "[ConversationOrchestrator] Initializing tool calling LLM (Claude Haiku)"
         )
 
         api_key = os.getenv("ANTHROPIC_API_KEY")
@@ -650,6 +631,7 @@ class ConversationOrchestrator:
             self.current_conversation_data = {
                 "start_date": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "history": [],
+                "memory_data": "",
                 "interaction": {},
                 "type": "default",
                 "code_thread_id": None,
@@ -1074,9 +1056,6 @@ class ConversationOrchestrator:
             tool_names = [t.name for t in self.wrapped_tools]
             logger.info(f"[Plan Tools Node] Available tools: {tool_names}")
 
-            is_ambiguous = False  # used to check if a tool selection is certain or not
-            llm_preferred = None
-
             if (
                 len(self.wrapped_tools) == 1
                 and self.wrapped_tools[0].name == "document_chat"
@@ -1086,7 +1065,6 @@ class ConversationOrchestrator:
                     self.wrapped_tools,
                     tool_choice={"type": "tool", "name": "document_chat"},
                 )
-                response = await model_with_tools.ainvoke(state.messages)
             elif (
                 len(self.wrapped_tools) == 1
                 and self.wrapped_tools[0].name == "data_analyst"
@@ -1096,7 +1074,6 @@ class ConversationOrchestrator:
                     self.wrapped_tools,
                     tool_choice={"type": "tool", "name": "data_analyst"},
                 )
-                response = await model_with_tools.ainvoke(state.messages)
             elif (
                 len(self.wrapped_tools) == 1
                 and self.wrapped_tools[0].name == "agentic_search"
@@ -1106,109 +1083,42 @@ class ConversationOrchestrator:
                     self.wrapped_tools,
                     tool_choice={"type": "tool", "name": "agentic_search"},
                 )
-                response = await model_with_tools.ainvoke(state.messages)
             else:
-                query = state.rewritten_query or state.question
-                selection_llm = self.tool_calling_llm.with_structured_output(
-                    ToolSelectionResult
+                model_with_tools = self.tool_calling_llm.bind_tools(
+                    self.wrapped_tools, tool_choice="any"
                 )
-                selection = await selection_llm.ainvoke(state.messages)
-                llm_preferred = selection.tool_name
-                is_ambiguous = selection.is_ambiguous
-                logger.info(
-                    f"[Plan Tools Node] Structured selection: tool={llm_preferred}, "
-                    f"is_ambiguous={is_ambiguous}"
-                )
-                response = AIMessage(
-                    content="",
-                    tool_calls=[
-                        {
-                            "id": str(uuid.uuid4()),
-                            "name": llm_preferred,
-                            "args": {"query": query},
-                            "type": "tool_call",
-                        }
-                    ],
-                )
+
+            response = await model_with_tools.ainvoke(state.messages)
 
             if hasattr(response, "tool_calls") and response.tool_calls:
                 selected_tools = [
                     tc.get("name", "unknown") for tc in response.tool_calls
                 ]
-                logger.info(f"[Plan Tools Node] Tool calls: {selected_tools}")
-                tool_name = selected_tools[0]
-                planning_progress = {
-                    "type": "progress",
-                    "step": "tool_selected",
-                    "message": get_tool_progress_message(tool_name, "planning"),
-                    "progress": 50,
-                    "timestamp": time.time(),
-                    "tool": tool_name,
-                }
-                self._emit_progress_item(
-                    f"__PROGRESS__{json.dumps(planning_progress)}__PROGRESS__\n"
+                logger.info(
+                    f"[Plan Tools Node] Claude requested {len(response.tool_calls)} tool calls: {selected_tools}"
                 )
+                if selected_tools:
+                    tool_name = selected_tools[0]  # Use first tool for progress message
+                    tool_message = get_tool_progress_message(tool_name, "planning")
+                    planning_progress = {
+                        "type": "progress",
+                        "step": "tool_selected",
+                        "message": tool_message,
+                        "progress": 50,
+                        "timestamp": time.time(),
+                        "tool": tool_name,
+                    }
+                    self._emit_progress_item(
+                        f"__PROGRESS__{json.dumps(planning_progress)}__PROGRESS__\n"
+                    )
             else:
                 logger.warning(
-                    "[Plan Tools Node] No tool calls in response. "
+                    "[Plan Tools Node] Claude did not request any tools despite available tools. "
                     f"Response content: {getattr(response, 'content', '')[:200]}"
                 )
 
-            # HITL Phase 1: pause when LLM is genuinely ambiguous about tool choice
-            if (
-                len(self.wrapped_tools) > 1
-                and is_ambiguous
-                and not self._hitl_forced_tool
-            ):
-                if not llm_preferred:
-                    llm_preferred = self.wrapped_tools[0].name
-
-                hitl_state = {
-                    "rewritten_query": state.rewritten_query,
-                    "augmented_query": state.augmented_query,
-                    "query_category": state.query_category,
-                    "messages_serialized": [message_to_dict(m) for m in state.messages],
-                    "conversation_summary": state.conversation_summary,
-                    "uploaded_file_refs": state.uploaded_file_refs,
-                    "code_thread_id": state.code_thread_id,
-                    "cached_dochat_analyst_blobs": state.cached_dochat_analyst_blobs,
-                    "last_mcp_tool_used": state.last_mcp_tool_used,
-                    "available_tools": [t.name for t in self.wrapped_tools],
-                    "llm_preferred_tool": llm_preferred,
-                    "question": state.question,
-                    "user_uploaded_blobs": {
-                        "kind": state.user_uploaded_blobs.kind,
-                        "items": state.user_uploaded_blobs.items,
-                    },
-                }
-                user_id = self.current_user_info.get("id")
-                self.cosmos_client.save_hitl_state(
-                    conversation_id=self.current_conversation_id,
-                    user_id=user_id,
-                    state_data=hitl_state,
-                )
-                hitl_event = {
-                    "type": "tool_selection_required",
-                    "available_tools": hitl_state["available_tools"],
-                    "llm_recommendation": llm_preferred,
-                    "conversation_id": self.current_conversation_id,
-                    "message": "Please select which tool to use",
-                    "progress": 50,
-                    "timestamp": time.time(),
-                }
-                self._emit_progress_item(
-                    f"__PROGRESS__{json.dumps(hitl_event)}__PROGRESS__\n"
-                )
-                logger.info(
-                    f"[Plan Tools Node] HITL pause: emitted tool_selection_required, "
-                    f"tools={hitl_state['available_tools']}, recommendation={llm_preferred}"
-                )
-                raise HITLPauseSignal("HITL pause: awaiting tool selection from user")
-
             return {"messages": state.messages + [response]}
 
-        except HITLPauseSignal:
-            raise
         except Exception as e:
             logger.error(f"[Plan Tools Node] Error invoking Claude: {e}", exc_info=True)
             return {"messages": state.messages}
@@ -1745,9 +1655,7 @@ class ConversationOrchestrator:
                 response_text=self.current_response_text,
                 thoughts=thoughts,
                 user_timezone=self.current_user_timezone,
-                skip_user_message=self._hitl_forced_tool is not None,
             )
-            self._hitl_forced_tool = None
 
             logger.info(
                 f"[Save Node] Conversation saved (response_time: {response_time:.2f}s)",
@@ -1799,74 +1707,6 @@ class ConversationOrchestrator:
 
         # Return empty dict (no state updates)
         return {}
-
-    async def _force_tool_call_node(self, state: ConversationState) -> Dict[str, Any]:
-        """
-        HITL Phase 2: directly synthesize the tool call message without calling the LLM.
-
-        The human already told us which tool to use — no need to ask the model again.
-        Builds an AIMessage with a synthetic tool call using the augmented/rewritten query.
-        """
-        tool_name = self._hitl_forced_tool
-        query = state.rewritten_query or state.question
-
-        logger.info(
-            f"[Force Tool Call Node] Forcing tool='{tool_name}', query={query[:80]}"
-        )
-
-        progress_data = {
-            "type": "progress",
-            "step": "tool_selected",
-            "message": get_tool_progress_message(tool_name, "planning"),
-            "progress": 50,
-            "timestamp": time.time(),
-            "tool": tool_name,
-        }
-        self._emit_progress_item(
-            f"__PROGRESS__{json.dumps(progress_data)}__PROGRESS__\n"
-        )
-
-        tool_call_message = AIMessage(
-            content="",
-            tool_calls=[
-                {
-                    "id": str(uuid.uuid4()),
-                    "name": tool_name,
-                    "args": {"query": query},
-                    "type": "tool_call",
-                }
-            ],
-        )
-        return {"messages": state.messages + [tool_call_message]}
-
-    def _build_resume_graph(self, memory: MemorySaver) -> StateGraph:
-        """
-        Build a trimmed LangGraph for HITL Phase 2 resume.
-
-        Skips initialize/rewrite/augment/categorize/prepare_messages/plan_tools —
-        the human already chose the tool, so we synthesize the tool call directly.
-        """
-        logger.info("[ConversationOrchestrator] Building HITL resume graph")
-
-        graph = StateGraph(ConversationState)
-        graph.add_node("prepare_tools", self._prepare_tools_node)
-        graph.add_node("force_tool_call", self._force_tool_call_node)
-        graph.add_node("execute_tools", self._execute_tools_node)
-        graph.add_node("extract_context", self._extract_context_node)
-        graph.add_node("generate_response", self._generate_response_node)
-        graph.add_node("save_conversation", self._save_node)
-        graph.add_node("user_credit_tracking", self._user_credit_tracking_node)
-
-        graph.add_edge(START, "prepare_tools")
-        graph.add_edge("prepare_tools", "force_tool_call")
-        graph.add_edge("force_tool_call", "execute_tools")
-        graph.add_edge("execute_tools", "extract_context")
-        graph.add_edge("extract_context", "generate_response")
-        graph.add_edge("generate_response", "save_conversation")
-        graph.add_edge("save_conversation", "user_credit_tracking")
-        graph.add_edge("user_credit_tracking", END)
-
-        return graph.compile(checkpointer=memory)
 
     def _build_graph(self, memory: MemorySaver) -> StateGraph:
         """
@@ -2027,11 +1867,6 @@ class ConversationOrchestrator:
                             logger.error(f"[Graph Event] Error: {error}")
                             raise RuntimeError(f"Graph execution error: {error}")
 
-                except HITLPauseSignal:
-                    logger.info(
-                        "[Graph Event] HITL pause signal received, ending stream cleanly"
-                    )
-                    await output_queue.put(("hitl_pause", None))
                 except Exception as e:
                     await output_queue.put(("error", e))
                 finally:
@@ -2053,8 +1888,6 @@ class ConversationOrchestrator:
                         yield item_data
                     elif item_type == "error":
                         raise item_data
-                    elif item_type == "hitl_pause":
-                        pass
                     elif item_type == "graph_done":
                         graph_done = True
                     elif item_type == "progress_done":
@@ -2101,7 +1934,6 @@ class ConversationOrchestrator:
         blob_names: Optional[List[Any]] = None,
         is_data_analyst_mode: Optional[bool] = None,
         is_agentic_search_mode: Optional[bool] = None,
-        hitl_resume: Optional[Dict[str, Any]] = None,
     ):
         """
         Main entry point for generating responses with progress streaming.
@@ -2190,70 +2022,6 @@ class ConversationOrchestrator:
                     "organization_id": self.organization_id,
                 },
             )
-
-            # HITL Phase 2: resume from saved HITL state
-            if hitl_resume:
-                hitl_state = self.cosmos_client.load_and_delete_hitl_state(
-                    conversation_id=conversation_id, user_id=user_id
-                )
-                if hitl_state:
-                    logger.info(
-                        f"[ConversationOrchestrator] HITL Phase 2 resume: "
-                        f"forced_tool={hitl_resume.get('tool_name')}, "
-                        f"available={hitl_state.get('available_tools')}"
-                    )
-                    self._hitl_forced_tool = hitl_resume.get("tool_name")
-
-                    conversation_data = self.state_manager.load_conversation(
-                        conversation_id=conversation_id,
-                        user_timezone=user_timezone,
-                    )
-                    self.current_conversation_data = conversation_data
-
-                    # Reconstruct state from saved HITL payload
-                    saved_blobs = hitl_state.get(
-                        "user_uploaded_blobs", {"kind": "", "items": []}
-                    )
-                    deserialized_messages = messages_from_dict(
-                        hitl_state.get("messages_serialized", [])
-                    )
-                    resume_state = ConversationState(
-                        question=hitl_state.get("question", question),
-                        user_uploaded_blobs=UserUploadedBlobs(
-                            kind=saved_blobs.get("kind", ""),
-                            items=saved_blobs.get("items", []),
-                        ),
-                        is_data_analyst_mode=is_data_analyst_mode,
-                        is_agentic_search_mode=is_agentic_search_mode,
-                        rewritten_query=hitl_state.get("rewritten_query", ""),
-                        augmented_query=hitl_state.get("augmented_query", ""),
-                        query_category=hitl_state.get("query_category", "General"),
-                        messages=deserialized_messages,
-                        conversation_summary=hitl_state.get("conversation_summary", ""),
-                        uploaded_file_refs=hitl_state.get("uploaded_file_refs", []),
-                        code_thread_id=hitl_state.get("code_thread_id"),
-                        cached_dochat_analyst_blobs=hitl_state.get(
-                            "cached_dochat_analyst_blobs", []
-                        ),
-                        last_mcp_tool_used=hitl_state.get("last_mcp_tool_used", ""),
-                    )
-
-                    memory = MemorySaver()
-                    resume_graph = self._build_resume_graph(memory)
-                    config = {"configurable": {"thread_id": conversation_id}}
-
-                    async for item in self._stream_graph_execution(
-                        resume_graph, resume_state, config
-                    ):
-                        for handler in logging.root.handlers:
-                            handler.flush()
-                        yield item
-
-                    logger.info(
-                        f"[ConversationOrchestrator] HITL Phase 2 completed "
-                        f"(total_time: {time.time() - start_time:.2f}s)"
-                    )
-                    return
 
             initial_state = ConversationState(
                 question=question,

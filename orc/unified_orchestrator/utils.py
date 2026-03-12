@@ -124,10 +124,6 @@ def get_tool_progress_message(tool_name: str, stage: str) -> str:
             "planning": "Preparing document analysis...",
             "executing": "Reading your documents...",
         },
-        "trade_sql_query": {
-            "planning": "Planning Trade Propulse lookup...",
-            "executing": "Querying Trade Propulse data...",
-        },
     }
 
     return tool_messages.get(tool_name, {}).get(stage, f"{stage.capitalize()} tools...")
