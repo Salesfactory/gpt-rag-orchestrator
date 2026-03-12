@@ -88,7 +88,6 @@ class CosmosDBClient:
                     "conversation_data": {
                         "start_date": datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S"),
                         "history": [],
-                        "memory_data": "",
                         "interaction": {},
                         "type": type if type else "default",
                     },
@@ -100,7 +99,6 @@ class CosmosDBClient:
             {
                 "start_date": datetime.now(tz).strftime("%Y-%m-%d %H:%M:%S"),
                 "history": [],
-                "memory_data": "",
                 "interaction": {},
                 "type": type if type else "default",
             },
@@ -151,6 +149,60 @@ class CosmosDBClient:
             )
 
         return conversation_data
+
+    def save_hitl_state(
+        self, conversation_id: str, user_id: str, state_data: dict
+    ) -> None:
+        try:
+            self._ensure_connected()
+            container = self._db.get_container_client("conversations")
+            question = state_data.get("question", "")
+            patch_operations = [
+                {"op": "add", "path": "/pending_hitl", "value": state_data},
+            ]
+            if question:
+                patch_operations.append(
+                    {
+                        "op": "add",
+                        "path": "/conversation_data/history/-",
+                        "value": {"role": "user", "content": question},
+                    }
+                )
+            container.patch_item(
+                item=conversation_id,
+                partition_key=user_id,
+                patch_operations=patch_operations,
+            )
+        except Exception as e:
+            logging.error(f"[CosmosDB] Error saving HITL state: {e}", exc_info=True)
+            raise
+
+    def load_and_delete_hitl_state(self, conversation_id: str, user_id: str) -> dict:
+        try:
+            self._ensure_connected()
+            container = self._db.get_container_client("conversations")
+            try:
+                doc = container.read_item(item=conversation_id, partition_key=user_id)
+            except Exception:
+                return None
+
+            hitl_state = doc.get("pending_hitl")
+            if not hitl_state:
+                return None
+
+            try:
+                container.patch_item(
+                    item=conversation_id,
+                    partition_key=user_id,
+                    patch_operations=[{"op": "remove", "path": "/pending_hitl"}],
+                )
+            except Exception as e:
+                logging.warning(f"[CosmosDB] Failed to clear HITL state: {e}")
+
+            return hitl_state
+        except Exception as e:
+            logging.error(f"[CosmosDB] Error loading HITL state: {e}", exc_info=True)
+            return None
 
     def get_credit_table(self, container_name: str = "subscriptionsTiers") -> list:
         """
