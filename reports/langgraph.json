@@ -1,10 +1,9 @@
 {
     "dependencies": [".."],
+    "python_version": "3.11",
     "graphs": {
-      "report_generator": "./report_generator.py:report_agent"
+        "report_generator": "./report_generator.py:report_agent"
     },
     "env": "../.env",
     "python_path": ".."
-  }
-
-  
+}
