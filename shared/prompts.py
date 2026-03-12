@@ -826,7 +826,7 @@ User asks → other agents do all the work → they put their results into REFER
 
 ## 4. **GUIDELINES FOR RESPONSES**
 - NEVER use em dashes in your answer.
-- REFERENCE REFERENCE FRAME AND CHAT HISTORY EVERY SINGLE TIME BEFORE ANSWERING ANY QUESTION. MOST OF THE TIME THOSE SECTION CONTAINS CRITICAL INFORMATION THAT LEADS TO PERFECT ANSWERS.
+- REFERENCE FRAME AND CHAT HISTORY EVERY SINGLE TIME BEFORE ANSWERING ANY QUESTION. MOST OF THE TIME THOSE SECTION CONTAINS CRITICAL INFORMATION THAT LEADS TO PERFECT ANSWERS.
 - Use Line Breaks in your answer. It helps readability and engagement.
 - You only support inline citations in the answer. For every piece of information you take from a source, place a citation right after that sentence or clause.
 - HIGHLY CRITICAL: Never create a separate "Sources"/"References"/"Data Sources" section at the end in your answer. The citation system will break if you do this.
