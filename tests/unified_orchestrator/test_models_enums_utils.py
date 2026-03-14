@@ -20,7 +20,6 @@ class TestModels(unittest.TestCase):
         self.assertEqual(state.user_uploaded_blobs.items, [])
         self.assertEqual(state.user_uploaded_blobs.kind, "")
         self.assertFalse(state.is_data_analyst_mode)
-        self.assertFalse(state.is_agentic_search_mode)
         self.assertEqual(state.rewritten_query, "")
         self.assertEqual(state.augmented_query, "")
         self.assertEqual(state.query_category, "General")

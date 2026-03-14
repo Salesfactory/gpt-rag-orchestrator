@@ -940,14 +940,6 @@ class ConversationOrchestrator:
                 logger.info(
                     "[Prepare Tools Node] Forced data_analyst tool (data analyst mode active)"
                 )
-            # Force agentic_search if agentic search mode is active (mostly testing purpose)
-            elif state.is_agentic_search_mode:
-                self.wrapped_tools = [
-                    t for t in self.wrapped_tools if t.name == "agentic_search"
-                ]
-                logger.info(
-                    "[Prepare Tools Node] Forced agentic_search tool (agentic search mode active)"
-                )
 
             logger.info(
                 f"[Prepare Tools Node] Prepared {len(self.wrapped_tools)} tools"
@@ -2100,7 +2092,6 @@ class ConversationOrchestrator:
         user_timezone: Optional[str] = None,
         blob_names: Optional[List[Any]] = None,
         is_data_analyst_mode: Optional[bool] = None,
-        is_agentic_search_mode: Optional[bool] = None,
         hitl_resume: Optional[Dict[str, Any]] = None,
     ):
         """
@@ -2121,7 +2112,6 @@ class ConversationOrchestrator:
             user_timezone: User's timezone
             blob_names: List of uploaded file names or blob info dicts
             is_data_analyst_mode: Whether data analyst mode is active
-            is_agentic_search_mode: Whether agentic search mode is active
 
         Yields:
             Progress updates (__PROGRESS__), metadata (__METADATA__), and response tokens
@@ -2131,7 +2121,6 @@ class ConversationOrchestrator:
         user_uploaded_blobs = self._normalize_blob_inputs(blob_names or [])
         user_settings = user_settings or {}
         is_data_analyst_mode = is_data_analyst_mode or False
-        is_agentic_search_mode = is_agentic_search_mode or False
 
         log_info(f"[ConversationOrchestrator] Starting conversation: {conversation_id}")
         log_info(f"[ConversationOrchestrator] Question: {question[:100]}...")
@@ -2224,7 +2213,6 @@ class ConversationOrchestrator:
                             items=saved_blobs.get("items", []),
                         ),
                         is_data_analyst_mode=is_data_analyst_mode,
-                        is_agentic_search_mode=is_agentic_search_mode,
                         rewritten_query=hitl_state.get("rewritten_query", ""),
                         augmented_query=hitl_state.get("augmented_query", ""),
                         query_category=hitl_state.get("query_category", "General"),
@@ -2259,7 +2247,6 @@ class ConversationOrchestrator:
                 question=question,
                 user_uploaded_blobs=user_uploaded_blobs,
                 is_data_analyst_mode=is_data_analyst_mode,
-                is_agentic_search_mode=is_agentic_search_mode,
             )
 
             # Create memory saver for checkpointing

@@ -79,7 +79,6 @@ def query_rag_endpoint(
     client_principal_organization: str,
     conversation_id: str,
     endpoint_url: str = "http://localhost:7071/api/orc",
-    is_agentic_search_mode: bool = False,
 ) -> str:
     """
     Send a question to the RAG orchestrator endpoint.
@@ -91,7 +90,6 @@ def query_rag_endpoint(
         client_principal_organization: Organization ID
         conversation_id: Unique conversation ID for tracking
         endpoint_url: RAG endpoint URL
-        is_agentic_search_mode: Force agentic search mode
 
     Returns:
         The AI-generated answer
@@ -102,7 +100,6 @@ def query_rag_endpoint(
         "client_principal_name": client_principal_name,
         "client_principal_organization": client_principal_organization,
         "conversation_id": conversation_id,
-        "is_agentic_search_mode": is_agentic_search_mode,
     }
 
     response = requests.post(
@@ -187,13 +184,6 @@ client_principal_organization = st.sidebar.text_input(
     help="Organization ID for authentication",
 )
 
-st.sidebar.subheader("Evaluation Options")
-is_agentic_search_mode = st.sidebar.checkbox(
-    "Force Agentic Search",
-    value=False,
-    help="Force the orchestrator to use agentic search for all questions",
-)
-
 # File upload
 st.header("1. Upload Test Data")
 uploaded_file = st.file_uploader(
@@ -253,7 +243,6 @@ if uploaded_file:
                             client_principal_organization=client_principal_organization,
                             conversation_id=uuid.uuid4().hex,
                             endpoint_url=endpoint_url,
-                            is_agentic_search_mode=is_agentic_search_mode,
                         )
 
                         # Evaluate the answer

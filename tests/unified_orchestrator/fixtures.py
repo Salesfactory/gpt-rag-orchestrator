@@ -16,7 +16,6 @@ def make_state(**overrides: Any) -> ConversationState:
         "question": "test question",
         "user_uploaded_blobs": UserUploadedBlobs(),
         "is_data_analyst_mode": False,
-        "is_agentic_search_mode": False,
         "rewritten_query": "",
         "augmented_query": "",
         "query_category": "General",

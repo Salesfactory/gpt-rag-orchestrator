@@ -43,7 +43,6 @@ class ConversationState:
     question: str
     user_uploaded_blobs: UserUploadedBlobs = field(default_factory=UserUploadedBlobs)
     is_data_analyst_mode: bool = False
-    is_agentic_search_mode: bool = False
 
     # Query Processing
     rewritten_query: str = ""

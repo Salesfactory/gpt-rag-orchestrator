@@ -219,27 +219,6 @@ class TestOrchestratorAdditional(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(orch.wrapped_tools), 1)
         self.assertEqual(orch.wrapped_tools[0].name, "data_analyst")
 
-    async def test_prepare_tools_node_forces_agentic_search(self):
-        orch = make_orchestrator()
-        orch.mcp_client = AsyncMock()
-        orch.mcp_client.connect = AsyncMock()
-        agentic_tool = MagicMock(name="agentic_search")
-        agentic_tool.name = "agentic_search"
-        other_tool = MagicMock(name="document_chat")
-        other_tool.name = "document_chat"
-        orch.mcp_client.get_wrapped_tools = AsyncMock(
-            return_value=[agentic_tool, other_tool]
-        )
-        orch.context_builder = MagicMock()
-        orch.context_builder.format_conversation_history.return_value = ""
-        orch.current_conversation_data = {"history": []}
-
-        state = make_state(is_agentic_search_mode=True)
-        await orch._prepare_tools_node(state)
-
-        self.assertEqual(len(orch.wrapped_tools), 1)
-        self.assertEqual(orch.wrapped_tools[0].name, "agentic_search")
-
     async def test_prepare_messages_node_includes_sections(self):
         orch = make_orchestrator()
         orch.context_builder = MagicMock()
