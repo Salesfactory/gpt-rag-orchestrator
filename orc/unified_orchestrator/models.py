@@ -29,6 +29,13 @@ class UserUploadedBlobs:
             item.get("blob_name", "") for item in self.items if item.get("blob_name")
         ]
 
+    @property
+    def is_wordoffice(self) -> bool:
+        return any(
+            (item.get("blob_name", "") or "").lower().endswith(".docx")
+            for item in self.items
+        )
+
 
 @dataclass
 class ConversationState:
