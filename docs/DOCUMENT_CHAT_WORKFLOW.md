@@ -216,10 +216,6 @@ elif is_spreadsheet:
 # Force data_analyst if mode flag set
 elif state.is_data_analyst_mode:
     self.wrapped_tools = [t for t in self.wrapped_tools if t.name == "data_analyst"]
-
-# Force agentic_search if mode flag set
-elif state.is_agentic_search_mode:
-    self.wrapped_tools = [t for t in self.wrapped_tools if t.name == "agentic_search"]
 ```
 
 **Forced Tool Selection** (in `_plan_tools_node`):
