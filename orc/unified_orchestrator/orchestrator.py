@@ -177,7 +177,9 @@ class ConversationOrchestrator:
         self.wrapped_tools = None  # Wrapped tools for bind_tools (built at runtime)
         self._hitl_is_resume: bool = False  # True during any HITL resume turn
         self._hitl_selected_text: Optional[str] = None  # User's selected option text
-        self._hitl_selected_tool: Optional[str] = None  # tool asscociated with user's selected option, not the initial tool choice from the mcp selection
+        self._hitl_selected_tool: Optional[str] = (
+            None  # tool asscociated with user's selected option, not the initial tool choice from the mcp selection
+        )
 
         logger.info("[ConversationOrchestrator] Initialization complete")
 
@@ -1869,13 +1871,8 @@ class ConversationOrchestrator:
             f"To help select tool better, my clearer intention is: {self._hitl_selected_text}"
             f"{tool_hint}. However, if you still find it unclear, feel free to carry on clarifying questions."
         )
-        logger.info(
-            f"[Inject User Answer Node] Injecting: '{injected[:120]}'"
-        )
-        return {
-            "messages": state.messages
-            + [HumanMessage(content=injected)]
-        }
+        logger.info(f"[Inject User Answer Node] Injecting: '{injected[:120]}'")
+        return {"messages": state.messages + [HumanMessage(content=injected)]}
 
     def _build_resume_graph(self, memory: MemorySaver) -> StateGraph:
         """
