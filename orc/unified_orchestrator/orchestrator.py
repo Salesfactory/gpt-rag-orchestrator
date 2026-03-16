@@ -177,6 +177,7 @@ class ConversationOrchestrator:
         self.wrapped_tools = None  # Wrapped tools for bind_tools (built at runtime)
         self._hitl_is_resume: bool = False  # True during any HITL resume turn
         self._hitl_selected_text: Optional[str] = None  # User's selected option text
+        self._hitl_selected_tool: Optional[str] = None  # tool asscociated with user's selected option, not the initial tool choice from the mcp selection
 
         logger.info("[ConversationOrchestrator] Initialization complete")
 
@@ -1789,6 +1790,7 @@ class ConversationOrchestrator:
             )
             self._hitl_is_resume = False
             self._hitl_selected_text = None
+            self._hitl_selected_tool = None
 
             logger.info(
                 f"[Save Node] Conversation saved (response_time: {response_time:.2f}s)",
@@ -1858,12 +1860,21 @@ class ConversationOrchestrator:
         """
         if not self._hitl_selected_text:
             return {}
+        tool_hint = (
+            f", so the tool to use is likely `{self._hitl_selected_tool}`"
+            if self._hitl_selected_tool
+            else ""
+        )
+        injected = (
+            f"To help select tool better, my clearer intention is: {self._hitl_selected_text}"
+            f"{tool_hint}. However, if you still find it unclear, feel free to carry on clarifying questions."
+        )
         logger.info(
-            f"[Inject User Answer Node] Injecting: '{self._hitl_selected_text[:80]}'"
+            f"[Inject User Answer Node] Injecting: '{injected[:120]}'"
         )
         return {
             "messages": state.messages
-            + [HumanMessage(content=self._hitl_selected_text)]
+            + [HumanMessage(content=injected)]
         }
 
     def _build_resume_graph(self, memory: MemorySaver) -> StateGraph:
@@ -2226,6 +2237,7 @@ class ConversationOrchestrator:
                     )
                     self._hitl_is_resume = True
                     self._hitl_selected_text = hitl_resume.get("selected_text", "")
+                    self._hitl_selected_tool = hitl_resume.get("tool_name")
 
                     conversation_data = self.state_manager.load_conversation(
                         conversation_id=conversation_id,
