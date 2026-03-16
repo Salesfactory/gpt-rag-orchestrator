@@ -203,7 +203,6 @@ async def stream_response(req: Request) -> StreamingResponse:
     user_timezone = req_body.get("user_timezone")
     blob_names = req_body.get("blob_names", [])
     is_data_analyst_mode = req_body.get("is_data_analyst_mode", False)
-    is_agentic_search_mode = req_body.get("is_agentic_search_mode", False)
     hitl_resume = req_body.get("hitl_resume")
     client_principal_id = req_body.get("client_principal_id")
     client_principal_name = req_body.get("client_principal_name")
@@ -249,7 +248,6 @@ async def stream_response(req: Request) -> StreamingResponse:
                     user_timezone=user_timezone,
                     blob_names=blob_names,
                     is_data_analyst_mode=is_data_analyst_mode,
-                    is_agentic_search_mode=is_agentic_search_mode,
                     hitl_resume=hitl_resume,
                 ),
                 media_type="text/event-stream",

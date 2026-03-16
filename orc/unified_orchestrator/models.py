@@ -29,6 +29,13 @@ class UserUploadedBlobs:
             item.get("blob_name", "") for item in self.items if item.get("blob_name")
         ]
 
+    @property
+    def is_wordoffice(self) -> bool:
+        return any(
+            (item.get("blob_name", "") or "").lower().endswith(".docx")
+            for item in self.items
+        )
+
 
 @dataclass
 class ConversationState:
@@ -43,7 +50,6 @@ class ConversationState:
     question: str
     user_uploaded_blobs: UserUploadedBlobs = field(default_factory=UserUploadedBlobs)
     is_data_analyst_mode: bool = False
-    is_agentic_search_mode: bool = False
 
     # Query Processing
     rewritten_query: str = ""

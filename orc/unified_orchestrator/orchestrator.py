@@ -55,10 +55,36 @@ class HITLPauseSignal(Exception):
     """Raised when HITL requires pausing for human tool selection."""
 
 
-class ToolSelectionResult(BaseModel):
-    tool_name: str = Field(..., description="Name of the selected tool")
-    is_ambiguous: bool
-    # tool_reasoning: str = Field(..., description="LLM's reasoning for tool selection. 1 short sentence only.")
+class McpAnswerOption(BaseModel):
+    text: str = Field(
+        ...,
+        description="User-facing answer option in plain language — describe what it does, not which tool it uses",
+    )
+    tool_name: str = Field(
+        ...,
+        description="Internal tool name this option maps to (e.g. 'agentic_search', 'data_analyst', 'trade_sql_query')",
+    )
+
+
+class McpClarifyingQuestion(BaseModel):
+    question: str = Field(
+        ...,
+        description="A short, clear question that helps the user express their intent. Focus on what they want to achieve, not on tool names.",
+    )
+    options: List[McpAnswerOption] = Field(
+        ...,
+        description="2-3 answer options, one per plausible tool. Each should be a self-contained, user-friendly sentence.",
+    )
+
+
+class McpRoutingDecision(BaseModel):
+    tool_name: str = Field(
+        ..., description="Best-guess tool name given the current context"
+    )
+    clarification: Optional[McpClarifyingQuestion] = Field(
+        None,
+        description="Present only when user intent is ambiguous — omit when the tool choice is clear",
+    )
 
 
 # Configure logging
@@ -149,9 +175,8 @@ class ConversationOrchestrator:
         self.current_start_time = 0
         self._progress_queue: asyncio.Queue[Any] = asyncio.Queue()
         self.wrapped_tools = None  # Wrapped tools for bind_tools (built at runtime)
-        self._hitl_forced_tool: Optional[str] = (
-            None  # Only set during HITL Phase 2 resume
-        )
+        self._hitl_is_resume: bool = False  # True during any HITL resume turn
+        self._hitl_selected_text: Optional[str] = None  # User's selected option text
 
         logger.info("[ConversationOrchestrator] Initialization complete")
 
@@ -873,6 +898,7 @@ class ConversationOrchestrator:
         log_info("[Prepare Tools Node] Connecting to MCP and building wrapped tools")
 
         is_spreadsheet = state.user_uploaded_blobs.kind == "spreadsheet"
+        is_wordoffice = state.user_uploaded_blobs.is_wordoffice
         if is_spreadsheet:
             message = "Preparing data analysis tools..."
         elif state.user_uploaded_blobs.names:
@@ -916,8 +942,18 @@ class ConversationOrchestrator:
                 exclude_document_chat=exclude_doc_chat,
             )
 
-            # Force document_chat if documents uploaded
-            if state.user_uploaded_blobs.names and not is_spreadsheet:
+            # Word documents: allow both document_chat and data_analyst (LLM decides)
+            if is_wordoffice:
+                self.wrapped_tools = [
+                    t
+                    for t in self.wrapped_tools
+                    if t.name in ("document_chat", "data_analyst")
+                ]
+                logger.info(
+                    f"[Prepare Tools Node] Word document detected — keeping document_chat + data_analyst for {len(state.user_uploaded_blobs.names)} file(s)"
+                )
+            # Force document_chat if non-spreadsheet, non-word documents uploaded
+            elif state.user_uploaded_blobs.names and not is_spreadsheet:
                 self.wrapped_tools = [
                     t for t in self.wrapped_tools if t.name == "document_chat"
                 ]
@@ -939,14 +975,6 @@ class ConversationOrchestrator:
                 ]
                 logger.info(
                     "[Prepare Tools Node] Forced data_analyst tool (data analyst mode active)"
-                )
-            # Force agentic_search if agentic search mode is active (mostly testing purpose)
-            elif state.is_agentic_search_mode:
-                self.wrapped_tools = [
-                    t for t in self.wrapped_tools if t.name == "agentic_search"
-                ]
-                logger.info(
-                    "[Prepare Tools Node] Forced agentic_search tool (agentic search mode active)"
                 )
 
             logger.info(
@@ -1010,6 +1038,17 @@ class ConversationOrchestrator:
                 f"[Prepare Messages Node] Added conversation history ({len(history)} messages) to system prompt"
             )
 
+        if state.user_uploaded_blobs.is_wordoffice:
+            system_msg += """
+
+    <----------- UPLOADED DOCUMENT TYPE ------------>
+    The user has uploaded one or more Word documents (.docx).
+    Both `document_chat` and `data_analyst` are available for this upload.
+    Use `document_chat` for reading, summarizing, or extracting information from the document.
+    Use `data_analyst` only when the user explicitly wants to edit, revise, or generate a new Word document.
+    <----------- END OF UPLOADED DOCUMENT TYPE ------------>
+    """
+
         if last_tool_used:
             system_msg += f"""
 
@@ -1026,7 +1065,7 @@ class ConversationOrchestrator:
 
         messages = [
             SystemMessage(content=system_msg),
-            HumanMessage(content=state.question),
+            HumanMessage(content=state.rewritten_query or state.question),
         ]
 
         logger.info(f"[Prepare Messages Node] Created {len(messages)} initial messages")
@@ -1074,8 +1113,7 @@ class ConversationOrchestrator:
             tool_names = [t.name for t in self.wrapped_tools]
             logger.info(f"[Plan Tools Node] Available tools: {tool_names}")
 
-            is_ambiguous = False  # used to check if a tool selection is certain or not
-            llm_preferred = None
+            routing_decision = None
 
             if (
                 len(self.wrapped_tools) == 1
@@ -1109,22 +1147,20 @@ class ConversationOrchestrator:
                 response = await model_with_tools.ainvoke(state.messages)
             else:
                 query = state.rewritten_query or state.question
-                selection_llm = self.tool_calling_llm.with_structured_output(
-                    ToolSelectionResult
+                routing_llm = self.tool_calling_llm.with_structured_output(
+                    McpRoutingDecision
                 )
-                selection = await selection_llm.ainvoke(state.messages)
-                llm_preferred = selection.tool_name
-                is_ambiguous = selection.is_ambiguous
+                routing_decision = await routing_llm.ainvoke(state.messages)
                 logger.info(
-                    f"[Plan Tools Node] Structured selection: tool={llm_preferred}, "
-                    f"is_ambiguous={is_ambiguous}"
+                    f"[Plan Tools Node] Routing decision: tool={routing_decision.tool_name}, "
+                    f"needs_clarification={routing_decision.clarification is not None}"
                 )
                 response = AIMessage(
                     content="",
                     tool_calls=[
                         {
                             "id": str(uuid.uuid4()),
-                            "name": llm_preferred,
+                            "name": routing_decision.tool_name,
                             "args": {"query": query},
                             "type": "tool_call",
                         }
@@ -1154,15 +1190,12 @@ class ConversationOrchestrator:
                     f"Response content: {getattr(response, 'content', '')[:200]}"
                 )
 
-            # HITL Phase 1: pause when LLM is genuinely ambiguous about tool choice
+            # HITL Phase 1+: pause when LLM needs clarification from the user
             if (
-                len(self.wrapped_tools) > 1
-                and is_ambiguous
-                and not self._hitl_forced_tool
+                routing_decision is not None
+                and routing_decision.clarification is not None
             ):
-                if not llm_preferred:
-                    llm_preferred = self.wrapped_tools[0].name
-
+                clarification = routing_decision.clarification
                 hitl_state = {
                     "rewritten_query": state.rewritten_query,
                     "augmented_query": state.augmented_query,
@@ -1173,13 +1206,17 @@ class ConversationOrchestrator:
                     "code_thread_id": state.code_thread_id,
                     "cached_dochat_analyst_blobs": state.cached_dochat_analyst_blobs,
                     "last_mcp_tool_used": state.last_mcp_tool_used,
-                    "available_tools": [t.name for t in self.wrapped_tools],
-                    "llm_preferred_tool": llm_preferred,
+                    "llm_preferred_tool": routing_decision.tool_name,
                     "question": state.question,
                     "user_uploaded_blobs": {
                         "kind": state.user_uploaded_blobs.kind,
                         "items": state.user_uploaded_blobs.items,
                     },
+                    "clarification_question": clarification.question,
+                    "clarification_options": [
+                        {"text": opt.text, "tool_name": opt.tool_name}
+                        for opt in clarification.options
+                    ],
                 }
                 user_id = self.current_user_info.get("id")
                 self.cosmos_client.save_hitl_state(
@@ -1188,11 +1225,13 @@ class ConversationOrchestrator:
                     state_data=hitl_state,
                 )
                 hitl_event = {
-                    "type": "tool_selection_required",
-                    "available_tools": hitl_state["available_tools"],
-                    "llm_recommendation": llm_preferred,
+                    "type": "tool_clarification_required",
+                    "question": clarification.question,
+                    "options": [
+                        {"text": opt.text, "tool_name": opt.tool_name}
+                        for opt in clarification.options
+                    ],
                     "conversation_id": self.current_conversation_id,
-                    "message": "Please select which tool to use",
                     "progress": 50,
                     "timestamp": time.time(),
                 }
@@ -1200,10 +1239,11 @@ class ConversationOrchestrator:
                     f"__PROGRESS__{json.dumps(hitl_event)}__PROGRESS__\n"
                 )
                 logger.info(
-                    f"[Plan Tools Node] HITL pause: emitted tool_selection_required, "
-                    f"tools={hitl_state['available_tools']}, recommendation={llm_preferred}"
+                    f"[Plan Tools Node] HITL pause: emitted tool_clarification_required, "
+                    f"question='{clarification.question}', "
+                    f"options={[opt.tool_name for opt in clarification.options]}"
                 )
-                raise HITLPauseSignal("HITL pause: awaiting tool selection from user")
+                raise HITLPauseSignal("HITL pause: awaiting clarification from user")
 
             return {"messages": state.messages + [response]}
 
@@ -1745,9 +1785,10 @@ class ConversationOrchestrator:
                 response_text=self.current_response_text,
                 thoughts=thoughts,
                 user_timezone=self.current_user_timezone,
-                skip_user_message=self._hitl_forced_tool is not None,
+                skip_user_message=self._hitl_is_resume,
             )
-            self._hitl_forced_tool = None
+            self._hitl_is_resume = False
+            self._hitl_selected_text = None
 
             logger.info(
                 f"[Save Node] Conversation saved (response_time: {response_time:.2f}s)",
@@ -1800,57 +1841,45 @@ class ConversationOrchestrator:
         # Return empty dict (no state updates)
         return {}
 
-    async def _force_tool_call_node(self, state: ConversationState) -> Dict[str, Any]:
-        """
-        HITL Phase 2: directly synthesize the tool call message without calling the LLM.
+    @staticmethod
+    def _route_after_tool_planning(state: ConversationState) -> str:
+        """Route to execute_tools if the last message has tool calls, otherwise extract_context."""
+        last = state.messages[-1] if state.messages else None
+        if last and hasattr(last, "tool_calls") and last.tool_calls:
+            return "execute_tools"
+        return "extract_context"
 
-        The human already told us which tool to use — no need to ask the model again.
-        Builds an AIMessage with a synthetic tool call using the augmented/rewritten query.
+    async def _inject_user_answer_node(
+        self, state: ConversationState
+    ) -> Dict[str, Any]:
         """
-        tool_name = self._hitl_forced_tool
-        query = state.rewritten_query or state.question
-
+        HITL resume: inject the user's selected option text as a HumanMessage so
+        plan_tools_node has natural-language context to re-evaluate the routing decision.
+        """
+        if not self._hitl_selected_text:
+            return {}
         logger.info(
-            f"[Force Tool Call Node] Forcing tool='{tool_name}', query={query[:80]}"
+            f"[Inject User Answer Node] Injecting: '{self._hitl_selected_text[:80]}'"
         )
-
-        progress_data = {
-            "type": "progress",
-            "step": "tool_selected",
-            "message": get_tool_progress_message(tool_name, "planning"),
-            "progress": 50,
-            "timestamp": time.time(),
-            "tool": tool_name,
+        return {
+            "messages": state.messages
+            + [HumanMessage(content=self._hitl_selected_text)]
         }
-        self._emit_progress_item(
-            f"__PROGRESS__{json.dumps(progress_data)}__PROGRESS__\n"
-        )
-
-        tool_call_message = AIMessage(
-            content="",
-            tool_calls=[
-                {
-                    "id": str(uuid.uuid4()),
-                    "name": tool_name,
-                    "args": {"query": query},
-                    "type": "tool_call",
-                }
-            ],
-        )
-        return {"messages": state.messages + [tool_call_message]}
 
     def _build_resume_graph(self, memory: MemorySaver) -> StateGraph:
         """
-        Build a trimmed LangGraph for HITL Phase 2 resume.
+        Build a trimmed LangGraph for HITL resume turns.
 
-        Skips initialize/rewrite/augment/categorize/prepare_messages/plan_tools —
-        the human already chose the tool, so we synthesize the tool call directly.
+        Skips initialize/rewrite/augment/categorize/prepare_messages — the saved
+        state already has these. Injects the user's answer then re-runs plan_tools
+        so the LLM can ask another clarifying question or proceed to execution.
         """
         logger.info("[ConversationOrchestrator] Building HITL resume graph")
 
         graph = StateGraph(ConversationState)
         graph.add_node("prepare_tools", self._prepare_tools_node)
-        graph.add_node("force_tool_call", self._force_tool_call_node)
+        graph.add_node("inject_user_answer", self._inject_user_answer_node)
+        graph.add_node("plan_tools", self._plan_tools_node)
         graph.add_node("execute_tools", self._execute_tools_node)
         graph.add_node("extract_context", self._extract_context_node)
         graph.add_node("generate_response", self._generate_response_node)
@@ -1858,8 +1887,13 @@ class ConversationOrchestrator:
         graph.add_node("user_credit_tracking", self._user_credit_tracking_node)
 
         graph.add_edge(START, "prepare_tools")
-        graph.add_edge("prepare_tools", "force_tool_call")
-        graph.add_edge("force_tool_call", "execute_tools")
+        graph.add_edge("prepare_tools", "inject_user_answer")
+        graph.add_edge("inject_user_answer", "plan_tools")
+        graph.add_conditional_edges(
+            "plan_tools",
+            self._route_after_tool_planning,
+            {"execute_tools": "execute_tools", "extract_context": "extract_context"},
+        )
         graph.add_edge("execute_tools", "extract_context")
         graph.add_edge("extract_context", "generate_response")
         graph.add_edge("generate_response", "save_conversation")
@@ -1910,16 +1944,6 @@ class ConversationOrchestrator:
             extra={"conversation_id": self.current_conversation_id},
         )
 
-        # Define routing function for tool execution
-        def route_after_tool_planning(state: ConversationState) -> str:
-            """Route to execute_tools if tools were planned, otherwise to extract_context"""
-            # Check if the last message has tool calls
-            if state.messages and len(state.messages) > 0:
-                last_message = state.messages[-1]
-                if hasattr(last_message, "tool_calls") and last_message.tool_calls:
-                    return "execute_tools"
-            return "extract_context"
-
         # Define edges
         graph.add_edge(START, "initialize")
         graph.add_edge("initialize", "rewrite")
@@ -1930,10 +1954,9 @@ class ConversationOrchestrator:
         graph.add_edge("prepare_tools", "prepare_messages")
         graph.add_edge("prepare_messages", "plan_tools")
 
-        # Conditional edge: route based on whether tools were planned
         graph.add_conditional_edges(
             "plan_tools",
-            route_after_tool_planning,
+            self._route_after_tool_planning,
             {
                 "execute_tools": "execute_tools",
                 "extract_context": "extract_context",
@@ -2024,6 +2047,8 @@ class ConversationOrchestrator:
                             logger.info(f"[Graph Event] Node completed: {node_name}")
                         elif event_type == "on_chain_error":
                             error = event.get("data", {}).get("error", "Unknown error")
+                            if "HITLPauseSignal" in str(error):
+                                continue
                             logger.error(f"[Graph Event] Error: {error}")
                             raise RuntimeError(f"Graph execution error: {error}")
 
@@ -2100,7 +2125,6 @@ class ConversationOrchestrator:
         user_timezone: Optional[str] = None,
         blob_names: Optional[List[Any]] = None,
         is_data_analyst_mode: Optional[bool] = None,
-        is_agentic_search_mode: Optional[bool] = None,
         hitl_resume: Optional[Dict[str, Any]] = None,
     ):
         """
@@ -2121,7 +2145,6 @@ class ConversationOrchestrator:
             user_timezone: User's timezone
             blob_names: List of uploaded file names or blob info dicts
             is_data_analyst_mode: Whether data analyst mode is active
-            is_agentic_search_mode: Whether agentic search mode is active
 
         Yields:
             Progress updates (__PROGRESS__), metadata (__METADATA__), and response tokens
@@ -2131,7 +2154,6 @@ class ConversationOrchestrator:
         user_uploaded_blobs = self._normalize_blob_inputs(blob_names or [])
         user_settings = user_settings or {}
         is_data_analyst_mode = is_data_analyst_mode or False
-        is_agentic_search_mode = is_agentic_search_mode or False
 
         log_info(f"[ConversationOrchestrator] Starting conversation: {conversation_id}")
         log_info(f"[ConversationOrchestrator] Question: {question[:100]}...")
@@ -2198,11 +2220,12 @@ class ConversationOrchestrator:
                 )
                 if hitl_state:
                     logger.info(
-                        f"[ConversationOrchestrator] HITL Phase 2 resume: "
-                        f"forced_tool={hitl_resume.get('tool_name')}, "
-                        f"available={hitl_state.get('available_tools')}"
+                        f"[ConversationOrchestrator] HITL resume: "
+                        f"selected_tool={hitl_resume.get('tool_name')}, "
+                        f"selected_text='{hitl_resume.get('selected_text', '')[:60]}'"
                     )
-                    self._hitl_forced_tool = hitl_resume.get("tool_name")
+                    self._hitl_is_resume = True
+                    self._hitl_selected_text = hitl_resume.get("selected_text", "")
 
                     conversation_data = self.state_manager.load_conversation(
                         conversation_id=conversation_id,
@@ -2224,7 +2247,6 @@ class ConversationOrchestrator:
                             items=saved_blobs.get("items", []),
                         ),
                         is_data_analyst_mode=is_data_analyst_mode,
-                        is_agentic_search_mode=is_agentic_search_mode,
                         rewritten_query=hitl_state.get("rewritten_query", ""),
                         augmented_query=hitl_state.get("augmented_query", ""),
                         query_category=hitl_state.get("query_category", "General"),
@@ -2259,7 +2281,6 @@ class ConversationOrchestrator:
                 question=question,
                 user_uploaded_blobs=user_uploaded_blobs,
                 is_data_analyst_mode=is_data_analyst_mode,
-                is_agentic_search_mode=is_agentic_search_mode,
             )
 
             # Create memory saver for checkpointing
