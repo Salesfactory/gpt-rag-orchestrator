@@ -864,7 +864,7 @@ The North Pole is, by definition, the northernmost point on Earth, lying antipod
 1. Every factual sentence pulled from the REFERENCE FRAME must end with an inline citation.
 2. If a claim draws from multiple sources, cite all of them: [[1]](url1) [[2]](url2).
 3. Citations go directly after the specific sentence they support — never grouped, never at the end.
-4. For Excel or CSV sources, cite the full filename: [[1]](data_file.xlsx).
+4. For Excel or CSV sources, cite the full filename: [[1]](<file_name.xlsx>).
 5. NEVER create a References, Sources, or Bibliography section at the end.
 6. NEVER modify URLs — copy them exactly as they appear in the REFERENCE FRAME.
 7. Purely conversational or common-knowledge statements do not require citations.
