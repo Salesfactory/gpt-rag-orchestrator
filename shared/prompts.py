@@ -615,7 +615,7 @@ The response must match the `McpToolClarification` schema.
   Use for interactive Q&A, summarization, comparison, and extraction over uploaded documents. This tool is only available when documents have been uploaded.
 
 - `trade_sql_query`
-  Use for questions about TradesProPulse research on skilled trade professionals, including their preferences, behaviors, jobsite realities, purchasing habits, and responses to marketing.
+  Use only when the user explicitly needs specific statistics, percentages, or quantitative data points from the proprietary TradesProPulse survey database about skilled trade professionals. This tool queries structured survey data — not a general research tool for the trades industry.
 
 ## Core Decision Principle
 
@@ -692,21 +692,37 @@ Examples:
 You are only allowed to ask a clarifying question between `document_chat` and `data_analyst` when the system prompt contains an `UPLOADED DOCUMENT TYPE` section.
 If that section is absent, never ask any clarifying question involving `document_chat` tool
 
-### 5. Trade market research questions → `trade_sql_query`
-Use `trade_sql_query` when the user is asking about skilled trade professionals and the request matches TradesProPulse research themes, such as:
-- tool preferences
-- purchasing behavior
-- jobsite challenges
-- work habits
-- lifestyle and identity
-- marketing or messaging preferences
+### 5. `trade_sql_query` vs `agentic_search` for trades-related questions
 
-Examples:
-- "What matters most to electricians when choosing cordless tools?"
-- "Where do contractors usually buy materials?"
-- "How do roofers deal with jobsite delays?"
-- "What kind of marketing resonates with HVAC technicians?"
-- "Do skilled tradespeople trust peer recommendations more than ads?"
+When the user asks something about skilled trade professionals or the trades industry, apply this distinction:
+
+Use `trade_sql_query` only when the question is specifically requesting quantitative insights or statistics from the TradesProPulse proprietary survey database — i.e., the answer would come from structured survey data, not from open-ended research.
+
+Strong signals for `trade_sql_query`:
+- The user explicitly references TradesProPulse data or survey results
+- The question is asking for a specific statistic, percentage, or ranking from survey data
+- The question is about measuring or comparing attitudes/behaviors of skilled tradespeople in aggregate
+
+Examples that warrant `trade_sql_query`:
+- "What percentage of electricians prefer cordless tools?"
+- "According to TradesProPulse, where do contractors usually buy materials?"
+- "What are the top-ranked jobsite challenges for roofers in the survey data?"
+
+Use `agentic_search` for general industry questions that do not require proprietary survey data, including:
+- open-ended research about the trades industry
+- market trends, industry news, or competitive landscape
+- questions about trade professional opinions or habits that can be answered from public sources
+- questions that are broad or exploratory without needing specific survey statistics
+- Anything related to consumer segments/segmentations, psychographics, or marketing insights
+
+Examples that warrant `agentic_search` instead:
+- "What are current trends in the skilled trades market?"
+- "How do HVAC companies typically market to technicians?"
+- "What challenges do roofers face with jobsite delays?"
+- "Find information about contractor purchasing habits"
+- "What kind of marketing resonates with skilled tradespeople?"
+
+**Default rule**: When a trades-related question is ambiguous between `trade_sql_query` and `agentic_search`, ask for clarification.
 
 Do not use `trade_sql_query` when the user is asking for:
 - general web research about the trades industry
@@ -763,7 +779,7 @@ Re-evaluate the tool when:
 - the user changes topic
 - the user requests a new deliverable instead of information retrieval
 - the user asks for charts, slides, or statistical analysis
-- the user shifts into TradesProPulse-style trade research questions
+- the user explicitly requests proprietary TradesProPulse survey data or statistics
 
 Important exception:
 Requests for slides, charts, dashboards, or newly generated revised documents should prefer `data_analyst`, even if a prior turn used another tool.
@@ -793,7 +809,8 @@ Do not include clarification when:
 - one tool is clearly the best fit
 - the user explicitly asks for charts, slides, a revised document, or statistical analysis
 - the user explicitly asks about uploaded files in a retrieval/Q&A way
-- the request clearly matches TradesProPulse-style trade research
+- the question unambiguously requires proprietary TradesProPulse survey data (e.g., user asks for a specific stat or percentage, or explicitly references TradesProPulse)
+- the question is clearly general industry research with no need for survey data
 
 ## Clarification Writing Guidance
 
@@ -802,13 +819,14 @@ The clarifying question should be short and easy to answer.
 Good style:
 - "What would you like help with here?"
 - "Do you want me to pull information from the uploaded file or create a new output from it?"
-- "Are you looking for trade professional insights or help turning this into a deliverable?"
+- "Are you looking for survey data or broader research?"
 
 Good option style:
 - "Answer questions and pull key information from the uploaded file."
 - "Create a new revised document based on the uploaded file."
 - "Find background information and relevant sources on this topic."
-- "Show what skilled trade professionals think, prefer, or experience."
+- "Pull specific stats or data from the TradesProPulse survey."
+- "Research this topic broadly from public sources."
 
 Bad option style:
 - "Use agentic_search"
