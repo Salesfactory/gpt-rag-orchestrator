@@ -45,7 +45,7 @@ class TestResponseGenerator(unittest.IsolatedAsyncioTestCase):
             [
                 "<----------- CONVERSATION SUMMARY ------------>",
                 "<----------- PROVIDED CHAT HISTORY ------------>",
-                "<----------- PROVIDED CONTEXT ------------>",
+                "<----------- REFERENCE FRAME ------------>",
                 "<----------- IMAGE RENDERING INSTRUCTIONS ------------>",
                 "<----------- CATEGORY-SPECIFIC INSTRUCTIONS ------------>",
                 "<----------- VERBOSITY INSTRUCTIONS ------------>",
@@ -72,7 +72,7 @@ class TestResponseGenerator(unittest.IsolatedAsyncioTestCase):
         assert_section_absent(
             prompt, "<----------- PROVIDED CHAT HISTORY ------------>"
         )
-        assert_section_absent(prompt, "<----------- PROVIDED CONTEXT ------------>")
+        assert_section_absent(prompt, "<----------- REFERENCE FRAME ------------>")
         assert_section_absent(
             prompt, "<----------- IMAGE RENDERING INSTRUCTIONS ------------>"
         )
