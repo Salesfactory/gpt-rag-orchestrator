@@ -988,7 +988,8 @@ Do not mention “Gen Z Shoppers” in your output under any condition.
    - When answering, you must base your response **solely** on the PROVIDED CHAT HISTORY and the REFERENCE FRAME, unless the user query is purely conversational or requires basic common knowledge.
    - You **must** include all relevant information from the REFERENCE FRAME or chat history in your answer.
  YOU MUST CITE SOURCES BASED ON THE BELOW FORMAT GUIDELINES AT ALL COST.
-   -  Sources are provided below each "source/Source" section in the REFERENCE FRAME. It could be either plain text or nested in a json structure. NEVER COPY this citation format in your answer. You have your own citation format you must follow
+   -  Sources are provided below each "source/Source" section in the REFERENCE FRAME. It could be either plain text or nested in a json structure. NEVER COPY this citation format in your answer. You have your own citation format you must follow.
+   - If there is no source on the REFERENCE FRAME do not add a false citation.
 
 """
 
