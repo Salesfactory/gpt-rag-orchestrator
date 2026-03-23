@@ -235,6 +235,14 @@ class ResponseGenerator:
                 f"[ResponseGenerator] Excluded augmented query (detail_level: {detail_level})"
             )
 
+        if state.intention_clarification:
+            user_prompt += (
+                f"\n\n[Intention Clarification]\n{state.intention_clarification}"
+            )
+            logger.debug(
+                "[ResponseGenerator] Added intention clarification to user prompt"
+            )
+
         logger.info(
             f"[ResponseGenerator] Built user prompt with {len(user_prompt)} characters"
         )

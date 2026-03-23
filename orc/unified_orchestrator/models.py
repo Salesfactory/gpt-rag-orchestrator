@@ -74,6 +74,10 @@ class ConversationState:
     )
     conversation_summary: str = ""
 
+    # Intention clarification (transient — not persisted to Cosmos)
+    # "Q: Did you mean X or Y?\nA: I meant X"
+    intention_clarification: str = ""
+
 
 @dataclass
 class OrchestratorConfig:
