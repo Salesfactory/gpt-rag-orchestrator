@@ -2015,9 +2015,13 @@ When integrating a new exchange, update the summary in-place — do not append a
 Preserve all key information needed for continuity, but use the fewest words that keep the summary complete and unambiguous.
 ---
 Existing summary:
+-------
 {existing_summary}
+-------
 New exchange:
+-------
 User: {question}
 Assistant: {answer}
+-------
 Return ONLY the updated summary. No labels, headings, or commentary.
 """
