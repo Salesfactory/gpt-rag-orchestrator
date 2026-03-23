@@ -871,8 +871,7 @@ class ConversationOrchestrator:
             decision = await clarification_llm.ainvoke(
                 [
                     SystemMessage(content=INTENTION_CLARIFICATION_PROMPT),
-                    HumanMessage(content=human_content)
-
+                    HumanMessage(content=human_content),
                 ]
             )
 
