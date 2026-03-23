@@ -864,7 +864,7 @@ The North Pole is, by definition, the northernmost point on Earth, lying antipod
 1. Every factual sentence pulled from the REFERENCE FRAME must end with an inline citation.
 2. If a claim draws from multiple sources, cite all of them: [[1]](url1) [[2]](url2).
 3. Citations go directly after the specific sentence they support — never grouped, never at the end.
-4. For Excel or CSV sources, cite the full filename: [[1]](data_file.xlsx).
+4. For Excel or CSV sources, cite the full filename: [[1]](<file_name.xlsx>).
 5. NEVER create a References, Sources, or Bibliography section at the end.
 6. NEVER modify URLs — copy them exactly as they appear in the REFERENCE FRAME.
 7. Purely conversational or common-knowledge statements do not require citations.
@@ -988,7 +988,8 @@ Do not mention “Gen Z Shoppers” in your output under any condition.
    - When answering, you must base your response **solely** on the PROVIDED CHAT HISTORY and the REFERENCE FRAME, unless the user query is purely conversational or requires basic common knowledge.
    - You **must** include all relevant information from the REFERENCE FRAME or chat history in your answer.
  YOU MUST CITE SOURCES BASED ON THE BELOW FORMAT GUIDELINES AT ALL COST.
-   -  Sources are provided below each "source/Source" section in the REFERENCE FRAME. It could be either plain text or nested in a json structure. NEVER COPY this citation format in your answer. You have your own citation format you must follow
+   -  Sources are provided below each "source/Source" section in the REFERENCE FRAME. It could be either plain text or nested in a json structure. NEVER COPY this citation format in your answer. You have your own citation format you must follow.
+   - If there are no sources in the REFERENCE FRAME, do not add any false citations.
 
 """
 
