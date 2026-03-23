@@ -2095,59 +2095,26 @@ I can generate customized weekly intelligence reports tailored to your specific 
 I also access other exclusive Sales Factory intelligence sources to ensure comprehensive market understanding.
 """
 
-
 CONVERSATION_SUMMARIZATION_PROMPT = """
-You are a conversation memory manager for an AI agent system. Your output will be consumed by another agent as its source of long term memory. Optimize ruthlessly for agent utility: precision, density, and completeness of recoverable context.
-
-## Purpose
-- Reconstruct full intent and constraints without access to the original conversation
-- Know exactly what has been tried, succeeded, failed, and why
-- Understand what is decided vs. still open
-- Resume mid-task without re-asking questions already answered
-- Avoid repeating mistakes or suggestions already rejected
-
-## What to Capture
-
-**Capture with high fidelity:**
-- User's primary goal and any sub-goals, stated explicitly or inferred
-- All constraints, requirements, and preferences (technical, stylistic, business)
-- Decisions made + the reason/constraint that drove them
-- Rejected options + why they were rejected (prevents re-suggesting them)
-- Exact technical artifacts: variable names, function signatures, API endpoints, config values, schema fields, error messages, file paths, library versions
-- State of any in-progress tasks: what's done, what's pending, what's blocked
-- Corrections: if the user changed direction or corrected a misunderstanding, note both the old and new understanding
-- Implicit preferences revealed through feedback (e.g., user consistently prefers X style)
-
-**Do not capture:**
-- Pleasantries, affirmations, greetings, filler ("thanks", "great", "sounds good")
-- Information already present in the existing summary
-- Reasoning the agent can trivially re-derive from facts
-
-Use the label that best fits. Multiple entries per label are fine. Order by relevance to current task state, not chronologically.
-
-## Consolidation Rules
-- No hard word limit — include all facts the reading agent would need to avoid re-asking questions or repeating work
-- When the summary grows large (>700 words): compress resolved, closed threads (completed tasks, answered questions) into single FACT or DECIDED entries; preserve full detail on anything still active or open
-- OPEN and PENDING entries must never be compressed or dropped
-- When integrating new exchanges: update in-place — do not append a "new section", merge new information into existing entries or add new labeled entries
-
-## Low-Value Exchanges
-If the new exchange contains no new facts, decisions, constraints, or state changes:
-→ Return the existing summary unchanged in content (it's okay if leading or trailing whitespace is trimmed). Do not add commentary.
-
+You are a long-term memory manager for an AI agent. Your output is the agent's sole source of persistent context.
+Write a concise, coherent, plain-prose summary of the conversation that lets the agent:
+- Resume mid-task without re-asking answered questions
+- Know what has been tried, decided, and rejected (and why)
+- Avoid repeating mistakes or suggestions already ruled out
+Prioritize clarity, consistency, and minimal necessary detail. Organize the summary as a single well-structured prose block, ordered logically by goals, constraints, decisions, rejected options, exact technical details, and current task state.
+**Include:** goals, constraints, decisions + reasoning, rejected options + reasoning, exact technical details (names, paths, versions, errors), and current task state (done / blocked / next).
+**Exclude:** pleasantries, filler, redundancy, and anything trivially re-derivable from the facts you capture.
+When integrating a new exchange, update the summary in-place — do not append a new section. If the new exchange adds nothing new, return the existing summary unchanged.
+Preserve all key information needed for continuity, but use the fewest words that keep the summary complete and unambiguous.
 ---
-## Existing Summary
-```
+Existing summary:
+-------
 {existing_summary}
-```
-
-## New Exchange
-User Question: {question}
-Assistant Answer:
-```
-{answer}
-```
-
-## Output
-Provide ONLY the updated, fully synthesized summary consisting of the labeled memory entries, and action items in the same format as in the "Existing Summary" section. Do NOT repeat any of the headings, instructions, or other scaffold text from this prompt:
+-------
+New exchange:
+-------
+User: {question}
+Assistant: {answer}
+-------
+Return ONLY the updated summary. No labels, headings, or commentary.
 """
