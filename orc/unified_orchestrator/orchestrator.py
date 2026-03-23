@@ -863,7 +863,11 @@ class ConversationOrchestrator:
                 f"Rewritten question: {state.rewritten_query or state.question}"
             )
             if formatted_history:
-                human_content += f"\n\nConversation history:\n{formatted_history}"
+                human_content += f"""
+                <!-- Conversation history --!>
+                Conversation history:
+                {formatted_history}
+                <!-- End of conversation history --!>"""
 
             clarification_llm = self.planning_llm.with_structured_output(
                 IntentionClarificationDecision
