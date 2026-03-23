@@ -181,12 +181,15 @@ class TestOrchestratorNodes(unittest.IsolatedAsyncioTestCase):
 
     async def test_plan_tools_node_with_tool_calls(self):
         from orc.unified_orchestrator.orchestrator import McpRoutingDecision
+
         orch = make_orchestrator()
         tool = MagicMock()
         tool.name = "agentic_search"
         orch.wrapped_tools = [tool]
         orch.tool_calling_llm = MagicMock()
-        routing_decision = McpRoutingDecision(tool_name="agentic_search", clarification=None)
+        routing_decision = McpRoutingDecision(
+            tool_name="agentic_search", clarification=None
+        )
         routing_llm = MagicMock()
         routing_llm.ainvoke = AsyncMock(return_value=routing_decision)
         orch.tool_calling_llm.with_structured_output.return_value = routing_llm
