@@ -635,7 +635,7 @@ Use for:
 ### `document_chat`
 Use for:
 - Interactive Q&A about uploaded documents
-- Summarization and extraction of information from uploaded files 
+- Summarization and extraction of information from uploaded files
 - Comparison between uploaded documents
 - Retrieving facts, sections, or key points from uploaded files
 
