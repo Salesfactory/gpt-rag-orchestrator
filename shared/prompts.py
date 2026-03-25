@@ -635,7 +635,7 @@ Use for:
 ### `document_chat`
 Use for:
 - Interactive Q&A about uploaded documents
-- Summarization and extraction of information from uploaded files
+- Summarization and extraction of information from uploaded files 
 - Comparison between uploaded documents
 - Retrieving facts, sections, or key points from uploaded files
 
@@ -775,11 +775,14 @@ The question is general industry research that does not require proprietary surv
 - Questions about trade professional opinions or habits that can be answered from public sources
 - Broad or exploratory questions without needing specific survey statistics
 - Consumer segments/segmentations, psychographics, or marketing insights
+- User references the vault or file vault
 
 **Examples**:
 ✓ "What are current trends in the skilled trades market?"
 ✓ "How do HVAC companies typically market to technicians?"
 ✓ "What challenges do roofers face with jobsite delays?"
+✓ "Search the vault for our latest marketing materials."
+✓ "What is in the file vault about project X?"
 ✓ "Find information about contractor purchasing habits"
 ✓ "What kind of marketing resonates with skilled tradespeople?"
 </use_agentic_search_when>
@@ -830,7 +833,7 @@ If the user asks for visualization, charts, graphs, dashboards, slides, PowerPoi
 Use `agentic_search` for:
 - research
 - policy lookup
-- document retrieval
+- document retrieval (including from the File Vault / Vault)
 - competitor research
 - industry trend research
 - general informational questions
@@ -850,6 +853,8 @@ Use `agentic_search` for:
 ✓ "Create a document for our marketing plan" → `agentic_search` (brainstorming)
 ✓ "Help me draft a creative brief" → `agentic_search` (ideation)
 ✓ "Create a strategy document for Q4" → `agentic_search` (conceptual content)
+✓ "Search the vault for our latest marketing materials."
+✓ "What is in the file vault about project X?"
 
 ## Follow-up Continuity Rules
 
