@@ -775,14 +775,11 @@ The question is general industry research that does not require proprietary surv
 - Questions about trade professional opinions or habits that can be answered from public sources
 - Broad or exploratory questions without needing specific survey statistics
 - Consumer segments/segmentations, psychographics, or marketing insights
-- User references the vault or file vault
 
 **Examples**:
 ✓ "What are current trends in the skilled trades market?"
 ✓ "How do HVAC companies typically market to technicians?"
 ✓ "What challenges do roofers face with jobsite delays?"
-✓ "Search the vault for our latest marketing materials."
-✓ "What is in the file vault about project X?"
 ✓ "Find information about contractor purchasing habits"
 ✓ "What kind of marketing resonates with skilled tradespeople?"
 </use_agentic_search_when>
