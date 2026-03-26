@@ -469,7 +469,7 @@ class ConversationOrchestrator:
                     json=payload,
                     headers=headers,
                     params=params,
-                    timeout=aiohttp.ClientTimeout(total=600),
+                    timeout=aiohttp.ClientTimeout(total=900),
                 ) as response:
                     if response.status != 200:
                         error_text = await response.text()
@@ -1462,9 +1462,53 @@ class ConversationOrchestrator:
 
                 return result
 
+        except asyncio.TimeoutError:
+            logger.error(
+                f"[Execute Tools Node] Timeout executing {tool_name} after aiohttp limit"
+            )
+            error_data = {
+                "type": "error",
+                "message": "The data analysis request timed out. The query may be too complex or the service is under heavy load. Please try again or simplify your request.",
+                "step": "tool_execution",
+                "timestamp": time.time(),
+            }
+            self._emit_progress_item(
+                f"__PROGRESS__{json.dumps(error_data)}__PROGRESS__\n"
+            )
+            error_result = {
+                "success": False,
+                "error": f"Tool execution timed out after the configured limit.",
+                "last_agent_message": "",
+            }
+            tool_message = ToolMessage(
+                content=json.dumps(error_result),
+                tool_call_id=tool_call_id,
+                name=tool_name,
+            )
+            return {"messages": [tool_message]}
+
         except Exception as e:
             logger.error(f"[Execute Tools Node] Error executing tools: {e}")
-            return {}
+            error_data = {
+                "type": "error",
+                "message": "An error occurred while executing the tool. Please try again.",
+                "step": "tool_execution",
+                "timestamp": time.time(),
+            }
+            self._emit_progress_item(
+                f"__PROGRESS__{json.dumps(error_data)}__PROGRESS__\n"
+            )
+            error_result = {
+                "success": False,
+                "error": str(e),
+                "last_agent_message": "",
+            }
+            tool_message = ToolMessage(
+                content=json.dumps(error_result),
+                tool_call_id=tool_call_id,
+                name=tool_name,
+                )
+            return {"messages": [tool_message]}
 
     async def _extract_context_node(self, state: ConversationState) -> Dict[str, Any]:
         """
