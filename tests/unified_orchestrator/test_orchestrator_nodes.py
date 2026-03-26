@@ -249,7 +249,13 @@ class TestOrchestratorNodes(unittest.IsolatedAsyncioTestCase):
             mock_tool_node.return_value = mock_instance
             result = await orch._execute_tools_node(state)
 
-        self.assertEqual(result, {})
+        self.assertIn("messages", result)
+        tool_msg = result["messages"][0]
+        self.assertEqual(tool_msg.name, "agentic_search")
+        self.assertEqual(tool_msg.tool_call_id, "1")
+        content = json.loads(tool_msg.content)
+        self.assertFalse(content["success"])
+        self.assertEqual(content["error"], "boom")
 
     async def test_user_credit_tracking_updates_credit(self):
         orch = make_orchestrator()
