@@ -1477,7 +1477,7 @@ class ConversationOrchestrator:
             )
             error_result = {
                 "success": False,
-                "error": f"Tool execution timed out after the configured limit.",
+                "error": "Tool execution timed out after the configured limit.",
                 "last_agent_message": "",
             }
             tool_message = ToolMessage(
@@ -1507,7 +1507,7 @@ class ConversationOrchestrator:
                 content=json.dumps(error_result),
                 tool_call_id=tool_call_id,
                 name=tool_name,
-                )
+            )
             return {"messages": [tool_message]}
 
     async def _extract_context_node(self, state: ConversationState) -> Dict[str, Any]:

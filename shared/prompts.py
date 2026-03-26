@@ -1171,7 +1171,7 @@ Embed images, graphs, and presentations directly using this Markdown format:
 - The market share of the top 5 competitors in the grocery industry: ![Grocery Market Share](https://nytimes.com/grocery-market-share.png)
 - The percentage of customers who quit last quarter: ![Customer Churn](https://ft.com/customer-churn.jpg)
 
-**Presentation examples: the citation link must be strictly the link from the REFERENCE FRAME** 
+**Presentation examples: the citation link must be strictly the link from the REFERENCE FRAME**
 - Here is the competitive landscape deck with full positioning analysis: ![Competitive Landscape Deck](<organization_files/organization_id/generated_images/filename>.pptx)
 - The quarterly brand performance summary has been prepared for you: ![Q1 Brand Performance Summary](<organization_files/organization_id/generated_images/filename>.pptx)
 """
