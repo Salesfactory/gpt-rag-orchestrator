@@ -170,9 +170,9 @@ class TestOrchestratorNodes(unittest.IsolatedAsyncioTestCase):
         tool.name = "agentic_search"
         orch.wrapped_tools = [tool]
         orch.tool_calling_llm = MagicMock()
-        model_with_tools = MagicMock()
-        model_with_tools.ainvoke = AsyncMock(side_effect=Exception("boom"))
-        orch.tool_calling_llm.bind_tools.return_value = model_with_tools
+        routing_llm = MagicMock()
+        routing_llm.ainvoke = AsyncMock(side_effect=Exception("boom"))
+        orch.tool_calling_llm.with_structured_output.return_value = routing_llm
 
         state = make_state(messages=[MagicMock()])
         result = await orch._plan_tools_node(state)
@@ -180,16 +180,19 @@ class TestOrchestratorNodes(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result["messages"], state.messages)
 
     async def test_plan_tools_node_with_tool_calls(self):
+        from orc.unified_orchestrator.orchestrator import McpRoutingDecision
+
         orch = make_orchestrator()
         tool = MagicMock()
         tool.name = "agentic_search"
         orch.wrapped_tools = [tool]
         orch.tool_calling_llm = MagicMock()
-        response = MagicMock()
-        response.tool_calls = [{"name": "agentic_search", "id": "1", "args": {}}]
-        model_with_tools = MagicMock()
-        model_with_tools.ainvoke = AsyncMock(return_value=response)
-        orch.tool_calling_llm.bind_tools.return_value = model_with_tools
+        routing_decision = McpRoutingDecision(
+            tool_name="agentic_search", clarification=None
+        )
+        routing_llm = MagicMock()
+        routing_llm.ainvoke = AsyncMock(return_value=routing_decision)
+        orch.tool_calling_llm.with_structured_output.return_value = routing_llm
         orch._progress_queue = make_progress_queue()
 
         state = make_state(messages=[MagicMock()])

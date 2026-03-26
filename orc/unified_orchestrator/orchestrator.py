@@ -35,7 +35,11 @@ from langchain_anthropic import ChatAnthropic
 
 from shared.cosmos_db import CosmosDBClient
 from shared.util import get_organization, get_secret
-from shared.prompts import MCP_SYSTEM_PROMPT, CONVERSATION_SUMMARIZATION_PROMPT
+from shared.prompts import (
+    MCP_SYSTEM_PROMPT,
+    CONVERSATION_SUMMARIZATION_PROMPT,
+    INTENTION_CLARIFICATION_PROMPT,
+)
 
 from .models import ConversationState, OrchestratorConfig, UserUploadedBlobs
 from .state_manager import StateManager
@@ -84,6 +88,17 @@ class McpRoutingDecision(BaseModel):
     clarification: Optional[McpClarifyingQuestion] = Field(
         None,
         description="Present only when user intent is ambiguous — omit when the tool choice is clear",
+    )
+
+
+class IntentionClarificationDecision(BaseModel):
+    clarifying_question: Optional[str] = Field(
+        None,
+        description="A short clarifying question when user intent is genuinely ambiguous. Null when intent is clear.",
+    )
+    answer_options: Optional[List[str]] = Field(
+        None,
+        description="2-3 answer options covering the most likely interpretations. Null when intent is clear.",
     )
 
 
@@ -180,6 +195,9 @@ class ConversationOrchestrator:
         self._hitl_selected_tool: Optional[str] = (
             None  # tool asscociated with user's selected option, not the initial tool choice from the mcp selection
         )
+
+        # Intention clarification HITL (reuses _hitl_is_resume and _hitl_selected_text)
+        self._intention_clarification_question: Optional[str] = None
 
         logger.info("[ConversationOrchestrator] Initialization complete")
 
@@ -828,6 +846,102 @@ class ConversationOrchestrator:
                 "augmented_query": state.rewritten_query or state.question,
             }
 
+    async def _clarify_intention_node(self, state: ConversationState) -> Dict[str, Any]:
+        """
+        Clarify intention node: Ask a clarifying question if user intent is ambiguous.
+        """
+        log_info("[Clarify Intention Node] Evaluating user intent clarity")
+
+        try:
+            history = self.current_conversation_data.get("history", [])
+            formatted_history = self.context_builder.format_conversation_history(
+                history
+            )
+
+            human_content = (
+                f"Original user question: {state.question}\n"
+                f"Rewritten question: {state.rewritten_query or state.question}"
+            )
+            if formatted_history:
+                human_content += f"""
+                <!-- Conversation history --!>
+                Conversation history:
+                {formatted_history}
+                <!-- End of conversation history --!>"""
+
+            clarification_llm = self.planning_llm.with_structured_output(
+                IntentionClarificationDecision
+            )
+            decision = await clarification_llm.ainvoke(
+                [
+                    SystemMessage(content=INTENTION_CLARIFICATION_PROMPT),
+                    HumanMessage(content=human_content),
+                ]
+            )
+
+            if decision.clarifying_question is None or decision.answer_options is None:
+                logger.info("[Clarify Intention Node] Intent is clear, proceeding")
+                return {}
+
+            logger.info(
+                f"[Clarify Intention Node] Clarification needed: "
+                f"'{decision.clarifying_question}', options={decision.answer_options}"
+            )
+
+            # Save HITL state for resume
+            hitl_state = {
+                "hitl_type": "intention_clarification",
+                "question": state.question,
+                "rewritten_query": state.rewritten_query,
+                "augmented_query": state.augmented_query,
+                "query_category": state.query_category,
+                "user_uploaded_blobs": {
+                    "kind": state.user_uploaded_blobs.kind,
+                    "items": state.user_uploaded_blobs.items,
+                },
+                "conversation_summary": state.conversation_summary,
+                "uploaded_file_refs": state.uploaded_file_refs,
+                "code_thread_id": state.code_thread_id,
+                "cached_dochat_analyst_blobs": state.cached_dochat_analyst_blobs,
+                "last_mcp_tool_used": state.last_mcp_tool_used,
+                "is_data_analyst_mode": state.is_data_analyst_mode,
+                "clarification_question": decision.clarifying_question,
+                "clarification_options": decision.answer_options,
+            }
+
+            user_id = self.current_user_info.get("id")
+            self.cosmos_client.save_hitl_state(
+                conversation_id=self.current_conversation_id,
+                user_id=user_id,
+                state_data=hitl_state,
+            )
+
+            hitl_event = {
+                "type": "intention_clarification_required",
+                "question": decision.clarifying_question,
+                "options": [{"text": opt} for opt in decision.answer_options],
+                "conversation_id": self.current_conversation_id,
+                "progress": 35,
+                "timestamp": time.time(),
+            }
+            self._emit_progress_item(
+                f"__PROGRESS__{json.dumps(hitl_event)}__PROGRESS__\n"
+            )
+
+            logger.info(
+                "[Clarify Intention Node] HITL pause: emitted intention_clarification_required"
+            )
+            raise HITLPauseSignal(
+                "HITL pause: awaiting intention clarification from user"
+            )
+
+        except HITLPauseSignal:
+            raise
+        except Exception as e:
+            logger.error(f"[Clarify Intention Node] Error: {e}", exc_info=True)
+            self._store_error(e, "intention_clarification_error")
+            return {}
+
     async def _categorize_node(self, state: ConversationState) -> Dict[str, Any]:
         """
         Categorize node: Categorize query into marketing categories.
@@ -1066,9 +1180,18 @@ class ConversationOrchestrator:
                 f"[Prepare Messages Node] Added last tool used ({last_tool_used}) to system prompt"
             )
 
+        user_content = state.rewritten_query or state.question
+        if state.intention_clarification:
+            user_content += (
+                f"\n\n[Intention Clarification]\n{state.intention_clarification}"
+            )
+            logger.info(
+                "[Prepare Messages Node] Added intention clarification to user message"
+            )
+
         messages = [
             SystemMessage(content=system_msg),
-            HumanMessage(content=state.rewritten_query or state.question),
+            HumanMessage(content=user_content),
         ]
 
         logger.info(f"[Prepare Messages Node] Created {len(messages)} initial messages")
@@ -1138,16 +1261,6 @@ class ConversationOrchestrator:
                     tool_choice={"type": "tool", "name": "data_analyst"},
                 )
                 response = await model_with_tools.ainvoke(state.messages)
-            elif (
-                len(self.wrapped_tools) == 1
-                and self.wrapped_tools[0].name == "agentic_search"
-            ):
-                logger.info("[Plan Tools Node] Forcing agentic_search tool usage")
-                model_with_tools = self.tool_calling_llm.bind_tools(
-                    self.wrapped_tools,
-                    tool_choice={"type": "tool", "name": "agentic_search"},
-                )
-                response = await model_with_tools.ainvoke(state.messages)
             else:
                 query = state.rewritten_query or state.question
                 routing_llm = self.tool_calling_llm.with_structured_output(
@@ -1209,6 +1322,7 @@ class ConversationOrchestrator:
                     "code_thread_id": state.code_thread_id,
                     "cached_dochat_analyst_blobs": state.cached_dochat_analyst_blobs,
                     "last_mcp_tool_used": state.last_mcp_tool_used,
+                    "intention_clarification": state.intention_clarification,
                     "llm_preferred_tool": routing_decision.tool_name,
                     "question": state.question,
                     "user_uploaded_blobs": {
@@ -1910,6 +2024,63 @@ class ConversationOrchestrator:
 
         return graph.compile(checkpointer=memory)
 
+    async def _inject_intention_answer_node(
+        self, state: ConversationState
+    ) -> Dict[str, Any]:
+        """
+        Intention HITL resume: combine the clarifying question and the user's
+        selected answer into the intention_clarification state field.
+        """
+        if not self._hitl_selected_text:
+            return {}
+
+        clarification = (
+            f"Q: {self._intention_clarification_question}\n"
+            f"A: {self._hitl_selected_text}"
+        )
+        logger.info(
+            f"[Inject Intention Answer Node] Setting intention_clarification: "
+            f"'{clarification[:120]}'"
+        )
+        return {"intention_clarification": clarification}
+
+    def _build_intention_resume_graph(self, memory: MemorySaver) -> StateGraph:
+        """
+        Build a LangGraph for intention HITL resume turns.
+
+        Resumes after the user answered the clarifying question. Injects the
+        answer into state, then continues the normal flow from prepare_tools onward.
+        """
+        logger.info("[ConversationOrchestrator] Building intention HITL resume graph")
+
+        graph = StateGraph(ConversationState)
+        graph.add_node("inject_intention_answer", self._inject_intention_answer_node)
+        graph.add_node("prepare_tools", self._prepare_tools_node)
+        graph.add_node("prepare_messages", self._prepare_messages_node)
+        graph.add_node("plan_tools", self._plan_tools_node)
+        graph.add_node("execute_tools", self._execute_tools_node)
+        graph.add_node("extract_context", self._extract_context_node)
+        graph.add_node("generate_response", self._generate_response_node)
+        graph.add_node("save_conversation", self._save_node)
+        graph.add_node("user_credit_tracking", self._user_credit_tracking_node)
+
+        graph.add_edge(START, "inject_intention_answer")
+        graph.add_edge("inject_intention_answer", "prepare_tools")
+        graph.add_edge("prepare_tools", "prepare_messages")
+        graph.add_edge("prepare_messages", "plan_tools")
+        graph.add_conditional_edges(
+            "plan_tools",
+            self._route_after_tool_planning,
+            {"execute_tools": "execute_tools", "extract_context": "extract_context"},
+        )
+        graph.add_edge("execute_tools", "extract_context")
+        graph.add_edge("extract_context", "generate_response")
+        graph.add_edge("generate_response", "save_conversation")
+        graph.add_edge("save_conversation", "user_credit_tracking")
+        graph.add_edge("user_credit_tracking", END)
+
+        return graph.compile(checkpointer=memory)
+
     def _build_graph(self, memory: MemorySaver) -> StateGraph:
         """
         Construct the LangGraph workflow.
@@ -1933,11 +2104,12 @@ class ConversationOrchestrator:
 
         graph = StateGraph(ConversationState)
 
-        # Add nodes - use functools.partial to bind orchestrator to async node functions
+        # Add nodes
         graph.add_node("initialize", self._initialize_node)
         graph.add_node("rewrite", self._rewrite_node)
         graph.add_node("augment", self._augment_node)
         graph.add_node("categorize", self._categorize_node)
+        graph.add_node("clarify_intention", self._clarify_intention_node)
         graph.add_node("prepare_tools", self._prepare_tools_node)
         graph.add_node("prepare_messages", self._prepare_messages_node)
         graph.add_node("plan_tools", self._plan_tools_node)
@@ -1948,17 +2120,20 @@ class ConversationOrchestrator:
         graph.add_node("user_credit_tracking", self._user_credit_tracking_node)
 
         logger.debug(
-            "[ConversationOrchestrator] Added 12 nodes to graph",
+            "[ConversationOrchestrator] Added 13 nodes to graph",
             extra={"conversation_id": self.current_conversation_id},
         )
 
         # Define edges
+        # initialize fans out to rewrite and categorize in parallel,
+        # both join at augment, then clarify_intention runs before tool prep.
         graph.add_edge(START, "initialize")
         graph.add_edge("initialize", "rewrite")
         graph.add_edge("initialize", "categorize")
         graph.add_edge("rewrite", "augment")
         graph.add_edge("categorize", "augment")
-        graph.add_edge("augment", "prepare_tools")
+        graph.add_edge("augment", "clarify_intention")
+        graph.add_edge("clarify_intention", "prepare_tools")
         graph.add_edge("prepare_tools", "prepare_messages")
         graph.add_edge("prepare_messages", "plan_tools")
 
@@ -2227,14 +2402,7 @@ class ConversationOrchestrator:
                     conversation_id=conversation_id, user_id=user_id
                 )
                 if hitl_state:
-                    logger.info(
-                        f"[ConversationOrchestrator] HITL resume: "
-                        f"selected_tool={hitl_resume.get('tool_name')}, "
-                        f"selected_text='{hitl_resume.get('selected_text', '')[:60]}'"
-                    )
-                    self._hitl_is_resume = True
-                    self._hitl_selected_text = hitl_resume.get("selected_text", "")
-                    self._hitl_selected_tool = hitl_resume.get("tool_name")
+                    hitl_type = hitl_state.get("hitl_type", "tool_selection")
 
                     conversation_data = self.state_manager.load_conversation(
                         conversation_id=conversation_id,
@@ -2242,49 +2410,118 @@ class ConversationOrchestrator:
                     )
                     self.current_conversation_data = conversation_data
 
-                    # Reconstruct state from saved HITL payload
                     saved_blobs = hitl_state.get(
                         "user_uploaded_blobs", {"kind": "", "items": []}
                     )
-                    deserialized_messages = messages_from_dict(
-                        hitl_state.get("messages_serialized", [])
-                    )
-                    resume_state = ConversationState(
-                        question=hitl_state.get("question", question),
-                        user_uploaded_blobs=UserUploadedBlobs(
-                            kind=saved_blobs.get("kind", ""),
-                            items=saved_blobs.get("items", []),
-                        ),
-                        is_data_analyst_mode=is_data_analyst_mode,
-                        rewritten_query=hitl_state.get("rewritten_query", ""),
-                        augmented_query=hitl_state.get("augmented_query", ""),
-                        query_category=hitl_state.get("query_category", "General"),
-                        messages=deserialized_messages,
-                        conversation_summary=hitl_state.get("conversation_summary", ""),
-                        uploaded_file_refs=hitl_state.get("uploaded_file_refs", []),
-                        code_thread_id=hitl_state.get("code_thread_id"),
-                        cached_dochat_analyst_blobs=hitl_state.get(
-                            "cached_dochat_analyst_blobs", []
-                        ),
-                        last_mcp_tool_used=hitl_state.get("last_mcp_tool_used", ""),
-                    )
 
-                    memory = MemorySaver()
-                    resume_graph = self._build_resume_graph(memory)
-                    config = {"configurable": {"thread_id": conversation_id}}
+                    if hitl_type == "intention_clarification":
+                        logger.info(
+                            f"[ConversationOrchestrator] Intention HITL resume: "
+                            f"selected_text='{hitl_resume.get('selected_text', '')[:60]}'"
+                        )
+                        self._hitl_is_resume = True
+                        self._hitl_selected_text = hitl_resume.get("selected_text", "")
+                        self._intention_clarification_question = hitl_state.get(
+                            "clarification_question", ""
+                        )
 
-                    async for item in self._stream_graph_execution(
-                        resume_graph, resume_state, config
-                    ):
-                        for handler in logging.root.handlers:
-                            handler.flush()
-                        yield item
+                        resume_state = ConversationState(
+                            question=hitl_state.get("question", question),
+                            user_uploaded_blobs=UserUploadedBlobs(
+                                kind=saved_blobs.get("kind", ""),
+                                items=saved_blobs.get("items", []),
+                            ),
+                            is_data_analyst_mode=hitl_state.get(
+                                "is_data_analyst_mode", is_data_analyst_mode
+                            ),
+                            rewritten_query=hitl_state.get("rewritten_query", ""),
+                            augmented_query=hitl_state.get("augmented_query", ""),
+                            query_category=hitl_state.get("query_category", "General"),
+                            conversation_summary=hitl_state.get(
+                                "conversation_summary", ""
+                            ),
+                            uploaded_file_refs=hitl_state.get("uploaded_file_refs", []),
+                            code_thread_id=hitl_state.get("code_thread_id"),
+                            cached_dochat_analyst_blobs=hitl_state.get(
+                                "cached_dochat_analyst_blobs", []
+                            ),
+                            last_mcp_tool_used=hitl_state.get("last_mcp_tool_used", ""),
+                        )
 
-                    logger.info(
-                        f"[ConversationOrchestrator] HITL Phase 2 completed "
-                        f"(total_time: {time.time() - start_time:.2f}s)"
-                    )
-                    return
+                        memory = MemorySaver()
+                        resume_graph = self._build_intention_resume_graph(memory)
+                        config = {"configurable": {"thread_id": conversation_id}}
+
+                        async for item in self._stream_graph_execution(
+                            resume_graph, resume_state, config
+                        ):
+                            for handler in logging.root.handlers:
+                                handler.flush()
+                            yield item
+
+                        self._intention_clarification_question = None
+
+                        logger.info(
+                            f"[ConversationOrchestrator] Intention HITL resume completed "
+                            f"(total_time: {time.time() - start_time:.2f}s)"
+                        )
+                        return
+
+                    else:
+                        # Tool selection HITL resume (existing flow)
+                        logger.info(
+                            f"[ConversationOrchestrator] HITL resume: "
+                            f"selected_tool={hitl_resume.get('tool_name')}, "
+                            f"selected_text='{hitl_resume.get('selected_text', '')[:60]}'"
+                        )
+                        self._hitl_is_resume = True
+                        self._hitl_selected_text = hitl_resume.get("selected_text", "")
+                        self._hitl_selected_tool = hitl_resume.get("tool_name")
+
+                        deserialized_messages = messages_from_dict(
+                            hitl_state.get("messages_serialized", [])
+                        )
+                        resume_state = ConversationState(
+                            question=hitl_state.get("question", question),
+                            user_uploaded_blobs=UserUploadedBlobs(
+                                kind=saved_blobs.get("kind", ""),
+                                items=saved_blobs.get("items", []),
+                            ),
+                            is_data_analyst_mode=is_data_analyst_mode,
+                            rewritten_query=hitl_state.get("rewritten_query", ""),
+                            augmented_query=hitl_state.get("augmented_query", ""),
+                            query_category=hitl_state.get("query_category", "General"),
+                            messages=deserialized_messages,
+                            conversation_summary=hitl_state.get(
+                                "conversation_summary", ""
+                            ),
+                            uploaded_file_refs=hitl_state.get("uploaded_file_refs", []),
+                            code_thread_id=hitl_state.get("code_thread_id"),
+                            cached_dochat_analyst_blobs=hitl_state.get(
+                                "cached_dochat_analyst_blobs", []
+                            ),
+                            last_mcp_tool_used=hitl_state.get("last_mcp_tool_used", ""),
+                            intention_clarification=hitl_state.get(
+                                "intention_clarification", ""
+                            ),
+                        )
+
+                        memory = MemorySaver()
+                        resume_graph = self._build_resume_graph(memory)
+                        config = {"configurable": {"thread_id": conversation_id}}
+
+                        async for item in self._stream_graph_execution(
+                            resume_graph, resume_state, config
+                        ):
+                            for handler in logging.root.handlers:
+                                handler.flush()
+                            yield item
+
+                        logger.info(
+                            f"[ConversationOrchestrator] HITL Phase 2 completed "
+                            f"(total_time: {time.time() - start_time:.2f}s)"
+                        )
+                        return
 
             initial_state = ConversationState(
                 question=question,
