@@ -14,7 +14,6 @@ from shared.util import (
 )
 
 from orc import ConversationOrchestrator, get_settings
-from shared.conversation_export import export_conversation
 from webscrapping.multipage_scrape import crawl_website
 from report_worker.processor import process_report_job, ReportJobDeterministicError
 from shared.cosmos_jobs import (
@@ -309,58 +308,6 @@ def blob_event_grid_trigger(event: func.EventGridEvent):
 
     except Exception as e:
         logging.error(f"[blob_event_grid] Error: {str(e)}, Event ID: {event.id}")
-
-
-@app.route(
-    route="conversations",
-    methods=[func.HttpMethod.POST],
-)
-async def conversations(req: Request) -> Response:
-    logging.info("Python HTTP trigger function processed a request for conversations.")
-
-    if req.method == "POST":
-        try:
-            req_body = await req.json()
-            id_from_body = req_body.get("id")
-            if not id_from_body:
-                return Response("Missing conversation ID for export", status_code=400)
-
-            user_id = req_body.get("user_id")
-            export_format = req_body.get("format", "html")
-
-            if not user_id:
-                return Response("Missing user_id in request body", status_code=400)
-
-            if export_format not in ["html", "json"]:
-                return Response(
-                    "Invalid export format. Supported formats: html, json",
-                    status_code=400,
-                )
-
-            result = export_conversation(id_from_body, user_id, export_format)
-
-            if result["success"]:
-                return Response(
-                    json.dumps(result), media_type="application/json", status_code=200
-                )
-            else:
-                return Response(
-                    json.dumps({"error": result["error"]}),
-                    media_type="application/json",
-                    status_code=500,
-                )
-
-        except json.JSONDecodeError:
-            return Response("Invalid JSON in request body", status_code=400)
-        except Exception as e:
-            logging.error(f"Error in conversation export: {str(e)}")
-            return Response(
-                json.dumps({"error": "Internal server error"}),
-                media_type="application/json",
-                status_code=500,
-            )
-    else:
-        return Response("Method not allowed", status_code=405)
 
 
 @app.route(route="scrape-page", methods=[func.HttpMethod.POST])
