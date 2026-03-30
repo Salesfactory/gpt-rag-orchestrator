@@ -891,7 +891,7 @@ If the user asks for visualization, charts, graphs, dashboards, slides, PowerPoi
 Use `agentic_search` for:
 - research
 - policy lookup
-- document retrieval
+- document retrieval (including from the File Vault / Vault)
 - competitor research
 - industry trend research
 - general informational questions
@@ -911,6 +911,8 @@ Use `agentic_search` for:
 ✓ "Create a document for our marketing plan" → `agentic_search` (brainstorming)
 ✓ "Help me draft a creative brief" → `agentic_search` (ideation)
 ✓ "Create a strategy document for Q4" → `agentic_search` (conceptual content)
+✓ "Search the vault for our latest marketing materials." → `agentic_search`
+✓ "What is in the file vault about project X?" → `agentic_search`
 
 ## Follow-up Continuity Rules
 
